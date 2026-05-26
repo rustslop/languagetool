@@ -1,0 +1,32 @@
+[package]
+name = "og-api"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "og-server"
+path = "src/main.rs"
+
+[dependencies]
+og-core = { workspace = true }
+og-rules = { workspace = true }
+og-tokenizer = { workspace = true }
+og-tagger = { workspace = true }
+og-xml = { workspace = true }
+og-spell = { workspace = true }
+og-langs = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }

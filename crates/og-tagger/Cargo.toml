@@ -1,0 +1,11 @@
+[package]
+name = "og-tagger"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+og-xml = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }

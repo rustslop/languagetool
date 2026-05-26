@@ -1,0 +1,11 @@
+[package]
+name = "og-xml"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+serde = { workspace = true }
+quick-xml = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }

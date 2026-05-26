@@ -1,0 +1,8 @@
+[package]
+name = "og-languagemodel"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+thiserror = { workspace = true }

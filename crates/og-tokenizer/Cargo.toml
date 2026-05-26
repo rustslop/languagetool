@@ -1,0 +1,10 @@
+[package]
+name = "og-tokenizer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }

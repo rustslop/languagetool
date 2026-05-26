@@ -1,0 +1,20 @@
+[package]
+name = "og-test-runner"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+og-xml = { workspace = true }
+og-rules = { workspace = true }
+og-tokenizer = { workspace = true }
+og-tagger = { workspace = true }
+og-langs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+og-langs = { workspace = true }

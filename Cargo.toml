@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/og-core",
+    "crates/og-api",
+    "crates/og-xml",
+    "crates/og-rules",
+    "crates/og-spell",
+    "crates/og-tokenizer",
+    "crates/og-tagger",
+    "crates/og-languagemodel",
+    "crates/og-langs",
+    "crates/og-test-runner",
+    "crates/og-compat",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "LGPL-2.1"
+rust-version = "1.95"
+
+[workspace.dependencies]
+og-core = { path = "crates/og-core" }
+og-xml = { path = "crates/og-xml" }
+og-rules = { path = "crates/og-rules" }
+og-spell = { path = "crates/og-spell" }
+og-tokenizer = { path = "crates/og-tokenizer" }
+og-tagger = { path = "crates/og-tagger" }
+og-languagemodel = { path = "crates/og-languagemodel" }
+og-langs = { path = "crates/og-langs" }
+og-api = { path = "crates/og-api" }
+og-test-runner = { path = "crates/og-test-runner" }
+og-compat = { path = "crates/og-compat" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+regex = "1"
+rayon = "1.10"
+quick-xml = "0.37"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+tower = "0.5"
+http = "1"
+http-body-util = "0.1"

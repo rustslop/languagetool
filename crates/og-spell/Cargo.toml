@@ -1,0 +1,9 @@
+[package]
+name = "og-spell"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }

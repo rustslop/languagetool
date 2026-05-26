@@ -1,0 +1,14 @@
+[package]
+name = "og-langs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+og-core = { workspace = true }
+og-xml = { workspace = true }
+og-rules = { workspace = true }
+og-spell = { workspace = true }
+og-tokenizer = { workspace = true }
+og-tagger = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
