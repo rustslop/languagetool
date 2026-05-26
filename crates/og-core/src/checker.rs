@@ -59,8 +59,9 @@ impl CheckRequest {
         if self.disabled_categories.contains(&category_id.to_string()) {
             return false;
         }
-        // Rules that are default-off only run if explicitly enabled
-        if !default_on && !self.enabled_rules.contains(&rule_id.to_string()) && !self.enabled_categories.contains(&category_id.to_string()) {
+        // Rules that are default-off only run if explicitly enabled or if picky mode is on
+        let picky = self.picky || self.level.as_deref() == Some("picky");
+        if !default_on && !picky && !self.enabled_rules.contains(&rule_id.to_string()) && !self.enabled_categories.contains(&category_id.to_string()) {
             return false;
         }
         true
