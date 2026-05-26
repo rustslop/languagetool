@@ -60,6 +60,15 @@ impl XmlRuleParser {
         let mut current_or_group: Option<XmlOrGroup> = None;
         let mut in_and_group = false;
         let mut current_and_group: Option<XmlAndGroup> = None;
+        // Short message and URL state
+        let mut in_short = false;
+        let mut short_text = String::new();
+        let mut in_url = false;
+        let mut url_text = String::new();
+        // Example correction attribute
+        let mut example_correction: Option<String> = None;
+        // Track if example contains <marker> (implies Incorrect if no explicit type)
+        let mut example_has_marker = false;
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -76,6 +85,7 @@ impl XmlRuleParser {
                                     "name" => cat.name = val,
                                     "description" => cat.description = Some(val),
                                     "default" => cat.default_on = val == "on",
+                                    "type" => cat.issue_type = Some(val),
                                     _ => {}
                                 }
                             }
@@ -90,6 +100,7 @@ impl XmlRuleParser {
                                     "id" => group.id = Some(val),
                                     "name" => group.name = Some(val),
                                     "default" => group.default_on = Some(val == "on"),
+                                    "type" => group.issue_type = Some(val),
                                     _ => {}
                                 }
                             }
@@ -106,8 +117,11 @@ impl XmlRuleParser {
                                 match key.as_str() {
                                     "id" => rule.id = val,
                                     "name" => rule.name = val,
+                                    "description" => rule.description = val,
+                                    "sub_id" => rule.sub_id = Some(val),
                                     "default" => rule.default_on = val == "on",
                                     "deprecated" => rule.deprecated = val == "yes",
+                                    "type" => rule.issue_type = Some(val),
                                     _ => {}
                                 }
                             }
@@ -228,32 +242,32 @@ impl XmlRuleParser {
                             }
                         }
                         "example" => {
-                            let mut has_correction = false;
-                            let ex_type = e.attributes().flatten().find_map(|attr| {
+                            let mut ex_type_str: Option<String> = None;
+                            example_correction = None;
+                            for attr in e.attributes().flatten() {
                                 let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
                                 let val = String::from_utf8_lossy(&attr.value).to_string();
-                                if key == "type" {
-                                    Some(val)
-                                } else if key == "correction" {
-                                    has_correction = true;
-                                    None
-                                } else {
-                                    None
+                                match key.as_str() {
+                                    "type" => ex_type_str = Some(val),
+                                    "correction" => example_correction = Some(val),
+                                    _ => {}
                                 }
-                            });
-                            example_type = match ex_type.as_deref() {
+                            }
+                            example_type = match ex_type_str.as_deref() {
                                 Some("incorrect") => XmlExampleType::Incorrect,
                                 Some("triggers_error") => XmlExampleType::TriggersError,
-                                _ if has_correction => XmlExampleType::Incorrect,
+                                _ if example_correction.is_some() => XmlExampleType::Incorrect,
                                 _ => XmlExampleType::Correct,
                             };
                             in_example = true;
                             example_text.clear();
+                            example_has_marker = false;
                         }
                         "marker" => {
                             // Inside example - preserve <marker> tags for position extraction
                             if in_example {
                                 example_text.push_str("<marker>");
+                                example_has_marker = true;
                             } else if current_pattern.is_some() || current_antipattern.is_some() {
                                 // Inside pattern - track which tokens are in the marker
                                 in_pattern_marker = true;
@@ -353,7 +367,8 @@ impl XmlRuleParser {
                             }
                         }
                         "short" => {
-                            // Short message - read text content
+                            in_short = true;
+                            short_text.clear();
                         }
                         "match" if in_suggestion => {
                             // <match no="1" case_conversion="startupper" /> inside suggestion
@@ -385,7 +400,8 @@ impl XmlRuleParser {
                             }
                         }
                         "url" => {
-                            // URL element
+                            in_url = true;
+                            url_text.clear();
                         }
                         "antipattern" => {
                             // Antipattern
@@ -410,7 +426,11 @@ impl XmlRuleParser {
                 }
                 Ok(Event::Text(e)) => {
                     let text = e.unescape().unwrap_or_default().to_string();
-                    if in_suggestion {
+                    if in_short {
+                        short_text.push_str(&text);
+                    } else if in_url {
+                        url_text.push_str(&text);
+                    } else if in_suggestion {
                         suggestion_text.push_str(&text);
                         suggestion_parts.push(SuggestionPart::Text(text.clone()));
                         if in_message {
@@ -533,15 +553,44 @@ impl XmlRuleParser {
                             }
                             suggestion_parts.clear();
                         }
+                        "short" => {
+                            in_short = false;
+                            if let Some(rule) = &mut current_rule {
+                                let trimmed = short_text.trim();
+                                if !trimmed.is_empty() {
+                                    rule.short_message = Some(trimmed.to_string());
+                                }
+                            }
+                        }
+                        "url" => {
+                            in_url = false;
+                            if let Some(rule) = &mut current_rule {
+                                let trimmed = url_text.trim();
+                                if !trimmed.is_empty() {
+                                    rule.url = Some(trimmed.to_string());
+                                }
+                            }
+                        }
                         "example" => {
                             in_example = false;
+                            // Marker without explicit type implies Incorrect
+                            let final_type = match &example_type {
+                                XmlExampleType::Correct if example_has_marker => XmlExampleType::Incorrect,
+                                other => other.clone(),
+                            };
                             if let Some(rule) = &mut current_rule {
+                                let corrections = example_correction
+                                    .as_ref()
+                                    .map(|c| c.split('|').map(|s| s.trim().to_string()).collect())
+                                    .unwrap_or_default();
                                 rule.examples.push(XmlExample {
-                                    example_type: example_type.clone(),
+                                    example_type: final_type,
                                     text: example_text.trim().to_string(),
-                                    corrections: Vec::new(),
+                                    corrections,
                                 });
                             }
+                            example_correction = None;
+                            example_has_marker = false;
                         }
                         "marker" => {
                             if in_example {

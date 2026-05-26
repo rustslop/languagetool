@@ -42,6 +42,12 @@ impl XmlCompiler {
                         compiled_rule.sub_id = Some(format!("{}", i + 1));
                     }
                 }
+                // Inherit group-level issue_type if rule doesn't have its own
+                if compiled_rule.issue_type == "grammar" {
+                    if let Some(ref git) = group.issue_type {
+                        compiled_rule.issue_type = git.clone();
+                    }
+                }
                 compiled.rules.push(compiled_rule);
             }
         }
@@ -147,6 +153,9 @@ impl XmlCompiler {
             default_on: rule.default_on,
             deprecated: rule.deprecated,
             filter: rule.filter.clone(),
+            issue_type: rule.issue_type.clone()
+                .or_else(|| rule.category.issue_type.clone())
+                .unwrap_or_else(|| "grammar".to_string()),
         }
     }
 
@@ -289,6 +298,7 @@ pub struct CompiledRule {
     pub default_on: bool,
     pub deprecated: bool,
     pub filter: Option<crate::types::XmlFilter>,
+    pub issue_type: String,
 }
 
 /// A compiled pattern element - either a single token, an or-group, or an and-group

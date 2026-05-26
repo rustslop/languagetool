@@ -42,17 +42,25 @@ impl CheckRequest {
         }
     }
 
-    pub fn is_rule_enabled(&self, rule_id: &str, category_id: &str) -> bool {
+    pub fn is_rule_enabled(&self, rule_id: &str, category_id: &str, default_on: bool) -> bool {
+        // If specific rules are enabled, only those run
         if !self.enabled_rules.is_empty() && !self.enabled_rules.contains(&rule_id.to_string()) {
             return false;
         }
+        // Explicitly disabled rules never run
         if self.disabled_rules.contains(&rule_id.to_string()) {
             return false;
         }
+        // If specific categories are enabled, only those run
         if !self.enabled_categories.is_empty() && !self.enabled_categories.contains(&category_id.to_string()) {
             return false;
         }
+        // Explicitly disabled categories never run
         if self.disabled_categories.contains(&category_id.to_string()) {
+            return false;
+        }
+        // Rules that are default-off only run if explicitly enabled
+        if !default_on && !self.enabled_rules.contains(&rule_id.to_string()) && !self.enabled_categories.contains(&category_id.to_string()) {
             return false;
         }
         true
@@ -200,7 +208,7 @@ impl Checker {
 
             // Step 2d: Apply sentence-level rules
             for rule in &self.rules {
-                if !request.is_rule_enabled(rule.id(), &rule.category().id().as_str().to_string()) {
+                if !request.is_rule_enabled(rule.id(), &rule.category().id().as_str().to_string(), rule.is_default_on()) {
                     continue;
                 }
                 let matches = rule.match_sentence(&sentence);
@@ -212,7 +220,7 @@ impl Checker {
 
         // Step 3: Apply text-level rules across all sentences
         for rule in &self.text_level_rules {
-            if !request.is_rule_enabled(rule.id(), &rule.category().id().as_str().to_string()) {
+            if !request.is_rule_enabled(rule.id(), &rule.category().id().as_str().to_string(), rule.is_default_on()) {
                 continue;
             }
             let matches = rule.match_text(text, &analyzed_sentences);
@@ -230,10 +238,13 @@ impl Checker {
 
         let language_info = LanguageInfo {
             code: request.language.code().to_string(),
+            name: request.language.name().to_string(),
             detected: LanguageDetectedInfo {
                 code: request.language.code().to_string(),
                 name: request.language.name().to_string(),
                 preferred: None,
+                detected_by: None,
+                confidence: None,
             },
         };
 

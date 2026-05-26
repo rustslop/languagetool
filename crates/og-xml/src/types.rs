@@ -36,6 +36,8 @@ pub struct XmlRule {
     pub deprecated: bool,
     #[serde(default)]
     pub filter: Option<XmlFilter>,
+    #[serde(default)]
+    pub issue_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -46,6 +48,8 @@ pub struct XmlCategory {
     pub description: Option<String>,
     #[serde(default)]
     pub default_on: bool,
+    #[serde(default)]
+    pub issue_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -194,6 +198,8 @@ pub struct XmlRuleGroup {
     pub default_on: Option<bool>,
     pub antipatterns: Vec<XmlPattern>,
     pub rules: Vec<XmlRule>,
+    #[serde(default)]
+    pub issue_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

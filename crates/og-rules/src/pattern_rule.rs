@@ -321,14 +321,27 @@ impl PatternRuleEngine {
             .collect();
 
         let rm_rule = RuleMatchRule::new(&rule.id, &rule.name)
-            .with_category(og_core::Category::new(&rule.category.id, &rule.category.name));
+            .with_category(og_core::Category::new(&rule.category.id, &rule.category.name))
+            .with_issue_type(&rule.issue_type);
+        let rm_rule = if let Some(ref sub_id) = rule.sub_id {
+            rm_rule.with_sub_id(sub_id)
+        } else {
+            rm_rule
+        };
+        let rm_rule = if let Some(ref url) = rule.url {
+            rm_rule.with_urls(vec![url.clone()])
+        } else {
+            rm_rule
+        };
 
-        Some(
-            RuleMatch::new(&rule.message, match_start, match_length, rm_rule,
-                RuleMatchContext::new(context_text, context_start, context_end - context_start))
-                .with_replacements(replacements)
-                .with_sentence(sentence.text().to_string())
-        )
+        let mut rm = RuleMatch::new(&rule.message, match_start, match_length, rm_rule,
+            RuleMatchContext::new(context_text, context_start, context_end - context_start))
+            .with_replacements(replacements)
+            .with_sentence(sentence.text().to_string());
+        if let Some(ref short) = rule.short_message {
+            rm = rm.with_short_message(short);
+        }
+        Some(rm)
     }
 
     /// Match a sequence of pattern tokens against text tokens starting at start_idx.

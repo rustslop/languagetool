@@ -130,6 +130,8 @@ pub struct RuleMatch {
     context_for_sure_match: i32,
     #[serde(default)]
     sentence: Option<String>,
+    #[serde(rename = "type", default)]
+    issue_type: Option<String>,
 }
 
 impl RuleMatch {
@@ -140,6 +142,7 @@ impl RuleMatch {
         rule: RuleMatchRule,
         context: RuleMatchContext,
     ) -> Self {
+        let issue_type = Some(rule.issue_type.clone());
         Self {
             message: message.into(),
             short_message: String::new(),
@@ -151,6 +154,7 @@ impl RuleMatch {
             ignore_for_incomplete_sentence: false,
             context_for_sure_match: -1,
             sentence: None,
+            issue_type,
         }
     }
 
@@ -264,6 +268,8 @@ pub struct Warnings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanguageInfo {
     pub code: String,
+    #[serde(default)]
+    pub name: String,
     pub detected: LanguageDetectedInfo,
 }
 
@@ -273,6 +279,10 @@ pub struct LanguageDetectedInfo {
     pub name: String,
     #[serde(default)]
     pub preferred: Option<String>,
+    #[serde(default, rename = "detectedBy")]
+    pub detected_by: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

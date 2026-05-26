@@ -56,7 +56,7 @@ pub async fn handle_languages() -> Json<Vec<LanguagesResponse>> {
         .into_iter()
         .map(|l| LanguagesResponse {
             name: l.name().to_string(),
-            code: l.code().to_string(),
+            code: l.short_code().to_string(),
             long_code: l.code().to_string(),
         })
         .collect();

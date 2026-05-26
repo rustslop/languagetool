@@ -189,6 +189,53 @@ impl Language {
         }
     }
 
+    /// Short language code (e.g. "en" for English variants, "de" for German).
+    /// The full code() is the longCode.
+    pub fn short_code(&self) -> &str {
+        match self {
+            Language::English | Language::EnglishUs | Language::EnglishGb
+            | Language::EnglishAu | Language::EnglishCa | Language::EnglishNz
+            | Language::EnglishZa => "en",
+            Language::German | Language::GermanDe | Language::GermanAt
+            | Language::GermanCh => "de",
+            Language::French => "fr",
+            Language::Spanish => "es",
+            Language::Portuguese | Language::PortugueseBr | Language::PortuguesePt => "pt",
+            Language::Dutch | Language::DutchBe | Language::DutchNl => "nl",
+            Language::Polish => "pl",
+            Language::Ukrainian => "uk",
+            Language::Arabic => "ar",
+            Language::Russian => "ru",
+            Language::Italian => "it",
+            Language::Catalan => "ca",
+            Language::Chinese => "zh",
+            Language::Japanese => "ja",
+            Language::Danish => "da",
+            Language::Asturian => "ast",
+            Language::Belarusian => "be",
+            Language::Breton => "br",
+            Language::Esperanto => "eo",
+            Language::Galician => "gl",
+            Language::Greek => "el",
+            Language::Icelandic => "is",
+            Language::Khmer => "km",
+            Language::Lithuanian => "lt",
+            Language::Malayalam => "ml",
+            Language::Romanian => "ro",
+            Language::Slovak => "sk",
+            Language::Slovenian => "sl",
+            Language::Serbian => "sr",
+            Language::Swedish => "sv",
+            Language::Tamil => "ta",
+            Language::Tagalog => "tl",
+            Language::CrimeanTatar => "crh",
+            Language::Irish => "ga",
+            Language::Persian => "fa",
+            Language::SimpleGerman => "de",
+            Language::Other(s) => s.split('-').next().unwrap_or(s.as_str()),
+        }
+    }
+
     pub fn base_language(&self) -> Language {
         match self {
             Language::English

@@ -84,9 +84,9 @@ async fn test_v2_languages() {
     let json: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
 
     assert!(!json.is_empty());
-    assert!(json.iter().any(|l| l["code"] == "en-US"));
-    assert!(json.iter().any(|l| l["code"] == "de-DE"));
-    assert!(json.iter().any(|l| l["code"] == "fr"));
+    assert!(json.iter().any(|l| l["longCode"] == "en-US"));
+    assert!(json.iter().any(|l| l["longCode"] == "de-DE"));
+    assert!(json.iter().any(|l| l["code"] == "en" && l["longCode"] == "en-US"));
 }
 
 #[tokio::test]
