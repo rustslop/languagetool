@@ -14,15 +14,117 @@ impl DefaultSentenceSplitter {
 
     fn default_abbreviations() -> Vec<String> {
         vec![
-            "Mr.".into(), "Mrs.".into(), "Ms.".into(), "Dr.".into(), "Prof.".into(),
-            "Sr.".into(), "Jr.".into(), "St.".into(), "Inc.".into(), "Ltd.".into(),
-            "Co.".into(), "Corp.".into(), "vs.".into(), "etc.".into(), "e.g.".into(),
-            "i.e.".into(), "al.".into(), "ca.".into(), "approx.".into(),
+            // Titles and honorifics
+            "Mr.".into(), "Mrs.".into(), "Ms.".into(), "Miss.".into(), "Dr.".into(),
+            "Prof.".into(), "Sr.".into(), "Jr.".into(), "St.".into(),
+            "Rev.".into(), "Gen.".into(), "Gov.".into(), "Hon.".into(),
+            "Atty.".into(), "Sgt.".into(), "Col.".into(), "Maj.".into(),
+            "Lt.".into(), "Brig.".into(), "Capt.".into(), "Cmdr.".into(),
+            "Revd.".into(), "Rep.".into(), "Sen.".into(), "Pres.".into(),
+            "Drs.".into(), "Messrs.".into(), "Mmes.".into(), "Msgr.".into(),
+            "Supt.".into(), "Det.".into(), "Insp.".into(), "Pvt.".into(),
+            "Cpl.".into(), "Adm.".into(), "Rt.".into(),
+
+            // Business and legal
+            "Inc.".into(), "Ltd.".into(), "Co.".into(), "Corp.".into(),
+            "Bros.".into(), "Assoc.".into(), "Dept.".into(), "Dist.".into(),
+            "Div.".into(), "Est.".into(), "Assn.".into(),
+
+            // Academic degrees
+            "B.A.".into(), "B.S.".into(), "M.A.".into(), "M.S.".into(),
+            "Ph.D.".into(), "M.D.".into(), "J.D.".into(), "D.D.S.".into(),
+            "B.Sc.".into(), "M.Sc.".into(), "LL.B.".into(), "LL.M.".into(),
+            "LL.D.".into(), "B.Eng.".into(), "M.Eng.".into(),
+
+            // Latin abbreviations
+            "vs.".into(), "etc.".into(), "e.g.".into(), "i.e.".into(),
+            "al.".into(), "ca.".into(), "approx.".into(), "cf.".into(),
+            "viz.".into(), "n.b.".into(), "N.B.".into(), "q.v.".into(),
+            "s.v.".into(), "v.".into(), "op.".into(), "cit.".into(),
+            "ibid.".into(), "id.".into(), "ff.".into(), "et al.".into(),
+
+            // Months
             "Jan.".into(), "Feb.".into(), "Mar.".into(), "Apr.".into(),
             "Jun.".into(), "Jul.".into(), "Aug.".into(), "Sep.".into(),
-            "Oct.".into(), "Nov.".into(), "Dec.".into(),
-            "Mon.".into(), "Tue.".into(), "Wed.".into(), "Thu.".into(),
-            "Fri.".into(), "Sat.".into(), "Sun.".into(),
+            "Sept.".into(), "Oct.".into(), "Nov.".into(), "Dec.".into(),
+
+            // Days
+            "Mon.".into(), "Tue.".into(), "Tues.".into(), "Wed.".into(),
+            "Thu.".into(), "Thur.".into(), "Thurs.".into(), "Fri.".into(),
+            "Sat.".into(), "Sun.".into(),
+
+            // Publication/science abbreviations
+            "Vol.".into(), "Fig.".into(), "No.".into(), "pp.".into(),
+            "Def.".into(), "Eq.".into(), "Lem.".into(), "Prop.".into(),
+            "Thm.".into(), "Cor.".into(), "Sec.".into(), "Ch.".into(),
+            "App.".into(), "Ref.".into(), "Refs.".into(),
+
+            // Common word-stem abbreviations
+            "abbr.".into(), "acad.".into(), "acc.".into(), "admin.".into(),
+            "adv.".into(), "a.m.".into(), "p.m.".into(), "A.M.".into(), "P.M.".into(),
+            "arch.".into(), "asst.".into(), "atty.".into(), "aud.".into(),
+            "bldg.".into(), "blvd.".into(), "ave.".into(), "Ave.".into(),
+            "cap.".into(), "capt.".into(), "cert.".into(), "chm.".into(),
+            "chron.".into(), "clin.".into(), "cmte.".into(), "col.".into(),
+            "coll.".into(), "comdr.".into(), "con.".into(), "cont.".into(),
+            "corp.".into(), "cpl.".into(), "cr.".into(), "ctr.".into(),
+            "dept.".into(), "dev.".into(), "dir.".into(), "disc.".into(),
+            "dist.".into(), "div.".into(), "doc.".into(), "doz.".into(),
+            "dr.".into(), "Drv.".into(), "ed.".into(), "educ.".into(),
+            "elec.".into(), "eng.".into(), "ens.".into(), "equip.".into(),
+            "esp.".into(), "est.".into(), "eval.".into(), "ex.".into(),
+            "exec.".into(), "exp.".into(), "ext.".into(),
+            "fac.".into(), "fem.".into(), "ff.".into(), "fig.".into(),
+            "fin.".into(), "fl.".into(), "fst.".into(), "ft.".into(),
+            "gen.".into(), "geo.".into(), "geog.".into(), "geol.".into(),
+            "gov.".into(), "govt.".into(), "grp.".into(), "hist.".into(),
+            "hosp.".into(), "hr.".into(), "hrs.".into(), "ht.".into(),
+            "hwy.".into(), "ill.".into(), "illus.".into(), "inc.".into(),
+            "ind.".into(), "inst.".into(), "int.".into(), "intl.".into(),
+            "jr.".into(), "lab.".into(), "lat.".into(), "lib.".into(),
+            "lng.".into(), "loc.".into(), "lt.".into(), "ltd.".into(),
+            "masc.".into(), "math.".into(), "meas.".into(), "med.".into(),
+            "mil.".into(), "min.".into(), "misc.".into(), "mod.".into(),
+            "mont.".into(), "mr.".into(), "mrs.".into(), "ms.".into(),
+            "narr.".into(), "nat.".into(), "neg.".into(), "no.".into(),
+            "nom.".into(), "nr.".into(), "obj.".into(), "obs.".into(),
+            "off.".into(), "ord.".into(), "org.".into(), "orig.".into(),
+            "pl.".into(), "pop.".into(), "pos.".into(), "pow.".into(),
+            "pp.".into(), "pr.".into(), "pref.".into(), "pres.".into(),
+            "prob.".into(), "proc.".into(), "prod.".into(), "prof.".into(),
+            "pron.".into(), "prop.".into(), "pub.".into(), "pwr.".into(),
+            "qt.".into(), "quot.".into(), "rad.".into(), "rcvd.".into(),
+            "rec.".into(), "ref.".into(), "reg.".into(), "rep.".into(),
+            "reps.".into(), "res.".into(), "rev.".into(), "rte.".into(),
+            "sci.".into(), "sec.".into(), "sect.".into(), "sel.".into(),
+            "sen.".into(), "sep.".into(), "sept.".into(), "seq.".into(),
+            "sgt.".into(), "soc.".into(), "sp.".into(), "spec.".into(),
+            "sr.".into(), "supt.".into(), "sur.".into(), "surg.".into(),
+            "syn.".into(), "tech.".into(), "tel.".into(), "temp.".into(),
+            "theol.".into(), "tmb.".into(), "tsp.".into(), "univ.".into(),
+            "U.S.".into(), "U.K.".into(), "U.N.".into(), "E.U.".into(),
+            "vol.".into(), "vs.".into(), "wk.".into(), "yr.".into(),
+
+            // Street/state abbreviations
+            "Blvd.".into(), "Ave.".into(), "Rd.".into(), "Ln.".into(),
+            "Dr.".into(), "Ct.".into(), "Pl.".into(), "Ter.".into(),
+            "Cir.".into(), "Pkwy.".into(), "Hwy.".into(), "Fwy.".into(),
+            "Mt.".into(), "Mts.".into(), "Ft.".into(), "Pt.".into(),
+            "Ste.".into(), "Fl.".into(),
+
+            // Time zones
+            "A.M.".into(), "P.M.".into(), "EST.".into(), "CST.".into(),
+            "MST.".into(), "PST.".into(), "EDT.".into(), "CDT.".into(),
+            "MDT.".into(), "PDT.".into(),
+
+            // Measurement abbreviations
+            "in.".into(), "ft.".into(), "yd.".into(), "mi.".into(),
+            "oz.".into(), "lb.".into(), "lbs.".into(), "kg.".into(),
+            "gm.".into(), "mm.".into(), "cm.".into(), "km.".into(),
+            "sq.".into(), "cu.".into(),
+
+            // Currency abbreviations that can end sentences
+            "U.S.".into(),
         ]
     }
 
@@ -35,8 +137,20 @@ impl DefaultSentenceSplitter {
         // Check if the period at period_pos is part of an abbreviation
         let before = &text[..period_pos];
         for abbr in &self.abbreviations {
-            if before.ends_with(abbr.trim_end_matches('.')) {
-                return true;
+            let abbr_stem = abbr.trim_end_matches('.');
+            if before.ends_with(abbr_stem) {
+                // Verify word boundary: the character before the abbreviation stem
+                // must be a space, start of string, or punctuation
+                let prefix_len = before.len() - abbr_stem.len();
+                if prefix_len == 0 {
+                    return true;
+                }
+                let char_before = before.as_bytes().get(prefix_len - 1).copied();
+                if let Some(b) = char_before {
+                    if b.is_ascii_whitespace() || b.is_ascii_punctuation() {
+                        return true;
+                    }
+                }
             }
         }
         false
