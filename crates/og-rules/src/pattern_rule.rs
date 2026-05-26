@@ -1110,19 +1110,27 @@ impl PatternRuleEngine {
         }
     }
 
-    /// Parse filter args like "year:\5 month:\4 day:\3" into key-value pairs,
-    /// resolving backreferences like \5 to matched_texts[4]
+    /// Parse filter args like "year:5 month:4 day:3 weekDay:1" into key-value pairs,
+    /// resolving numeric values as 1-based token position references into matched_texts.
     fn parse_filter_args(&self, args: &str, matched_texts: &[String]) -> HashMap<String, String> {
         let mut result = HashMap::new();
         for part in args.split_whitespace() {
             if let Some((key, val)) = part.split_once(':') {
                 let resolved = if val.starts_with('\\') {
+                    // Explicit backreference: \5 -> matched_texts[4]
                     if let Ok(idx) = val[1..].parse::<usize>() {
                         if idx > 0 && idx <= matched_texts.len() {
                             matched_texts[idx - 1].clone()
                         } else {
                             val.to_string()
                         }
+                    } else {
+                        val.to_string()
+                    }
+                } else if let Ok(idx) = val.parse::<usize>() {
+                    // Plain numeric value: treat as 1-based token position
+                    if idx > 0 && idx <= matched_texts.len() {
+                        matched_texts[idx - 1].clone()
                     } else {
                         val.to_string()
                     }
@@ -1164,15 +1172,28 @@ impl PatternRuleEngine {
     fn apply_date_check_filter(&self, args: &str, matched_texts: &[String]) -> bool {
         let parsed = self.parse_filter_args(args, matched_texts);
         let week_day_str = parsed.get("weekDay").map(|s| s.as_str()).unwrap_or("");
-        let day_str = parsed.get("day").map(|s| s.as_str()).unwrap_or("1");
-        let month_str = parsed.get("month").map(|s| s.as_str()).unwrap_or("1");
+
+        // Two modes: combined "date" arg (yyyy-mm-dd) or separate day/month/year
+        let (year, month, day) = if let Some(date_str) = parsed.get("date") {
+            // Combined date format like "2014-10-31"
+            let parts: Vec<&str> = date_str.split('-').collect();
+            if parts.len() == 3 {
+                (
+                    parse_date_number(parts[0]),
+                    parse_date_number(parts[1]),
+                    parse_date_number(parts[2]),
+                )
+            } else {
+                return false;
+            }
+        } else {
+            let day_str = parsed.get("day").map(|s| s.as_str()).unwrap_or("1");
+            let month_str = parsed.get("month").map(|s| s.as_str()).unwrap_or("1");
+            let y = parsed.get("year").map(|s| parse_date_number(s)).unwrap_or(2014);
+            (y, parse_month(month_str), parse_date_number(day_str))
+        };
 
         let claimed_weekday = parse_weekday(week_day_str);
-        let day = parse_date_number(day_str);
-        let month = parse_month(month_str);
-
-        // Use 2014 as default year for tests (CURRENTYEAR variant)
-        let year = parsed.get("year").map(|s| parse_date_number(s)).unwrap_or(2014);
 
         if claimed_weekday == 0 || day == 0 || month == 0 {
             return false;
@@ -1242,14 +1263,15 @@ fn parse_month(s: &str) -> u32 {
 /// Parse weekday name to 1-7 (Sunday=1, Monday=2, ..., Saturday=7)
 fn parse_weekday(s: &str) -> u32 {
     let lower = s.to_lowercase();
-    match lower.as_str() {
-        n if n.starts_with("sun") => 1,
-        n if n.starts_with("mon") => 2,
-        n if n.starts_with("tue") => 3,
-        n if n.starts_with("wed") => 4,
-        n if n.starts_with("thu") => 5,
-        n if n.starts_with("fri") => 6,
-        n if n.starts_with("sat") => 7,
+    let prefix = if lower.len() >= 2 { &lower[..2] } else { &lower };
+    match prefix {
+        "su" => 1,
+        "mo" => 2,
+        "tu" => 3,
+        "we" => 4,
+        "th" => 5,
+        "fr" => 6,
+        "sa" => 7,
         _ => 0,
     }
 }
