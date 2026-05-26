@@ -178,6 +178,7 @@ pub struct XmlExample {
 pub enum XmlExampleType {
     Correct,
     Incorrect,
+    TriggersError, // Known false positive - expected to match
 }
 
 impl Default for XmlExampleType {

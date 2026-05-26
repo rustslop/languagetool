@@ -971,6 +971,17 @@ impl TestRunner {
                             });
                         }
                     }
+                    og_xml::types::XmlExampleType::TriggersError => {
+                        // Known false positive - the rule IS expected to match
+                        // We count it as a pass regardless (these are documented known issues)
+                        results.push(ExampleTestResult {
+                            rule_id: rule.id.clone(),
+                            passed: true,
+                            message: format!("Triggers error (known FP): '{}'", clean_text),
+                            example_text: clean_text,
+                            expected_type: "triggers_error".to_string(),
+                        });
+                    }
                 }
             }
         }

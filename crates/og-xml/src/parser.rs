@@ -243,6 +243,7 @@ impl XmlRuleParser {
                             });
                             example_type = match ex_type.as_deref() {
                                 Some("incorrect") => XmlExampleType::Incorrect,
+                                Some("triggers_error") => XmlExampleType::TriggersError,
                                 _ if has_correction => XmlExampleType::Incorrect,
                                 _ => XmlExampleType::Correct,
                             };
