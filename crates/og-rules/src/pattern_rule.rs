@@ -1197,7 +1197,6 @@ impl PatternRuleEngine {
     }
 
     /// FutureDateFilter: accept match only if the date is in the future.
-    /// In tests (deterministic mode), current date is Jan 1, 2014.
     fn apply_future_date_filter(&self, args: &str, matched_texts: &[String]) -> bool {
         let parsed = self.parse_filter_args(args, matched_texts);
         let year_str = parsed.get("year").map(|s| s.as_str()).unwrap_or("0");
@@ -1212,13 +1211,9 @@ impl PatternRuleEngine {
             return false;
         }
 
-        // Use deterministic date for tests: Jan 1, 2014
-        let current_year = 2014;
-        let current_month = 1;
-        let current_day = 1;
-
+        let current_date = current_date();
         // Accept if date is in the future (strictly after current date)
-        (year, month, day) > (current_year, current_month, current_day)
+        (year, month, day) > current_date
     }
 
     /// DateCheckFilter: accept match if weekday doesn't match the date.
@@ -1242,7 +1237,7 @@ impl PatternRuleEngine {
         } else {
             let day_str = parsed.get("day").map(|s| s.as_str()).unwrap_or("1");
             let month_str = parsed.get("month").map(|s| s.as_str()).unwrap_or("1");
-            let y = parsed.get("year").map(|s| parse_date_number(s)).unwrap_or(2014);
+            let y = parsed.get("year").map(|s| parse_date_number(s)).unwrap_or_else(|| current_date().0);
             (y, parse_month(month_str), parse_date_number(day_str))
         };
 
@@ -1262,10 +1257,8 @@ impl PatternRuleEngine {
         let year_str = parsed.get("year").map(|s| s.as_str()).unwrap_or("0");
         let year = parse_date_number(year_str);
 
-        // In tests (deterministic mode), current date is Jan 1, 2014.
-        // Accept (flag) the match only if the year differs from the current year.
-        let current_year = 2014;
-        year != current_year && year > 0
+        let current_date = current_date();
+        year != current_date.0 && year > 0
     }
 }
 
@@ -1273,6 +1266,29 @@ impl PatternRuleEngine {
 fn parse_date_number(s: &str) -> u32 {
     let trimmed = s.trim().trim_end_matches(|c: char| c.is_alphabetic());
     trimmed.parse().unwrap_or(0)
+}
+
+/// Get the current date as (year, month, day).
+fn current_date() -> (u32, u32, u32) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    // Simple date calculation from unix timestamp
+    let days = secs / 86400;
+    // Algorithm from Howard Hinnant's civil_from_days
+    let z = days as i64 + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as u32, m as u32, d as u32)
 }
 
 /// Parse month name/number to 1-12

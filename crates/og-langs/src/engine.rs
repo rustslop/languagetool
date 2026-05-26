@@ -169,6 +169,12 @@ impl LanguageEngine {
             // Add SimpleReplaceRule with data
             engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::english_default()));
 
+            // Add generic native rules
+            engine.add_rule(Arc::new(og_rules::native_rules::WordRepeatRule::new()));
+            engine.add_rule(Arc::new(og_rules::native_rules::DoublePunctuationRule::new()));
+            engine.add_rule(Arc::new(og_rules::native_rules::UppercaseSentenceStartRule::new()));
+            engine.add_rule(Arc::new(og_rules::native_rules::CommaWhitespaceRule::new()));
+
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();
             let hunspell_dir = lt_root.join("en/src/main/resources/org/languagetool/resource/en/hunspell");
@@ -222,6 +228,14 @@ impl LanguageEngine {
                 engine.add_rule(Arc::new(spell_rule));
             }
         }
+
+        // Add text-level rules
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::MultipleWhitespaceRule::new()));
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::SentenceWhitespaceRule::new()));
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::GenericUnpairedBracketsRule::new()));
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::GenericUnpairedQuotesRule::new()));
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::LongSentenceRule::new(30)));
+        engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::WordRepeatBeginningRule::new()));
 
         engine.rebuild_checker();
         engine
