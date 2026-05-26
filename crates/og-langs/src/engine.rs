@@ -175,6 +175,9 @@ impl LanguageEngine {
             engine.add_rule(Arc::new(og_rules::native_rules::UppercaseSentenceStartRule::new()));
             engine.add_rule(Arc::new(og_rules::native_rules::CommaWhitespaceRule::new()));
 
+            // Add English-specific native rules
+            engine.add_rule(Arc::new(crate::en::ContractionSpellingRule::new()));
+
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();
             let hunspell_dir = lt_root.join("en/src/main/resources/org/languagetool/resource/en/hunspell");
@@ -236,6 +239,7 @@ impl LanguageEngine {
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::GenericUnpairedQuotesRule::new()));
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::LongSentenceRule::new(30)));
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::WordRepeatBeginningRule::new()));
+        engine.add_text_level_rule(Arc::new(crate::en::ConsistentApostrophesRule::new()));
 
         engine.rebuild_checker();
         engine
