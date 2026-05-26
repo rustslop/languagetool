@@ -9,7 +9,6 @@ use og_xml::compiler::{XmlCompiler, CompiledRule};
 use og_rules::pattern_rule::PatternRuleEngine;
 use og_tagger::EnglishTagger;
 use og_tagger::XmlDisambiguator;
-use og_tagger::Tagger as TaggerTrait;
 use og_spell::{Dictionary, SpellingCheckRule};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -86,15 +85,44 @@ impl LanguageEngine {
 
     /// Create an English LanguageEngine with all available rules
     pub fn english() -> Self {
-        let mut tagger_bridge_inner = EnglishTaggerBridge::new_with_extra_data();
+        let mut tagger = EnglishTagger::new();
 
-        let tagger_bridge: Arc<dyn og_core::checker::Tagger> = Arc::new(tagger_bridge_inner);
+        // Load external data into the tagger
+        if let Some(lt_root) = find_lt_resource_dir() {
+            let dict_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/dict_decoded.txt");
+            if dict_path.exists() {
+                if let Ok(data) = std::fs::read_to_string(&dict_path) {
+                    let count = tagger.load_fsa_dictionary(&data);
+                    eprintln!("Loaded {} FSA dictionary entries", count);
+                }
+            }
+            let added_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/added.txt");
+            if added_path.exists() {
+                if let Ok(data) = std::fs::read_to_string(&added_path) {
+                    tagger.load_added(&data);
+                }
+            }
+            let uncountable_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/uncountable.txt");
+            if uncountable_path.exists() {
+                if let Ok(data) = std::fs::read_to_string(&uncountable_path) {
+                    tagger.load_uncountable(&data);
+                }
+            }
+            let partlycountable_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/partlycountable.txt");
+            if partlycountable_path.exists() {
+                if let Ok(data) = std::fs::read_to_string(&partlycountable_path) {
+                    tagger.load_partlycountable(&data);
+                }
+            }
+        }
+
+        let tagger_arc: Arc<dyn og_core::checker::Tagger> = Arc::new(tagger);
 
         let mut engine = Self {
             language: Language::English,
             rules: Vec::new(),
             text_level_rules: Vec::new(),
-            tagger: Some(tagger_bridge),
+            tagger: Some(tagger_arc),
             disambiguator: None,
             checker: Checker::new()
                 .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge))
@@ -300,151 +328,6 @@ impl WordTokenizer for WordTokenizerBridge {
             let at = AnalyzedToken::new(t.text(), t.start() + offset, t.end() + offset);
             AnalyzedTokenReadings::new(at)
         }).collect()
-    }
-}
-
-/// Bridge from og-tagger::EnglishTagger to og-core's Tagger trait
-struct EnglishTaggerBridge {
-    tagger: EnglishTagger,
-}
-
-impl EnglishTaggerBridge {
-    fn new_with_extra_data() -> Self {
-        let mut tagger = EnglishTagger::new();
-
-        // Load added.txt if available
-        if let Some(lt_root) = find_lt_resource_dir() {
-            // Load full FSA dictionary first (highest priority for lookups)
-            let dict_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/dict_decoded.txt");
-            if dict_path.exists() {
-                if let Ok(data) = std::fs::read_to_string(&dict_path) {
-                    let count = tagger.load_fsa_dictionary(&data);
-                    eprintln!("Loaded {} FSA dictionary entries", count);
-                }
-            }
-
-            let added_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/added.txt");
-            if added_path.exists() {
-                if let Ok(data) = std::fs::read_to_string(&added_path) {
-                    tagger.load_added(&data);
-                }
-            }
-
-            // Load uncountable nouns (-> NN:U)
-            let uncountable_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/uncountable.txt");
-            if uncountable_path.exists() {
-                if let Ok(data) = std::fs::read_to_string(&uncountable_path) {
-                    tagger.load_uncountable(&data);
-                }
-            }
-
-            // Load partly-countable nouns (-> NN:UN)
-            let partlycountable_path = lt_root.join("en/src/main/resources/org/languagetool/resource/en/partlycountable.txt");
-            if partlycountable_path.exists() {
-                if let Ok(data) = std::fs::read_to_string(&partlycountable_path) {
-                    tagger.load_partlycountable(&data);
-                }
-            }
-        }
-
-        Self { tagger }
-    }
-}
-
-impl og_core::checker::Tagger for EnglishTaggerBridge {
-    fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
-        // Collect token texts, skipping the SENT_START token at position 0
-        let token_texts: Vec<String> = tokens.iter()
-            .skip(1) // Skip <S> token
-            .map(|t| t.token().token().to_string())
-            .collect();
-
-        let text_refs: Vec<&str> = token_texts.iter().map(|s| s.as_str()).collect();
-        let tagged = TaggerTrait::tag(&self.tagger, &text_refs);
-
-        // Apply tags back to tokens (skip index 0 = SENT_START)
-        for (i, tagged_atr) in tagged.into_iter().enumerate() {
-            let token_idx = i + 1;
-            if token_idx < tokens.len() {
-                // Merge POS tags from tagger into existing readings
-                let existing = &mut tokens[token_idx];
-                let primary = existing.token().clone();
-
-                let new_readings: Vec<AnalyzedToken> = tagged_atr.readings().to_vec();
-                if !new_readings.is_empty() {
-                    // Create updated primary with all POS tags
-                    let all_tags: Vec<String> = new_readings.iter()
-                        .flat_map(|r| r.pos_tags().to_vec())
-                        .collect();
-                    let updated_primary = AnalyzedToken::new(
-                        primary.token(),
-                        primary.start(),
-                        primary.end()
-                    )
-                    .with_pos_tags(all_tags)
-                    .with_lemma(new_readings[0].lemma().unwrap_or(primary.token()).to_string());
-
-                    let mut new_atr = AnalyzedTokenReadings::new(updated_primary);
-                    new_atr = new_atr.with_readings(new_readings);
-                    tokens[token_idx] = new_atr;
-                }
-            }
-        }
-
-        // Apply chunking based on POS tags (non-whitespace tokens only)
-        let mut nw_indices: Vec<usize> = Vec::new();
-        let mut all_tags: Vec<Vec<String>> = Vec::new();
-        let mut token_texts: Vec<&str> = Vec::new();
-
-        for (i, t) in tokens.iter().enumerate() {
-            if t.is_whitespace() { continue; }
-            let tags = t.token().pos_tags();
-            if tags.iter().any(|t| t == "SENT_START" || t == "SENT_END") { continue; }
-            nw_indices.push(i);
-            all_tags.push(tags.to_vec());
-            token_texts.push(t.token().token());
-        }
-
-        // Select best POS tag per token using context heuristics
-        let pos_tags: Vec<&str> = all_tags.iter().enumerate().map(|(i, tags)| {
-            if tags.is_empty() { return ""; }
-            if tags.len() == 1 { return tags[0].as_str(); }
-
-            let first_tag = tags[0].as_str();
-            let has_vb = tags.iter().any(|t| t.starts_with("VB"));
-            let has_nn = tags.iter().any(|t| t.starts_with("NN") || t == "FW");
-            let prev_is_verb = if i > 0 {
-                all_tags[i - 1].iter().any(|t| t.starts_with("VB") || t == "MD")
-            } else {
-                false
-            };
-            let prev_is_det = if i > 0 {
-                all_tags[i - 1].iter().any(|t| t == "DT" || t == "PRP$" || t == "CD" || t == "WDT")
-            } else {
-                false
-            };
-            if prev_is_det && has_nn && has_vb {
-                return tags.iter().find(|t| t.starts_with("NN")).map(|s| s.as_str()).unwrap_or(first_tag);
-            }
-            if prev_is_verb && has_vb && has_nn {
-                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(first_tag);
-            }
-            first_tag
-        }).collect();
-
-        let mut all_pos = vec!["SENT_START"];
-        let mut all_texts = vec!["<S>"];
-        all_pos.extend(pos_tags.iter().map(|s| *s));
-        all_texts.extend(token_texts.iter().map(|s| *s));
-
-        let chunks = og_tagger::chunker::chunk_tokens(&all_pos, &all_texts);
-
-        for (chunk_idx, orig_idx) in nw_indices.iter().enumerate() {
-            let chunk_array_idx = chunk_idx + 1;
-            if let Some(Some(chunk_tag)) = chunks.get(chunk_array_idx) {
-                tokens[*orig_idx].set_chunk(Some(chunk_tag.clone()));
-            }
-        }
     }
 }
 

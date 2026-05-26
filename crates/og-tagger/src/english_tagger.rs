@@ -760,6 +760,157 @@ impl Default for EnglishTagger {
     }
 }
 
+impl og_core::checker::Tagger for EnglishTagger {
+    fn tag(&self, tokens: &mut [og_core::AnalyzedTokenReadings]) {
+        // Collect token texts, skipping the SENT_START token at position 0
+        let token_texts: Vec<String> = tokens.iter()
+            .skip(1)
+            .map(|t| t.token().token().to_string())
+            .collect();
+        let text_refs: Vec<&str> = token_texts.iter().map(|s| s.as_str()).collect();
+        let tagged = Tagger::tag(self, &text_refs);
+
+        // Apply tags back to tokens (skip index 0 = SENT_START)
+        for (i, tagged_atr) in tagged.into_iter().enumerate() {
+            let token_idx = i + 1;
+            if token_idx < tokens.len() {
+                let existing = &tokens[token_idx];
+                let primary = existing.token().clone();
+
+                let new_readings: Vec<og_core::AnalyzedToken> = tagged_atr.readings().to_vec();
+                if !new_readings.is_empty() {
+                    let all_tags: Vec<String> = new_readings.iter()
+                        .flat_map(|r| r.pos_tags().to_vec())
+                        .collect();
+                    let updated_primary = og_core::AnalyzedToken::new(
+                        primary.token(),
+                        primary.start(),
+                        primary.end()
+                    )
+                    .with_pos_tags(all_tags)
+                    .with_lemma(new_readings[0].lemma().unwrap_or(primary.token()).to_string());
+
+                    let mut new_atr = og_core::AnalyzedTokenReadings::new(updated_primary);
+                    new_atr = new_atr.with_readings(new_readings);
+                    tokens[token_idx] = new_atr;
+                }
+            }
+        }
+
+        // Apply chunking: build non-whitespace token index, select best POS, run chunker
+        let mut nw_indices: Vec<usize> = Vec::new();
+        let mut all_tags: Vec<Vec<String>> = Vec::new();
+        let mut chunk_token_texts: Vec<&str> = Vec::new();
+
+        for (i, t) in tokens.iter().enumerate() {
+            if t.is_whitespace() { continue; }
+            let tags = t.token().pos_tags();
+            if tags.iter().any(|t| t == "SENT_START" || t == "SENT_END") { continue; }
+            nw_indices.push(i);
+            all_tags.push(tags.to_vec());
+            chunk_token_texts.push(t.token().token());
+        }
+
+        // Select best POS tag per token using context heuristics
+        let pos_tags: Vec<&str> = all_tags.iter().enumerate().map(|(i, tags)| {
+            if tags.is_empty() { return ""; }
+            if tags.len() == 1 { return tags[0].as_str(); }
+
+            let has_vb = tags.iter().any(|t| t.starts_with("VB"));
+            let has_jj = tags.iter().any(|t| t.starts_with("JJ"));
+            let has_nn = tags.iter().any(|t| t.starts_with("NN") || t == "FW");
+
+            let prev_is_verb = if i > 0 {
+                all_tags[i - 1].iter().any(|t| t.starts_with("VB") || t == "MD")
+            } else {
+                false
+            };
+            let prev_2_is_verb = if i > 1 {
+                let prev_text = chunk_token_texts.get(i - 1).map(|s| *s).unwrap_or("");
+                let is_negation = matches!(prev_text.to_lowercase().as_str(), "n't" | "not" | "never")
+                    || all_tags[i - 1].iter().any(|t| t == "RB");
+                if is_negation {
+                    all_tags[i - 2].iter().any(|t| t.starts_with("VB") || t == "MD")
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            let effective_prev_is_verb = prev_is_verb || prev_2_is_verb;
+
+            let prev_is_det = if i > 0 {
+                all_tags[i - 1].iter().any(|t| t == "DT" || t == "PRP$" || t == "CD" || t == "WDT")
+            } else {
+                false
+            };
+
+            let prev_is_have = if i > 0 {
+                let prev_text = chunk_token_texts.get(i - 1).map(|s| *s).unwrap_or("");
+                prev_is_verb && matches!(prev_text.to_lowercase().as_str(),
+                    "have" | "has" | "had" | "'ve" | "'s")
+            } else {
+                false
+            };
+
+            if prev_is_have && has_jj {
+                return tags.iter().find(|t| t.starts_with("JJ")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+            if prev_is_have && has_nn {
+                return tags.iter().find(|t| t.starts_with("NN")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+            if prev_is_det && has_nn && has_vb {
+                return tags.iter().find(|t| t.starts_with("NN")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+            if effective_prev_is_verb && has_vb && has_nn && !prev_is_have {
+                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+            if effective_prev_is_verb && has_vb && has_jj && !prev_is_have {
+                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+            let prev_is_prp = if i > 0 {
+                all_tags[i - 1].iter().any(|t| t == "PRP" || t.starts_with("PRP_S") || t.starts_with("PRP_O"))
+            } else {
+                false
+            };
+            if prev_is_prp {
+                let has_md = tags.iter().any(|t| t == "MD");
+                if has_vb && has_nn {
+                    return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+                }
+                if has_md && has_nn {
+                    return "MD";
+                }
+            }
+            let word_lower = chunk_token_texts[i].to_lowercase();
+            if matches!(word_lower.as_str(),
+                "am" | "is" | "are" | "was" | "were" | "be" | "been" | "being" |
+                "have" | "has" | "had" | "do" | "does" | "did" | "doing" | "done"
+            ) && has_vb {
+                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+
+            tags[0].as_str()
+        }).collect();
+
+        // Prepend SENT_START for the chunker
+        let mut chunker_pos = vec!["SENT_START"];
+        let mut chunker_texts = vec!["<S>"];
+        chunker_pos.extend(pos_tags.iter().map(|s| *s));
+        chunker_texts.extend(chunk_token_texts.iter().map(|s| *s));
+
+        let chunks = crate::chunker::chunk_tokens(&chunker_pos, &chunker_texts);
+
+        // Map chunks back to original token indices (skip index 0 = SENT_START)
+        for (chunk_idx, orig_idx) in nw_indices.iter().enumerate() {
+            let chunk_array_idx = chunk_idx + 1;
+            if let Some(Some(chunk_tag)) = chunks.get(chunk_array_idx) {
+                tokens[*orig_idx].set_chunk(Some(chunk_tag.clone()));
+            }
+        }
+    }
+}
+
 impl Tagger for EnglishTagger {
     fn tag(&self, tokens: &[&str]) -> Vec<AnalyzedTokenReadings> {
         let mut results = Vec::with_capacity(tokens.len());
