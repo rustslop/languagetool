@@ -723,11 +723,29 @@ impl TestRunner {
             let has_vb = tags.iter().any(|t| t.starts_with("VB"));
             let has_jj = tags.iter().any(|t| t.starts_with("JJ"));
             let has_nn = tags.iter().any(|t| t.starts_with("NN") || t == "FW");
+
+            // Look back to find the effective previous verb context
+            // Skip over negation (n't/not/RB) to find the real preceding POS
             let prev_is_verb = if i > 0 {
                 all_tags[i - 1].iter().any(|t| t.starts_with("VB") || t == "MD")
             } else {
                 false
             };
+            // After "do n't" / "does n't" etc, the negation RB is prev, but verb is 2 back
+            let prev_2_is_verb = if i > 1 {
+                let prev_text = token_texts.get(i - 1).map(|s| *s).unwrap_or("");
+                let is_negation = matches!(prev_text.to_lowercase().as_str(), "n't" | "not" | "never")
+                    || all_tags[i - 1].iter().any(|t| t == "RB");
+                if is_negation {
+                    all_tags[i - 2].iter().any(|t| t.starts_with("VB") || t == "MD")
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            let effective_prev_is_verb = prev_is_verb || prev_2_is_verb;
+
             let prev_is_det = if i > 0 {
                 all_tags[i - 1].iter().any(|t| t == "DT" || t == "PRP$" || t == "CD" || t == "WDT")
             } else {
@@ -736,6 +754,8 @@ impl TestRunner {
 
             // After "have/has/had", prefer adjective/noun over verb for ambiguous words
             // (e.g., "has open positions" → open should be JJ, not VB)
+            // But ONLY when have is immediately before (not separated by not/n't)
+            // "have not getting" → getting should stay VBG, not become NN
             let prev_is_have = if i > 0 {
                 let prev_text = token_texts.get(i - 1).map(|s| *s).unwrap_or("");
                 prev_is_verb && matches!(prev_text.to_lowercase().as_str(),
@@ -743,10 +763,13 @@ impl TestRunner {
             } else {
                 false
             };
-            if prev_is_have && has_jj {
+            // Don't apply have-heuristic when separated by negation
+            let effective_prev_is_have = prev_is_have;
+
+            if effective_prev_is_have && has_jj {
                 return tags.iter().find(|t| t.starts_with("JJ")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
             }
-            if prev_is_have && has_nn {
+            if effective_prev_is_have && has_nn {
                 return tags.iter().find(|t| t.starts_with("NN")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
             }
 
@@ -755,9 +778,18 @@ impl TestRunner {
                 return tags.iter().find(|t| t.starts_with("NN")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
             }
 
-            // After a verb, prefer verb tags over noun tags for ambiguous words
+            // After a verb (including after "do n't"), prefer verb tags over noun tags
+            // But ONLY for specific verbs that commonly take bare infinitives
             // E.g., "want test" → test should be VB not NN
-            if prev_is_verb && has_vb && has_nn {
+            // E.g., "don't want" → want should be VB not NN:UN
+            if effective_prev_is_verb && has_vb && has_nn && !effective_prev_is_have {
+                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+
+            // After a verb (including negated), prefer VB over JJ for ambiguous words
+            // E.g., "would like" → like should be VB not JJ
+            // But NOT after have/has/had (where adj is more likely, e.g., "have hard copy")
+            if effective_prev_is_verb && has_vb && has_jj && !effective_prev_is_have {
                 return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
             }
 
@@ -1416,6 +1448,11 @@ mod tests {
             "I would love listen your contribution.",
             "He never looks the front door.",
             "This sound slike an error.",
+            "We want test it.",
+            "I would like see us make this work.",
+            "They don't want let me learn.",
+            "I want spend time with my friends.",
+            "Restart PHP and try replicate your issue.",
         ];
 
         for text in &sentences {
