@@ -127,10 +127,28 @@ impl PatternRuleEngine {
             if !first_token.negate && first_token.compiled_regexp.is_none() {
                 tokens.iter().enumerate()
                     .filter(|(_, t)| {
-                        if first_token.case_sensitive {
+                        let surface_matches = if first_token.case_sensitive {
                             t.token().token() == text
                         } else {
                             t.token().token().eq_ignore_ascii_case(text)
+                        };
+                        if surface_matches {
+                            true
+                        } else if first_token.inflected {
+                            // Also check lemma for inflected tokens
+                            t.readings().iter().any(|r| {
+                                if let Some(lemma) = r.lemma() {
+                                    if first_token.case_sensitive {
+                                        lemma == text
+                                    } else {
+                                        lemma.eq_ignore_ascii_case(text)
+                                    }
+                                } else {
+                                    false
+                                }
+                            })
+                        } else {
+                            false
                         }
                     })
                     .map(|(i, _)| i)

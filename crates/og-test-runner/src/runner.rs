@@ -1497,6 +1497,20 @@ mod tests {
         let xml = std::fs::read_to_string(grammar_path).unwrap();
         let compiled_rule_set = og_xml::compiler::XmlCompiler::new().compile_file(&xml).unwrap();
 
+        // Debug TO_TOO matching
+        let to_too_rules: Vec<_> = compiled_rule_set.rules.iter()
+            .filter(|r| r.id == "TO_TOO")
+            .collect();
+        eprintln!("\nTO_TOO rules found: {}", to_too_rules.len());
+        for (i, rule) in to_too_rules.iter().enumerate() {
+            eprintln!("  Rule {}: {} pattern tokens", i, rule.pattern.tokens.len());
+            let sentence2 = runner.tokenize_sentence("It's to early.");
+            let matches = runner.pattern_engine.match_rule(rule, &sentence2);
+            if !matches.is_empty() {
+                eprintln!("    MATCHED! {} matches", matches.len());
+            }
+        }
+
         let been_rules: Vec<_> = compiled_rule_set.rules.iter()
             .filter(|r| r.id.contains("BEEN_PART"))
             .collect();
@@ -1510,6 +1524,38 @@ mod tests {
             }
         }
         assert!(any_matched, "At least one BEEN_PART rule should match 'I'm been prepared.'");
+    }
+
+    #[test]
+    fn test_to_too_inflected_matching() {
+        let runner = &TestRunner::new();
+        let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
+        let xml = std::fs::read_to_string(grammar_path).unwrap();
+        let compiled = og_xml::compiler::XmlCompiler::new().compile_file(&xml).unwrap();
+
+        // These sentences use "is/were/been" (inflected forms of "be") + "to" + adjective
+        // They should all match TO_TOO rules that use <token inflected="yes">be</token>
+        let test_cases = vec![
+            ("This is to funny.", true),
+            ("It is to small", true),
+            ("It's to early.", true),
+            ("They were to good for you to miss.", true),
+            ("He spent 10% to much.", true),
+        ];
+
+        let to_too_rules: Vec<_> = compiled.rules.iter()
+            .filter(|r| r.id == "TO_TOO")
+            .collect();
+
+        for (text, should_match) in &test_cases {
+            let sentence = runner.tokenize_sentence(text);
+            let any_matched = to_too_rules.iter().any(|rule| {
+                !runner.pattern_engine.match_rule(rule, &sentence).is_empty()
+            });
+            assert_eq!(any_matched, *should_match,
+                "TO_TOO match for '{}' expected {}, got {}",
+                text, should_match, any_matched);
+        }
     }
 
     /// failing grammar rules. Prints a comparison of actual vs expected tags so
