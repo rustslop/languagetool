@@ -9,3 +9,4 @@ og-xml = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
+phf = { version = "0.11", features = ["macros"] }

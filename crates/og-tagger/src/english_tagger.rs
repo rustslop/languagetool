@@ -3,6 +3,225 @@ use og_core::AnalyzedTokenReadings;
 use crate::Tagger;
 use crate::english_data::ENGLISH_POS_DICT;
 
+/// Irregular English verb forms: past tense, past participle, gerund → base form
+/// Also includes irregular adjectives (comparative/superlative) and plural nouns.
+static IRREGULAR_FORMS: phf::Map<&'static str, &'static str> = phf::phf_map! {
+    // be
+    "am" => "be", "is" => "be", "are" => "be", "was" => "be", "were" => "be",
+    "been" => "be", "being" => "be", "'m" => "be", "'s" => "be", "'re" => "be",
+    "ai" => "be", "art" => "be", "ain't" => "be",
+    // have
+    "has" => "have", "had" => "have", "having" => "have", "'ve" => "have",
+    // do
+    "does" => "do", "did" => "do", "done" => "do", "doing" => "do",
+    // go
+    "goes" => "go", "went" => "go", "gone" => "go", "going" => "go",
+    // come
+    "came" => "come", "coming" => "come",
+    // see
+    "sees" => "see", "saw" => "see", "seen" => "see", "seeing" => "see",
+    // take
+    "takes" => "take", "took" => "take", "taken" => "take", "taking" => "take",
+    // make
+    "makes" => "make", "made" => "make", "making" => "make",
+    // get
+    "gets" => "get", "got" => "get", "gotten" => "get", "getting" => "get",
+    // give
+    "gives" => "give", "gave" => "give", "given" => "give", "giving" => "give",
+    // find
+    "finds" => "find", "found" => "find", "finding" => "find",
+    // know
+    "knows" => "know", "knew" => "know", "known" => "know", "knowing" => "know",
+    // think
+    "thinks" => "think", "thought" => "think", "thinking" => "think",
+    // tell
+    "tells" => "tell", "told" => "tell", "telling" => "tell",
+    // become
+    "becomes" => "become", "became" => "become", "becoming" => "become",
+    // leave
+    "leaves" => "leave", "left" => "leave", "leaving" => "leave",
+    // feel
+    "feels" => "feel", "felt" => "feel", "feeling" => "feel",
+    // put
+    "puts" => "put", "putting" => "put",
+    // bring
+    "brings" => "bring", "brought" => "bring", "bringing" => "bring",
+    // begin
+    "begins" => "begin", "began" => "begin", "begun" => "begin", "beginning" => "begin",
+    // keep
+    "keeps" => "keep", "kept" => "keep", "keeping" => "keep",
+    // hold
+    "holds" => "hold", "held" => "hold", "holding" => "hold",
+    // write
+    "writes" => "write", "wrote" => "write", "written" => "write", "writing" => "write",
+    // stand
+    "stands" => "stand", "stood" => "stand", "standing" => "stand",
+    // hear
+    "hears" => "hear", "heard" => "hear", "hearing" => "hear",
+    // let
+    "lets" => "let", "letting" => "let",
+    // say
+    "says" => "say", "said" => "say", "saying" => "say",
+    // run
+    "runs" => "run", "ran" => "run", "running" => "run",
+    // pay
+    "pays" => "pay", "paid" => "pay", "paying" => "pay",
+    // meet
+    "meets" => "meet", "met" => "meet", "meeting" => "meet",
+    // sit
+    "sits" => "sit", "sat" => "sit", "sitting" => "sit",
+    // speak
+    "speaks" => "speak", "spoke" => "speak", "spoken" => "speak", "speaking" => "speak",
+    // lead
+    "leads" => "lead", "led" => "lead", "leading" => "lead",
+    // read
+    "reads" => "read", "reading" => "read",
+    // grow
+    "grows" => "grow", "grew" => "grow", "grown" => "grow", "growing" => "grow",
+    // lose
+    "loses" => "lose", "lost" => "lose", "losing" => "lose",
+    // fall
+    "falls" => "fall", "fell" => "fall", "fallen" => "fall", "falling" => "fall",
+    // send
+    "sends" => "send", "sent" => "send", "sending" => "send",
+    // build
+    "builds" => "build", "built" => "build", "building" => "build",
+    // understand
+    "understands" => "understand", "understood" => "understand", "understanding" => "understand",
+    // set
+    "sets" => "set", "setting" => "set",
+    // break
+    "breaks" => "break", "broke" => "break", "broken" => "break", "breaking" => "break",
+    // spend
+    "spends" => "spend", "spent" => "spend", "spending" => "spend",
+    // cut
+    "cuts" => "cut", "cutting" => "cut",
+    // rise
+    "rises" => "rise", "rose" => "rise", "risen" => "rise", "rising" => "rise",
+    // drive
+    "drives" => "drive", "drove" => "drive", "driven" => "drive", "driving" => "drive",
+    // buy
+    "buys" => "buy", "bought" => "buy", "buying" => "buy",
+    // wear
+    "wears" => "wear", "wore" => "wear", "worn" => "wear", "wearing" => "wear",
+    // catch
+    "catches" => "catch", "caught" => "catch", "catching" => "catch",
+    // choose
+    "chooses" => "choose", "chose" => "choose", "chosen" => "choose", "choosing" => "choose",
+    // seek
+    "seeks" => "seek", "sought" => "seek", "seeking" => "seek",
+    // throw
+    "throws" => "throw", "threw" => "throw", "thrown" => "throw", "throwing" => "throw",
+    // mean
+    "means" => "mean", "meant" => "mean", "meaning" => "mean",
+    // fight
+    "fights" => "fight", "fought" => "fight", "fighting" => "fight",
+    // fly
+    "flies" => "fly", "flew" => "fly", "flown" => "fly", "flying" => "fly",
+    // bear
+    "bears" => "bear", "bore" => "bear", "borne" => "bear", "bearing" => "bear",
+    // teach
+    "teaches" => "teach", "taught" => "teach", "teaching" => "teach",
+    // win
+    "wins" => "win", "won" => "win", "winning" => "win",
+    // shut
+    "shuts" => "shut", "shutting" => "shut",
+    // show
+    "shows" => "show", "showed" => "show", "shown" => "show", "showing" => "show",
+    // draw
+    "draws" => "draw", "drew" => "draw", "drawn" => "draw", "drawing" => "draw",
+    // sleep
+    "sleeps" => "sleep", "slept" => "sleep", "sleeping" => "sleep",
+    // hang
+    "hangs" => "hang", "hung" => "hang", "hanging" => "hang",
+    // swim
+    "swims" => "swim", "swam" => "swim", "swum" => "swim", "swimming" => "swim",
+    // spread
+    "spreads" => "spread", "spreading" => "spread",
+    // sing
+    "sings" => "sing", "sang" => "sing", "sung" => "sing", "singing" => "sing",
+    // strike
+    "strikes" => "strike", "struck" => "strike", "striking" => "strike",
+    // eat
+    "eats" => "eat", "ate" => "eat", "eaten" => "eat", "eating" => "eat",
+    // shake
+    "shakes" => "shake", "shook" => "shake", "shaken" => "shake", "shaking" => "shake",
+    // wake
+    "wakes" => "wake", "woke" => "wake", "woken" => "wake", "waking" => "wake",
+    // lay/lie
+    "lays" => "lay", "laid" => "lay", "laying" => "lay",
+    "lies" => "lie", "lay" => "lie", "lain" => "lie", "lying" => "lie",
+    // bind
+    "binds" => "bind", "bound" => "bind", "binding" => "bind",
+    // bite
+    "bites" => "bite", "bit" => "bite", "bitten" => "bite", "biting" => "bite",
+    // bleed
+    "bleeds" => "bleed", "bled" => "bleed", "bleeding" => "bleed",
+    // blow
+    "blows" => "blow", "blew" => "blow", "blown" => "blow", "blowing" => "blow",
+    // breed
+    "breeds" => "breed", "bred" => "breed", "breeding" => "breed",
+    // creep
+    "creeps" => "creep", "crept" => "creep", "creeping" => "creep",
+    // deal
+    "deals" => "deal", "dealing" => "deal",
+    // dig
+    "digs" => "dig", "dug" => "dig", "digging" => "dig",
+    // feed
+    "feeds" => "feed", "fed" => "feed", "feeding" => "feed",
+    // flee
+    "flees" => "flee", "fled" => "flee", "fleeing" => "flee",
+    // forget
+    "forgets" => "forget", "forgot" => "forget", "forgotten" => "forget", "forgetting" => "forget",
+    // forgive
+    "forgives" => "forgive", "forgave" => "forgive", "forgiven" => "forgive", "forgiving" => "forgive",
+    // freeze
+    "freezes" => "freeze", "froze" => "freeze", "frozen" => "freeze", "freezing" => "freeze",
+    // leap
+    "leaps" => "leap", "leapt" => "leap", "leaping" => "leap",
+    // lend
+    "lends" => "lend", "lent" => "lend", "lending" => "lend",
+    // light
+    "lights" => "light", "lit" => "light", "lighting" => "light",
+    // ride
+    "rides" => "ride", "rode" => "ride", "ridden" => "ride", "riding" => "ride",
+    // ring
+    "rings" => "ring", "rang" => "ring", "rung" => "ring", "ringing" => "ring",
+    // slide
+    "slides" => "slide", "slid" => "slide", "sliding" => "slide",
+    // spring
+    "springs" => "spring", "sprang" => "spring", "sprung" => "spring", "springing" => "spring",
+    // steal
+    "steals" => "steal", "stole" => "steal", "stolen" => "steal", "stealing" => "steal",
+    // stick
+    "sticks" => "stick", "stuck" => "stick", "sticking" => "stick",
+    // sting
+    "stings" => "sting", "stung" => "sting", "stinging" => "sting",
+    // strive
+    "strives" => "strive", "strove" => "strive", "striven" => "strive",
+    // swear
+    "swears" => "swear", "swore" => "swear", "sworn" => "swear", "swearing" => "swear",
+    // sweep
+    "sweeps" => "sweep", "swept" => "sweep", "sweeping" => "sweep",
+    // swing
+    "swings" => "swing", "swung" => "swing", "swinging" => "swing",
+    // tear
+    "tears" => "tear", "tore" => "tear", "torn" => "tear", "tearing" => "tear",
+    // weave
+    "weaves" => "weave", "wove" => "weave", "woven" => "weave", "weaving" => "weave",
+    // weep
+    "weeps" => "weep", "wept" => "weep", "weeping" => "weep",
+    // Irregular adjectives
+    "better" => "good", "best" => "good",
+    "worse" => "bad", "worst" => "bad",
+    "less" => "little", "least" => "little",
+    "more" => "much", "most" => "much",
+    "farther" => "far", "farthest" => "far",
+    "further" => "far", "furthest" => "far",
+    "older" => "old", "oldest" => "old",
+    "elder" => "old", "eldest" => "old",
+};
+
 pub struct EnglishTagger {
     dict: HashMap<String, Vec<String>>,
     /// FSA dictionary: word -> [(POS tag, lemma)]
@@ -281,7 +500,19 @@ impl EnglishTagger {
     }
 
     /// Determine lemma for a word given its POS tag
+    /// Common English irregular verb forms: inflected form → base form
+    fn irregular_lemma(word: &str) -> Option<&'static str> {
+        let lower = word.to_lowercase();
+        IRREGULAR_FORMS.get(lower.as_str()).copied()
+    }
+
     fn guess_lemma(&self, word: &str, pos: &str) -> Option<String> {
+        // First check irregular forms table
+        if matches!(pos, "VBD" | "VBN" | "VBZ" | "VBG" | "VBP" | "JJR" | "JJS") {
+            if let Some(base) = Self::irregular_lemma(word) {
+                return Some(base.to_string());
+            }
+        }
         let lower = word.to_lowercase();
         match pos {
             "NNS" | "NNPS" => {
