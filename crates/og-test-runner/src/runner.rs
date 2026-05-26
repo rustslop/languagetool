@@ -818,6 +818,16 @@ impl TestRunner {
                 }
             }
 
+            // Known verb forms should always prefer verb tags
+            // am, is, are, was, were, be, been, being, have, has, had, do, does, did
+            let word_lower = token_texts[i].to_lowercase();
+            if matches!(word_lower.as_str(),
+                "am" | "is" | "are" | "was" | "were" | "be" | "been" | "being" |
+                "have" | "has" | "had" | "do" | "does" | "did" | "doing" | "done"
+            ) && has_vb {
+                return tags.iter().find(|t| t.starts_with("VB")).map(|s| s.as_str()).unwrap_or(tags[0].as_str());
+            }
+
             tags[0].as_str()
         }).collect();
 
@@ -1801,6 +1811,50 @@ mod tests {
                 tag_str,
                 token.chunk().unwrap_or("-"),
                 ws);
+        }
+    }
+
+    #[test]
+    fn test_it_is_2_debug() {
+        let runner = TestRunner::new();
+        let sentences = vec![
+            "But its much better like this.",
+            "I think its much better now.",
+            "Its much easier.",
+        ];
+
+        for text in &sentences {
+            let sentence = runner.tokenize_sentence(text);
+            eprintln!("\n--- '{}' ---", text);
+            let nwt: Vec<_> = sentence.non_whitespace_tokens();
+            for (i, token) in nwt.iter().enumerate() {
+                eprintln!("  [{}] {:15} pos={:?} chunk={}",
+                    i, format!("'{}'", token.token().token()),
+                    token.token().pos_tags(),
+                    token.chunk().unwrap_or("-"));
+            }
+        }
+
+        // Try matching with IT_IS_2 rules
+        let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
+        let xml = std::fs::read_to_string(grammar_path).unwrap();
+        let compiler = og_xml::compiler::XmlCompiler::new();
+        let rule_set = compiler.compile_file(&xml).unwrap();
+
+        let text = "But its much better like this.";
+        let sentence = runner.tokenize_sentence(text);
+        let mut rule_num = 0;
+        for rule in &rule_set.rules {
+            if rule.id == "IT_IS_2" {
+                rule_num += 1;
+                let matches = runner.pattern_engine.match_rule(rule, &sentence);
+                eprintln!("\nIT_IS_2[{}]: {} matches", rule_num, matches.len());
+                if !matches.is_empty() {
+                    for m in &matches {
+                        eprintln!("  match: {:?}", m);
+                    }
+                }
+            }
         }
     }
 

@@ -117,7 +117,29 @@ impl PatternRuleEngine {
         let tokens = sentence.non_whitespace_tokens();
         let mut matches = Vec::new();
 
-        if rule.pattern.tokens.is_empty() {
+        if rule.pattern.tokens.is_empty() && rule.pattern.elements.is_empty() {
+            return matches;
+        }
+
+        // When the pattern starts with an OR/AND group, the first pattern.tokens
+        // entry may be wrong (it's the first non-group token). Fall back to all positions.
+        let has_structured = rule.pattern.elements.iter().any(|e| {
+            matches!(e, og_xml::compiler::CompiledPatternElement::OrGroup(_) | og_xml::compiler::CompiledPatternElement::AndGroup(_))
+        });
+
+        let first_element_is_group = has_structured && matches!(
+            rule.pattern.elements.first(),
+            Some(og_xml::compiler::CompiledPatternElement::OrGroup(_)) |
+            Some(og_xml::compiler::CompiledPatternElement::AndGroup(_))
+        );
+
+        if first_element_is_group {
+            // Can't optimize start positions for patterns starting with OR/AND groups
+            for start_idx in 0..tokens.len() {
+                if let Some(rule_match) = self.try_match_at(rule, &tokens, start_idx, sentence) {
+                    matches.push(rule_match);
+                }
+            }
             return matches;
         }
 
@@ -508,7 +530,7 @@ impl PatternRuleEngine {
         // Handle min/max (repetition)
         if min.is_some() || max.is_some() {
             let min_count = min.unwrap_or(1) as usize;
-            let max_count = max.map(|m| m as usize).unwrap_or(min_count);
+            let max_count = max.map(|m| m as usize).unwrap_or(if min_count > 0 { min_count } else { 1 });
             // Try matching as many as possible within min/max range
             let mut matched_count = 0;
             let mut cur = token_idx;
