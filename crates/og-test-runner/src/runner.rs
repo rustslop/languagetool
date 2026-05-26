@@ -347,15 +347,17 @@ impl TestRunner {
                 }
             }
 
-            // Rule 8: After DT/PRP$ + NN*, remove VBP/VBZ from following word if it has NN
+            // Rule 8: After DT/PRP$ + singular NN, remove VBP/VBZ from following word if it has NN
             // e.g., "the bus stop" → "stop" should be NN, not VBP
+            // But DON'T apply when prev is plural (NNS) — "The dogs barks" needs VBZ kept
             // Reduces SINGULAR_AGREEMENT_SENT_START false positives
             if i >= 2 {
                 let prev2_tags = &nw_has_tag[i-2];
                 let prev1_tags = &nw_has_tag[i-1];
                 let prev2_is_det = prev2_tags.iter().any(|t| t == "DT" || t == "PRP$" || t == "PRP_S");
-                let prev1_is_noun = prev1_tags.iter().any(|t| t.starts_with("NN"));
-                if prev2_is_det && prev1_is_noun {
+                let prev1_is_singular_noun = prev1_tags.iter().any(|t| t.starts_with("NN"))
+                    && !prev1_tags.iter().any(|t| t == "NNS");
+                if prev2_is_det && prev1_is_singular_noun {
                     if tags.iter().any(|t| t.starts_with("NN")) {
                         if tags.contains(&"VBP".to_string()) {
                             removals.push((i, "VBP".to_string()));
@@ -643,13 +645,18 @@ impl TestRunner {
 
             // Rule 27: Before "to" (TO tag), remove VB from words that also have NN
             // "key to success" → "key" is NN, not VB/JJ
+            // But don't apply after subject pronouns: "I go to school" → "go" is VB
             if i + 1 < nw.len() {
                 let next_text_lower = nw_text[i+1].to_lowercase();
                 let next_is_to = next_text_lower == "to" && nw_has_tag[i+1].iter().any(|t| t == "TO");
                 if next_is_to {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        removals.push((i, "VB".to_string()));
-                        removals.push((i, "VBP".to_string()));
+                    let prev_is_subject = i >= 1 && nw_has_tag[i-1].iter().any(|t|
+                        t == "PRP" || t.starts_with("PRP_S") || t.starts_with("PRP_O"));
+                    if !prev_is_subject {
+                        if tags.iter().any(|t| t.starts_with("NN")) {
+                            removals.push((i, "VB".to_string()));
+                            removals.push((i, "VBP".to_string()));
+                        }
                     }
                 }
             }
@@ -1449,6 +1456,14 @@ mod tests {
             "He never looks the front door.",
             "This sound slike an error.",
             "We want test it.",
+            "But its much better like this.",
+            "I think its much better now.",
+            "Its much easier.",
+            "Let me know when its under pressure.",
+            "It's to early.",
+            "He spent 10% to much.",
+            "I better stop before I go to far.",
+            "The dogs barks loudly.",
             "I would like see us make this work.",
             "They don't want let me learn.",
             "I want spend time with my friends.",
