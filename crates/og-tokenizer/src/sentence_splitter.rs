@@ -162,21 +162,37 @@ impl DefaultSentenceSplitter {
             return false;
         }
 
-        // Check for sentence-ending punctuation: . ! ?
         let ch = chars[pos];
         if ch != '.' && ch != '!' && ch != '?' {
             return false;
         }
 
-        // Check if followed by whitespace and uppercase letter
+        // Ellipsis: don't split on dots that have a dot to their right (first two dots of "...")
+        if ch == '.' && pos + 1 < chars.len() && chars[pos + 1] == '.' {
+            return false;
+        }
+
+        // Decimal numbers: don't split "3.14" or ".5"
+        if ch == '.' {
+            if pos > 0 && chars[pos - 1].is_ascii_digit() {
+                if pos + 1 < chars.len() && chars[pos + 1].is_ascii_digit() {
+                    return false;
+                }
+            }
+            // Standalone period after digit with no following uppercase (e.g., "item 1.")
+            if pos > 0 && chars[pos - 1].is_ascii_digit() {
+                // only split if followed by whitespace + uppercase
+            }
+        }
+
+        // Skip if abbreviation
+        if ch == '.' && self.is_abbreviation_boundary(text, pos) {
+            return false;
+        }
+
+        // Skip trailing punctuation: quotes, parentheses
         let mut next_pos = pos + 1;
-        while next_pos < chars.len() && chars[next_pos] == '"' {
-            next_pos += 1;
-        }
-        while next_pos < chars.len() && chars[next_pos] == '\'' {
-            next_pos += 1;
-        }
-        while next_pos < chars.len() && chars[next_pos] == ')' {
+        while next_pos < chars.len() && is_closing_punct(chars[next_pos]) {
             next_pos += 1;
         }
 
@@ -197,15 +213,19 @@ impl DefaultSentenceSplitter {
             return true;
         }
 
-        // Skip if abbreviation
-        if ch == '.' && self.is_abbreviation_boundary(text, pos) {
-            return false;
-        }
-
         // Check if next character is uppercase (sentence start) or digit
         let next_ch = chars[next_pos];
-        next_ch.is_uppercase() || next_ch.is_ascii_digit() || next_ch == '"' || next_ch == '(' || next_ch == '['
+        next_ch.is_uppercase() || next_ch.is_ascii_digit()
+            || is_opening_punct(next_ch)
     }
+}
+
+fn is_closing_punct(c: char) -> bool {
+    matches!(c, '"' | '\'' | '\u{201D}' | '\u{2019}' | ')' | ']' | '\u{300B}')
+}
+
+fn is_opening_punct(c: char) -> bool {
+    matches!(c, '"' | '\'' | '\u{201C}' | '\u{2018}' | '(' | '[' | '\u{300A}')
 }
 
 impl Default for DefaultSentenceSplitter {
