@@ -189,6 +189,7 @@ impl LanguageEngine {
             engine.add_rule(Arc::new(crate::en::PlainEnglishRule::new()));
             engine.add_rule(Arc::new(crate::en::CompoundRule::new()));
             engine.add_rule(Arc::new(crate::en::DashRule::new()));
+            engine.add_rule(Arc::new(crate::en::WrongWordInContextRule::new()));
 
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();

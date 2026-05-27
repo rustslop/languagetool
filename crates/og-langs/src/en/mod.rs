@@ -9,6 +9,7 @@ pub mod simple_replace;
 pub mod specific_case;
 pub mod style_frequency;
 pub mod word_coherency;
+pub mod wrong_word_context;
 
 pub use avsan::AvsAnRule;
 pub use compound::CompoundRule;
@@ -21,3 +22,4 @@ pub use simple_replace::SimpleReplaceRule;
 pub use specific_case::SpecificCaseRule;
 pub use style_frequency::StyleFrequencyRule;
 pub use word_coherency::WordCoherencyRule;
+pub use wrong_word_context::WrongWordInContextRule;

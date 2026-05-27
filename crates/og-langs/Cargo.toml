@@ -10,5 +10,6 @@ og-rules = { workspace = true }
 og-spell = { workspace = true }
 og-tokenizer = { workspace = true }
 og-tagger = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
