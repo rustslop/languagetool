@@ -948,7 +948,7 @@ impl PatternRuleEngine {
         // Check POS tag constraint
         if let Some(ref postag) = pattern.postag {
             if let Some(ref postag_re) = pattern.compiled_postag_regexp {
-                let pos_matches = token.has_pos_tag_matching(postag_re.as_str());
+                let pos_matches = token.has_pos_tag_matching_regex(postag_re);
                 if pattern.negate_pos {
                     if pos_matches { return false; }
                 } else {
@@ -1071,7 +1071,7 @@ impl PatternRuleEngine {
             }
         } else if let Some(ref postag) = exc.postag {
             let pos_matches = if let Some(ref postag_re) = exc.compiled_postag_regexp {
-                token.has_pos_tag_matching(postag_re.as_str())
+                token.has_pos_tag_matching_regex(postag_re)
             } else {
                 token.has_pos_tag(postag)
             };

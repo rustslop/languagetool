@@ -147,17 +147,45 @@ impl AnalyzedTokenReadings {
     }
 
     pub fn has_pos_tag_matching(&self, pattern: &str) -> bool {
-        // Anchor the pattern to match the full string, like java's String.matches()
+        use std::sync::LazyLock;
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+
+        static REGEX_CACHE: LazyLock<Mutex<HashMap<String, regex::Regex>>> =
+            LazyLock::new(|| Mutex::new(HashMap::new()));
+
         let anchored = if pattern.starts_with('^') && pattern.ends_with('$') {
             pattern.to_string()
         } else {
             format!("^(?:{})$", pattern)
         };
-        let re = regex::Regex::new(&anchored).ok();
-        self.readings.iter().any(|r| match &re {
-            Some(re) => r.pos_tags.iter().any(|t| re.is_match(t)),
-            None => r.pos_tags.iter().any(|t| t == pattern),
-        })
+
+        // Check cache first
+        {
+            let cache = REGEX_CACHE.lock().unwrap();
+            if let Some(re) = cache.get(&anchored) {
+                return self.readings.iter().any(|r| r.pos_tags.iter().any(|t| re.is_match(t)));
+            }
+        }
+
+        // Compile and cache
+        match regex::Regex::new(&anchored) {
+            Ok(re) => {
+                let result = self.readings.iter().any(|r| r.pos_tags.iter().any(|t| re.is_match(t)));
+                let mut cache = REGEX_CACHE.lock().unwrap();
+                cache.entry(anchored).or_insert(re);
+                result
+            }
+            Err(_) => {
+                self.readings.iter().any(|r| r.pos_tags.iter().any(|t| t == pattern))
+            }
+        }
+    }
+
+    /// Check if any reading has a POS tag matching a pre-compiled regex.
+    /// Use this instead of `has_pos_tag_matching` when the regex is already compiled.
+    pub fn has_pos_tag_matching_regex(&self, re: &regex::Regex) -> bool {
+        self.readings.iter().any(|r| r.pos_tags.iter().any(|t| re.is_match(t)))
     }
 
     pub fn chunk(&self) -> Option<&str> {
