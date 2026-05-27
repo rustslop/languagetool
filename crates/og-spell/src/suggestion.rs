@@ -6,7 +6,6 @@ pub struct SuggestionEngine {
 
 impl SuggestionEngine {
     pub fn new(dictionary: &Dictionary) -> Self {
-        // Extract words for suggestion generation
         let words: Vec<String> = dictionary.word_list();
         Self { words }
     }
@@ -17,14 +16,24 @@ impl SuggestionEngine {
             && word.chars().skip(1).all(|c| !c.is_uppercase() || !c.is_alphabetic());
         let is_all_upper = word.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase());
 
+        let word_len = lower.len();
+        let max_dist = if word_len <= 4 { 2 } else { 3 };
+
         let mut scored: Vec<(String, usize)> = self.words
             .iter()
-            .filter(|w| w.len() > 1)
-            .map(|w| {
-                let dist = levenshtein_distance(&lower, w);
-                (w.clone(), dist)
+            .filter(|w| {
+                let wlen = w.len();
+                // Only check words within plausible edit distance range
+                wlen > 1 && wlen.abs_diff(word_len) <= max_dist
             })
-            .filter(|(_, dist)| *dist <= 3)
+            .filter_map(|w| {
+                let dist = levenshtein_distance(&lower, w);
+                if dist <= max_dist && dist > 0 {
+                    Some((w.clone(), dist))
+                } else {
+                    None
+                }
+            })
             .collect();
 
         scored.sort_by_key(|(_, dist)| *dist);

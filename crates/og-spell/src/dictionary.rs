@@ -41,6 +41,25 @@ impl Dictionary {
         Ok(dict)
     }
 
+    /// Load from Morfologik decoded dictionary format (word\tlemma\tPOS).
+    /// Only the first column (surface form) is used for spell checking.
+    pub fn from_morfologik(path: &Path) -> Result<Self, DictionaryError> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut dict = Self::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            let word = line.split('\t').next().unwrap_or("").trim();
+            if !word.is_empty() && !word.starts_with('#') {
+                dict.words.insert(word.to_string());
+                dict.lowercased.insert(word.to_lowercase());
+            }
+        }
+
+        Ok(dict)
+    }
+
     pub fn from_words(words: &[&str]) -> Self {
         let mut dict = Self::new();
         for word in words {

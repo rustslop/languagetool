@@ -205,18 +205,17 @@ impl LanguageEngine {
                 }
             }
 
-            // Load spelling dictionary
-            if let Ok(words) = std::fs::read_to_string(hunspell_dir.join("spelling.txt")) {
-                for line in words.lines() {
-                    let word = line.trim();
-                    if !word.is_empty() && !word.starts_with('#') {
-                        dict.add_word(word);
-                    }
+            // Try loading the full Morfologik decoded dictionary (259K forms)
+            let dict_decoded = resource_dir.join("dict_decoded.txt");
+            if dict_decoded.exists() {
+                if let Ok(full_dict) = og_spell::Dictionary::from_morfologik(&dict_decoded) {
+                    eprintln!("Loaded {} words from Morfologik dictionary", full_dict.len());
+                    dict = full_dict;
                 }
             }
 
-            // Load spelling_merged (merged dictionary)
-            if let Ok(words) = std::fs::read_to_string(hunspell_dir.join("spelling_merged.txt")) {
+            // Load spelling dictionary supplements
+            if let Ok(words) = std::fs::read_to_string(hunspell_dir.join("spelling.txt")) {
                 for line in words.lines() {
                     let word = line.trim();
                     if !word.is_empty() && !word.starts_with('#') {
