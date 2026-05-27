@@ -7,6 +7,7 @@ pub mod diacritics;
 pub mod plain_english;
 pub mod simple_replace;
 pub mod specific_case;
+pub mod style_frequency;
 pub mod word_coherency;
 
 pub use avsan::AvsAnRule;
@@ -18,4 +19,5 @@ pub use diacritics::DiacriticsRule;
 pub use plain_english::PlainEnglishRule;
 pub use simple_replace::SimpleReplaceRule;
 pub use specific_case::SpecificCaseRule;
+pub use style_frequency::StyleFrequencyRule;
 pub use word_coherency::WordCoherencyRule;

@@ -253,6 +253,9 @@ impl LanguageEngine {
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::WordRepeatBeginningRule::new()));
         engine.add_text_level_rule(Arc::new(crate::en::ConsistentApostrophesRule::new()));
         engine.add_text_level_rule(Arc::new(crate::en::WordCoherencyRule::new()));
+        engine.add_text_level_rule(Arc::new(crate::en::StyleFrequencyRule::adjective()));
+        engine.add_text_level_rule(Arc::new(crate::en::StyleFrequencyRule::noun()));
+        engine.add_text_level_rule(Arc::new(crate::en::StyleFrequencyRule::verb()));
 
         engine.rebuild_checker();
         engine
