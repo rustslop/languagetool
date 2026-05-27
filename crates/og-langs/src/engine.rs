@@ -178,6 +178,7 @@ impl LanguageEngine {
             // Add English-specific native rules
             engine.add_rule(Arc::new(crate::en::ContractionSpellingRule::new()));
             engine.add_rule(Arc::new(crate::en::SpecificCaseRule::new()));
+            engine.add_rule(Arc::new(crate::en::DiacriticsRule::new()));
 
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();
