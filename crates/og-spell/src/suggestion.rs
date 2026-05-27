@@ -12,11 +12,16 @@ impl SuggestionEngine {
     }
 
     pub fn suggest(&self, word: &str, max: usize) -> Vec<String> {
+        let lower = word.to_lowercase();
+        let is_capitalized = word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+            && word.chars().skip(1).all(|c| !c.is_uppercase() || !c.is_alphabetic());
+        let is_all_upper = word.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase());
+
         let mut scored: Vec<(String, usize)> = self.words
             .iter()
             .filter(|w| w.len() > 1)
             .map(|w| {
-                let dist = levenshtein_distance(word, w);
+                let dist = levenshtein_distance(&lower, w);
                 (w.clone(), dist)
             })
             .filter(|(_, dist)| *dist <= 3)
@@ -27,7 +32,19 @@ impl SuggestionEngine {
         scored
             .into_iter()
             .take(max)
-            .map(|(w, _)| w)
+            .map(|(w, _)| {
+                if is_all_upper {
+                    w.to_uppercase()
+                } else if is_capitalized {
+                    let mut chars = w.chars();
+                    match chars.next() {
+                        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                        None => w,
+                    }
+                } else {
+                    w
+                }
+            })
             .collect()
     }
 }

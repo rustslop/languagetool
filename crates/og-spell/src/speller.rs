@@ -40,13 +40,21 @@ impl SpellingCheckRule {
     }
 
     pub fn is_known_word(&self, word: &str) -> bool {
-        if word.chars().any(|c| c.is_alphabetic()) == false {
+        if !word.chars().any(|c| c.is_alphabetic()) {
             return true;
         }
         if self.ignore_words.contains(word) || self.ignore_words.contains(&word.to_lowercase()) {
             return true;
         }
         if word.len() == 1 && word.chars().next().unwrap().is_alphabetic() {
+            return true;
+        }
+        // Skip words that look like URLs, email addresses, or file paths
+        if word.contains('/') || word.contains('@') || word.starts_with("http") || word.starts_with("www.") {
+            return true;
+        }
+        // Skip words with digits (likely codes, part numbers, etc.)
+        if word.chars().any(|c| c.is_ascii_digit()) {
             return true;
         }
         self.dictionary.contains(word)
@@ -229,9 +237,9 @@ mod tests {
 
         // Test the rule detects unknown words
         let rule = SpellingCheckRule::new(dict);
-        let sentence = make_sentence_with_words("hello xyzzy123 test");
+        let sentence = make_sentence_with_words("hello qzrmple test");
         let matches = rule.match_sentence(&sentence);
-        assert_eq!(matches.len(), 1, "Expected 1 match for 'xyzzy123'");
-        assert!(matches[0].message().contains("xyzzy123"));
+        assert_eq!(matches.len(), 1, "Expected 1 match for 'qzrmple'");
+        assert!(matches[0].message().contains("qzrmple"));
     }
 }
