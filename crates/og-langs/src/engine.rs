@@ -35,6 +35,7 @@ impl Rule for XmlPatternRule {
         &self.compiled.id
     }
 
+    #[allow(clippy::misnamed_getters)]
     fn description(&self) -> &str {
         &self.compiled.name
     }
@@ -177,7 +178,6 @@ impl LanguageEngine {
             engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::new_zealand_replace()));
 
             // Add generic native rules
-            engine.add_rule(Arc::new(og_rules::native_rules::WordRepeatRule::new()));
             engine.add_rule(Arc::new(og_rules::native_rules::DoublePunctuationRule::new()));
             engine.add_rule(Arc::new(og_rules::native_rules::UppercaseSentenceStartRule::new()));
             engine.add_rule(Arc::new(og_rules::native_rules::CommaWhitespaceRule::new()));
@@ -190,6 +190,7 @@ impl LanguageEngine {
             engine.add_rule(Arc::new(crate::en::CompoundRule::new()));
             engine.add_rule(Arc::new(crate::en::DashRule::new()));
             engine.add_rule(Arc::new(crate::en::WrongWordInContextRule::new()));
+            engine.add_rule(Arc::new(crate::en::EnglishWordRepeatRule::new()));
 
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();

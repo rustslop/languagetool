@@ -1,9 +1,7 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Json;
-use og_core::CheckRequest;
-use og_core::CheckResult;
-use og_core::Language;
+use og_core::{CheckResult, Language};
 use crate::request::CheckParams;
 use crate::response::{InfoResponse, LanguagesResponse, MaxTextLengthResponse, VersionResponse};
 use crate::server::{AppState, MAX_TEXT_LENGTH};
@@ -42,21 +40,26 @@ pub async fn handle_check(
         }
     };
 
-    let mother_tongue = params.mother_tongue.as_deref().and_then(Language::from_code);
-
-    let check_request = CheckRequest {
-        text,
-        language,
-        mother_tongue,
-        enabled_rules: params.get_enabled_rules(),
-        disabled_rules: params.get_disabled_rules(),
-        enabled_categories: params.get_enabled_categories(),
-        disabled_categories: params.get_disabled_categories(),
-        level: params.level.clone(),
-        picky: params.picky,
+    // Find the appropriate language engine
+    let engine = {
+        let engines = &state.engines;
+        let lang_code = language.code();
+        // Try exact match first, then short code
+        if let Some(e) = engines.get(lang_code) {
+            e
+        } else if let Some(e) = engines.get(language.short_code()) {
+            e
+        } else {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Unsupported language: {}", lang_code)
+                })),
+            ));
+        }
     };
 
-    let result = state.checker.check(&check_request);
+    let result = engine.check(&text);
     Ok(Json(result))
 }
 

@@ -6,8 +6,9 @@ use std::sync::Arc;
 use tower::ServiceExt;
 
 fn app() -> axum::Router {
+    let engines = og_api::build_engines();
     let state = Arc::new(AppState {
-        checker: Arc::new(og_api::build_checker()),
+        engines: Arc::new(engines),
     });
     build_app(state)
 }

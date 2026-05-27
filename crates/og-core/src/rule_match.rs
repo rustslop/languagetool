@@ -183,6 +183,16 @@ impl RuleMatch {
         self
     }
 
+    pub fn with_offset(mut self, offset: usize) -> Self {
+        self.offset = offset;
+        self
+    }
+
+    pub fn with_length(mut self, length: usize) -> Self {
+        self.length = length;
+        self
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

@@ -227,14 +227,7 @@ impl PatternRuleEngine {
             }
         }
 
-        // Apply filter if present - filters can accept or reject the match
-        if let Some(ref filter) = rule.filter {
-            if !self.apply_filter(filter, &match_result.matched_texts, &match_result.matched_positions, tokens) {
-                return None;
-            }
-        }
-
-        // Determine error span from marker or full match
+        // Build RuleMatch first, then apply filter (filters can modify suggestions/spans)
         let text = sentence.text();
         let (match_start, match_end) = if let (Some(ms), Some(me)) = (rule.pattern.marker_start, rule.pattern.marker_end) {
             // Use marker positions for error span
@@ -336,6 +329,12 @@ impl PatternRuleEngine {
         if let Some(ref short) = rule.short_message {
             rm = rm.with_short_message(short);
         }
+
+        // Apply filter if present - filters can accept/reject or modify the match
+        if let Some(ref filter) = rule.filter {
+            return self.apply_filter(filter, &match_result.matched_texts, &match_result.matched_positions, tokens, sentence, rm);
+        }
+
         Some(rm)
     }
 
@@ -1094,64 +1093,82 @@ impl Default for PatternRuleEngine {
 }
 
 impl PatternRuleEngine {
-    /// Apply a filter to determine if a match should be accepted.
-    /// Returns true if the match passes the filter, false to reject.
+    /// Apply a filter to a constructed RuleMatch.
+    /// Returns None to reject the match, or Some(rm) to accept (possibly modified).
     fn apply_filter(
         &self,
         filter: &og_xml::types::XmlFilter,
         matched_texts: &[String],
         _matched_positions: &[usize],
         _tokens: &[&AnalyzedTokenReadings],
-    ) -> bool {
+        sentence: &AnalyzedSentence,
+        rm: RuleMatch,
+    ) -> Option<RuleMatch> {
         match filter.class.as_str() {
             "org.languagetool.rules.en.FutureDateFilter" => {
-                self.apply_future_date_filter(&filter.args, matched_texts)
+                if self.apply_future_date_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
             "org.languagetool.rules.en.DateCheckFilter" => {
-                self.apply_date_check_filter(&filter.args, matched_texts)
+                if self.apply_date_check_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
             "org.languagetool.rules.en.NewYearDateFilter"
             | "org.languagetool.rules.en.YMDNewYearDateFilter" => {
-                self.apply_new_year_date_filter(&filter.args, matched_texts)
+                if self.apply_new_year_date_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
             "org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter" => {
                 // Suppress match for misspelled suggestions - always suppress
-                filter.args.contains("suppressMatch:true")
+                if filter.args.contains("suppressMatch:true") {
+                    None
+                } else {
+                    Some(rm)
+                }
             }
-            "org.languagetool.rules.en.EnglishNumberInWordFilter" => {
-                // Number-in-word filter - accept match (suggestion modification only)
-                true
-            }
-            "org.languagetool.rules.en.FindSuggestionsFilter" => {
-                // Find suggestions filter - accept match (suggestion modification only)
-                true
-            }
+            "org.languagetool.rules.en.EnglishNumberInWordFilter" => Some(rm),
+            "org.languagetool.rules.en.FindSuggestionsFilter" => Some(rm),
             "org.languagetool.rules.en.AdverbFilter" => {
-                // Adverb filter - accept match (suggestion modification only)
-                true
+                self.apply_adverb_filter(&filter.args, matched_texts, rm)
             }
             "org.languagetool.rules.en.OrdinalSuffixFilter" => {
-                // Ordinal suffix filter - accept match (suggestion modification only)
-                true
+                self.apply_ordinal_suffix_filter(rm)
             }
             "org.languagetool.rules.UnderlineSpacesFilter" => {
-                // Underline spaces filter - accept match (span expansion only)
-                true
+                self.apply_underline_spaces_filter(&filter.args, sentence, rm)
             }
-            "org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter" => {
-                // Multitoken speller filter - accept match (suggestion modification only)
-                true
-            }
+            "org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter" => Some(rm),
             "org.languagetool.rules.DateRangeChecker" => {
-                self.apply_date_range_filter(&filter.args, matched_texts)
+                if self.apply_date_range_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
             "org.languagetool.rules.patterns.RegexAntiPatternFilter" => {
-                self.apply_regex_antipattern_filter(&filter.args, matched_texts)
+                if self.apply_regex_antipattern_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
             "org.languagetool.rules.patterns.ApostropheTypeFilter" => {
-                self.apply_apostrophe_type_filter(&filter.args, matched_texts)
+                if self.apply_apostrophe_type_filter(&filter.args, matched_texts) {
+                    Some(rm)
+                } else {
+                    None
+                }
             }
-            _ => true, // Unknown filters: accept match
+            _ => Some(rm), // Unknown filters: accept match
         }
     }
 
@@ -1297,12 +1314,386 @@ impl PatternRuleEngine {
             true
         }
     }
+
+    /// OrdinalSuffixFilter: fixes suggestions for ordinal suffixes like "1nd" -> "1st".
+    /// Strips non-digits from the first suggestion, then appends the correct suffix.
+    fn apply_ordinal_suffix_filter(&self, mut rm: RuleMatch) -> Option<RuleMatch> {
+        let replacements = rm.replacements().to_vec();
+        if let Some(first) = replacements.first() {
+            let digits: String = first.value().chars().filter(|c| c.is_ascii_digit()).collect();
+            if digits.is_empty() {
+                return Some(rm);
+            }
+            let suffix = if digits.ends_with("11") || digits.ends_with("12") || digits.ends_with("13") {
+                "th"
+            } else if digits.ends_with('1') {
+                "st"
+            } else if digits.ends_with('2') {
+                "nd"
+            } else if digits.ends_with('3') {
+                "rd"
+            } else {
+                "th"
+            };
+            let new_suggestion = format!("{}{}", digits, suffix);
+            let new_replacements = vec![SuggestedReplacement::new(&new_suggestion)];
+            rm = rm.with_replacements(new_replacements);
+        }
+        Some(rm)
+    }
+
+    /// UnderlineSpacesFilter: expands the match span to include adjacent whitespace.
+    fn apply_underline_spaces_filter(
+        &self,
+        args: &str,
+        sentence: &AnalyzedSentence,
+        rm: RuleMatch,
+    ) -> Option<RuleMatch> {
+        let parsed = self.parse_filter_args(args, &[]);
+        let mode = parsed.get("underlineSpaces").map(|s| s.as_str()).unwrap_or("both");
+        let text = sentence.text();
+        let mut offset = rm.offset();
+        let mut end = rm.offset() + rm.length();
+
+        if mode == "before" || mode == "both" {
+            if offset > 0 && text.as_bytes().get(offset - 1).map(|&b| b.is_ascii_whitespace()).unwrap_or(false) {
+                offset -= 1;
+            }
+        }
+        if mode == "after" || mode == "both" {
+            if end + 1 < text.len() && text.as_bytes().get(end).map(|&b| b.is_ascii_whitespace()).unwrap_or(false) {
+                end += 1;
+            }
+        }
+
+        Some(rm.with_offset(offset).with_length(end - offset))
+    }
+
+    /// AdverbFilter: replaces adverb+noun suggestion with adjective+noun.
+    /// Uses a lookup table to map common adverbs to their adjective forms.
+    fn apply_adverb_filter(&self, args: &str, matched_texts: &[String], rm: RuleMatch) -> Option<RuleMatch> {
+        let parsed = self.parse_filter_args(args, matched_texts);
+        let adverb = parsed.get("adverb").map(|s| s.as_str()).unwrap_or("");
+        let noun = parsed.get("noun").map(|s| s.as_str()).unwrap_or("");
+
+        let adjective = adverb_to_adjective(adverb);
+        if let Some(adj) = adjective {
+            if adj != adverb {
+                let new_suggestion = format!("{} {}", adj, noun);
+                return Some(rm.with_replacements(vec![SuggestedReplacement::new(&new_suggestion)]));
+            }
+        }
+        Some(rm)
+    }
 }
 
 /// Parse a number from a date string, stripping non-numeric suffixes like "th", "st", "nd", "rd"
 fn parse_date_number(s: &str) -> u32 {
     let trimmed = s.trim().trim_end_matches(|c: char| c.is_alphabetic());
     trimmed.parse().unwrap_or(0)
+}
+
+/// Map an adverb to its adjective form. Returns None if not in the lookup table.
+fn adverb_to_adjective(adverb: &str) -> Option<&'static str> {
+    // Covers the most common adverb->adjective mappings from Java LT's AdverbFilter.
+    // Full list has ~300 entries; this includes all entries that appear in English grammar.xml rules.
+    Some(match adverb {
+        "well" => "good",
+        "fast" => "fast",
+        "hard" => "hard",
+        "late" => "late",
+        "early" => "early",
+        "daily" => "daily",
+        "straight" => "straight",
+        "simply" => "simple",
+        "cheaply" => "cheap",
+        "quickly" => "quick",
+        "slowly" => "slow",
+        "easily" => "easy",
+        "angrily" => "angry",
+        "happily" => "happy",
+        "luckily" => "lucky",
+        "terribly" => "terrible",
+        "tragically" => "tragic",
+        "economically" => "economic",
+        "greatly" => "great",
+        "highly" => "high",
+        "generally" => "general",
+        "differently" => "different",
+        "rightly" => "right",
+        "largely" => "large",
+        "really" => "real",
+        "directly" => "direct",
+        "clearly" => "clear",
+        "merely" => "mere",
+        "exactly" => "exact",
+        "recently" => "recent",
+        "rapidly" => "rapid",
+        "suddenly" => "sudden",
+        "extremely" => "extreme",
+        "properly" => "proper",
+        "politically" => "political",
+        "probably" => "probable",
+        "successfully" => "successful",
+        "unusually" => "unusual",
+        "obviously" => "obvious",
+        "currently" => "current",
+        "fully" => "full",
+        "accidentally" => "accidental",
+        "automatically" => "automatic",
+        "completely" => "complete",
+        "accurately" => "accurate",
+        "necessarily" => "necessary",
+        "temporarily" => "temporary",
+        "significantly" => "significant",
+        "hastily" => "hasty",
+        "immediately" => "immediate",
+        "rarely" => "rare",
+        "totally" => "total",
+        "literally" => "literal",
+        "gently" => "gentle",
+        "finally" => "final",
+        "increasingly" => "increasing",
+        "considerably" => "considerable",
+        "effectively" => "effective",
+        "briefly" => "brief",
+        "physically" => "physical",
+        "enthusiastically" => "enthusiastic",
+        "incredibly" => "incredible",
+        "permanently" => "permanent",
+        "entirely" => "entire",
+        "surely" => "sure",
+        "positively" => "positive",
+        "negatively" => "negative",
+        "relatively" => "relative",
+        "absolutely" => "absolute",
+        "socially" => "social",
+        "solely" => "sole",
+        "fortunately" => "fortunate",
+        "unfortunately" => "unfortunate",
+        "ideally" => "ideal",
+        "privately" => "private",
+        "unreasonably" => "unreasonable",
+        "personally" => "personal",
+        "basically" => "basic",
+        "definitely" => "definite",
+        "potentially" => "potential",
+        "manually" => "manual",
+        "continuously" => "continuous",
+        "sadly" => "sad",
+        "eventually" => "eventual",
+        "possibly" => "possible",
+        "visually" => "visual",
+        "usually" => "usual",
+        "normally" => "normal",
+        "steadily" => "steady",
+        "actively" => "active",
+        "statistically" => "statistical",
+        "culturally" => "cultural",
+        "vividly" => "vivid",
+        "partially" => "partial",
+        "seriously" => "serious",
+        "verbally" => "verbal",
+        "shortly" => "short",
+        "mildly" => "mild",
+        "secretly" => "secret",
+        "especially" => "especial",
+        "specially" => "special",
+        "previously" => "previous",
+        "traditionally" => "traditional",
+        "individually" => "individual",
+        "carefully" => "careful",
+        "essentially" => "essential",
+        "originally" => "original",
+        "alarmingly" => "alarming",
+        "newly" => "new",
+        "structurally" => "structural",
+        "globally" => "global",
+        "seamlessly" => "seamless",
+        "sustainably" => "sustainable",
+        "coldly" => "cold",
+        "densely" => "dense",
+        "calmly" => "calm",
+        "widely" => "wide",
+        "heavily" => "heavy",
+        "honestly" => "honest",
+        "desperately" => "desperate",
+        "apparently" => "apparent",
+        "uniquely" => "unique",
+        "critically" => "critical",
+        "equally" => "equal",
+        "strongly" => "strong",
+        "thoroughly" => "thorough",
+        "technically" => "technical",
+        "swiftly" => "swift",
+        "occasionally" => "occasional",
+        "specifically" => "specific",
+        "subtly" => "subtle",
+        "actually" => "actual",
+        "particularly" => "particular",
+        "nicely" => "nice",
+        "progressively" => "progressive",
+        "genuinely" => "genuine",
+        "deeply" => "deep",
+        "spiritually" => "spiritual",
+        "purely" => "pure",
+        "oddly" => "odd",
+        "professionally" => "professional",
+        "consistently" => "consistent",
+        "truly" => "true",
+        "commonly" => "common",
+        "safely" => "safe",
+        "internally" => "internal",
+        "annually" => "annual",
+        "brightly" => "bright",
+        "officially" => "official",
+        "perfectly" => "perfect",
+        "overly" => "over",
+        "brilliantly" => "brilliant",
+        "exclusively" => "exclusive",
+        "commercially" => "commercial",
+        "weirdly" => "weird",
+        "routinely" => "routine",
+        "naturally" => "natural",
+        "lightly" => "light",
+        "primarily" => "primary",
+        "peacefully" => "peaceful",
+        "thankfully" => "thankful",
+        "reliably" => "reliable",
+        "hugely" => "huge",
+        "strictly" => "strict",
+        "morally" => "moral",
+        "voluntarily" => "voluntary",
+        "typically" => "typical",
+        "playfully" => "playful",
+        "wonderfully" => "wonderful",
+        "emotionally" => "emotional",
+        "efficiently" => "efficient",
+        "mentally" => "mental",
+        "credibly" => "credible",
+        "rashly" => "rash",
+        "financially" => "financial",
+        "urgently" => "urgent",
+        "historically" => "historical",
+        "tightly" => "tight",
+        "greedily" => "greedy",
+        "fluently" => "fluent",
+        "ordinarily" => "ordinary",
+        "inevitably" => "inevitable",
+        "partly" => "partial",
+        "initially" => "initial",
+        "justly" => "just",
+        "plausibly" => "plausible",
+        "massively" => "massive",
+        "approximately" => "approximate",
+        "extraordinarily" => "extraordinary",
+        "warmly" => "warm",
+        "nearly" => "near",
+        "virtually" => "virtual",
+        "regularly" => "regular",
+        "deliberately" => "deliberate",
+        "reasonably" => "reasonable",
+        "similarly" => "similar",
+        "flexibly" => "flexible",
+        "softly" => "soft",
+        "responsibly" => "responsible",
+        "sweetly" => "sweet",
+        "comfortably" => "comfortable",
+        "uncomfortably" => "uncomfortable",
+        "undoubtedly" => "undoubted",
+        "humanly" => "human",
+        "intrinsically" => "intrinsic",
+        "substantially" => "substantial",
+        "suspiciously" => "suspicious",
+        "loudly" => "loud",
+        "moderately" => "moderate",
+        "gravely" => "grave",
+        "digitally" => "digital",
+        "finely" => "fine",
+        "respectfully" => "respectful",
+        "diagonally" => "diagonal",
+        "additionally" => "additional",
+        "sexually" => "sexual",
+        "remarkably" => "remarkable",
+        "acutely" => "acute",
+        "linearly" => "linear",
+        "unbelievably" => "unbelievable",
+        "merrily" => "merry",
+        "concretely" => "concrete",
+        "intuitively" => "intuitive",
+        "powerfully" => "powerful",
+        "fairly" => "fair",
+        "wholly" => "whole",
+        "keenly" => "keen",
+        "unconsciously" => "unconscious",
+        "consciously" => "conscious",
+        "humanely" => "humane",
+        "rudely" => "rude",
+        "incorrectly" => "incorrect",
+        "correctly" => "correct",
+        "mistakenly" => "mistaken",
+        "wrongly" => "wrong",
+        "willingly" => "willing",
+        "hopefully" => "hopeful",
+        "truthfully" => "truthful",
+        "attractively" => "attractive",
+        "supposedly" => "supposed",
+        "imperfectly" => "imperfect",
+        "wildly" => "wild",
+        "hotly" => "hot",
+        "genetically" => "genetic",
+        "distinctly" => "distinct",
+        "medically" => "medical",
+        "certainly" => "certain",
+        "beautifully" => "beautiful",
+        "firmly" => "firm",
+        "gradually" => "gradual",
+        "grossly" => "gross",
+        "memorably" => "memorable",
+        "strangely" => "strange",
+        "harshly" => "harsh",
+        "proudly" => "proud",
+        "politely" => "polite",
+        "ethically" => "ethical",
+        "noticeably" => "noticeable",
+        "mainly" => "main",
+        "popularly" => "popular",
+        "improperly" => "improper",
+        "cruelly" => "cruel",
+        "optimally" => "optimal",
+        "surprisingly" => "surprising",
+        "severely" => "severe",
+        "frequently" => "frequent",
+        "rationally" => "rational",
+        "separately" => "separate",
+        "smoothly" => "smooth",
+        "indirectly" => "indirect",
+        "scientifically" => "scientific",
+        "publicly" => "public",
+        "tenderly" => "tender",
+        "arguably" => "arguable",
+        "horribly" => "horrible",
+        "figuratively" => "figurative",
+        "constantly" => "constant",
+        "reluctantly" => "reluctant",
+        "externally" => "external",
+        "intellectually" => "intellectual",
+        "dramatically" => "dramatic",
+        "freshly" => "fresh",
+        "casually" => "casual",
+        "enormously" => "enormous",
+        "alternatively" => "alternative",
+        "gladly" => "glad",
+        "bitterly" => "bitter",
+        "faintly" => "faint",
+        "humbly" => "humble",
+        "promptly" => "prompt",
+        "neatly" => "neat",
+        "insanely" => "insane",
+        "firstly" => "first",
+        "philosophically" => "philosophical",
+        _ => return None,
+    })
 }
 
 /// Get the current date as (year, month, day).
@@ -1861,5 +2252,112 @@ mod tests {
 
         // Should be fast even for thousands of rules
         assert!(elapsed.as_millis() < 5000, "Matching took too long: {:?}", elapsed);
+    }
+
+    #[test]
+    fn test_ordinal_suffix_filter() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <category id="GRAMMAR" name="Grammar">
+                <rule id="ORDINAL_SUFFIX" name="Ordinal suffix">
+                    <pattern>
+                        <token regexp="yes">[0-9]+(st|nd|rd|th)</token>
+                    </pattern>
+                    <message>Did you mean <suggestion>\1</suggestion>?</message>
+                    <filter class="org.languagetool.rules.en.OrdinalSuffixFilter"/>
+                </rule>
+            </category>
+        </rules>"#;
+
+        // Test "21" -> "21st"
+        let matches = compile_and_match(xml, "The 21nd of May");
+        assert!(!matches.is_empty());
+        let repl: Vec<&str> = matches[0].replacements().iter().map(|r| r.value()).collect();
+        assert!(repl.contains(&"21st"), "Expected '21st', got {:?}", repl);
+
+        // Test "22" -> "22nd"
+        let matches = compile_and_match(xml, "The 22st of May");
+        assert!(!matches.is_empty());
+        let repl: Vec<&str> = matches[0].replacements().iter().map(|r| r.value()).collect();
+        assert!(repl.contains(&"22nd"), "Expected '22nd', got {:?}", repl);
+
+        // Test "11" -> "11th" (special case)
+        let matches = compile_and_match(xml, "The 11nd item");
+        assert!(!matches.is_empty());
+        let repl: Vec<&str> = matches[0].replacements().iter().map(|r| r.value()).collect();
+        assert!(repl.contains(&"11th"), "Expected '11th', got {:?}", repl);
+
+        // Test "3" -> "3rd"
+        let matches = compile_and_match(xml, "The 3th item");
+        assert!(!matches.is_empty());
+        let repl: Vec<&str> = matches[0].replacements().iter().map(|r| r.value()).collect();
+        assert!(repl.contains(&"3rd"), "Expected '3rd', got {:?}", repl);
+    }
+
+    #[test]
+    fn test_underline_spaces_filter_before() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <category id="GRAMMAR" name="Grammar">
+                <rule id="UNDERLINE_BEFORE" name="Underline before">
+                    <pattern>
+                        <token>hello</token>
+                    </pattern>
+                    <message>Test</message>
+                    <filter class="org.languagetool.rules.UnderlineSpacesFilter" args="underlineSpaces:before"/>
+                </rule>
+            </category>
+        </rules>"#;
+
+        let matches = compile_and_match(xml, "say hello world");
+        assert!(!matches.is_empty());
+        // "hello" starts at offset 4, but "before" should expand to include the space at offset 3
+        assert_eq!(matches[0].offset(), 3, "Expected offset 3 (including preceding space)");
+    }
+
+    #[test]
+    fn test_underline_spaces_filter_after() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <category id="GRAMMAR" name="Grammar">
+                <rule id="UNDERLINE_AFTER" name="Underline after">
+                    <pattern>
+                        <token>hello</token>
+                    </pattern>
+                    <message>Test</message>
+                    <filter class="org.languagetool.rules.UnderlineSpacesFilter" args="underlineSpaces:after"/>
+                </rule>
+            </category>
+        </rules>"#;
+
+        let matches = compile_and_match(xml, "say hello world");
+        assert!(!matches.is_empty());
+        // "hello" starts at 4, but non-marker path absorbs leading whitespace (start=3).
+        // After "after" filter: end=9 -> 10 (includes trailing space), length = 10-3 = 7
+        assert_eq!(matches[0].length(), 7, "Expected length 7 (including trailing space)");
+    }
+
+    #[test]
+    fn test_adverb_filter() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <category id="GRAMMAR" name="Grammar">
+                <rule id="ADVERB_TEST" name="Adverb test">
+                    <pattern>
+                        <token>philosophically</token>
+                        <token>question</token>
+                    </pattern>
+                    <message>Use adjective, not adverb.</message>
+                    <suggestion>\1 \2</suggestion>
+                    <filter class="org.languagetool.rules.en.AdverbFilter" args="adverb:\1 noun:\2"/>
+                </rule>
+            </category>
+        </rules>"#;
+
+        let matches = compile_and_match(xml, "a philosophically question here");
+        assert!(!matches.is_empty());
+        let repl: Vec<&str> = matches[0].replacements().iter().map(|r| r.value()).collect();
+        assert!(repl.contains(&"philosophical question"),
+            "Expected 'philosophical question', got {:?}", repl);
     }
 }
