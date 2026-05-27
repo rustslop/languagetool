@@ -90,6 +90,34 @@ impl SimpleReplaceRule {
         rule.load_data(data);
         rule
     }
+
+    /// Create the English redundancies rule
+    pub fn english_redundancies() -> Self {
+        let mut rule = Self::new(
+            "EN_REDUNDANCY",
+            "Redundant expression",
+            "REDUNDANCY",
+            "Redundancy",
+        );
+
+        let data = include_str!("../../../../../languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/redundancies.txt");
+        rule.load_data(data);
+        rule
+    }
+
+    /// Create the English profanity replacement rule
+    pub fn english_profanity() -> Self {
+        let mut rule = Self::new(
+            "EN_REPLACE_PROFANITY",
+            "Profanity replacement",
+            "TYPOS",
+            "Possible Typo",
+        );
+
+        let data = include_str!("../../../../../languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/replace_profanity.txt");
+        rule.load_data(data);
+        rule
+    }
 }
 
 impl Rule for SimpleReplaceRule {
