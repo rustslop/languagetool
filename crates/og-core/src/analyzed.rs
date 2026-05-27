@@ -180,6 +180,36 @@ impl AnalyzedTokenReadings {
             self.token.pos_tags.push("SENT_END".to_string());
         }
     }
+
+    pub fn is_sentence_start(&self) -> bool {
+        self.token.pos_tags.iter().any(|t| t == "SENT_START")
+            || self.readings.iter().any(|r| r.pos_tags.iter().any(|t| t == "SENT_START"))
+    }
+
+    pub fn is_sentence_end(&self) -> bool {
+        self.token.pos_tags.iter().any(|t| t == "SENT_END")
+            || self.readings.iter().any(|r| r.pos_tags.iter().any(|t| t == "SENT_END"))
+    }
+
+    /// Get all POS tags from all readings combined (deduplicated).
+    pub fn all_pos_tags(&self) -> Vec<&str> {
+        let mut tags: Vec<&str> = Vec::new();
+        for r in &self.readings {
+            for t in &r.pos_tags {
+                if !tags.contains(&t.as_str()) {
+                    tags.push(t);
+                }
+            }
+        }
+        tags
+    }
+
+    /// Get all lemmas from all readings.
+    pub fn all_lemmas(&self) -> Vec<&str> {
+        self.readings.iter()
+            .filter_map(|r| r.lemma.as_deref())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
