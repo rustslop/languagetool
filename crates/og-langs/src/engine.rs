@@ -172,6 +172,9 @@ impl LanguageEngine {
             // Add redundancy and profanity rules (same engine, different data)
             engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::english_redundancies()));
             engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::english_profanity()));
+            engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::american_replace()));
+            engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::british_replace()));
+            engine.add_rule(Arc::new(crate::en::SimpleReplaceRule::new_zealand_replace()));
 
             // Add generic native rules
             engine.add_rule(Arc::new(og_rules::native_rules::WordRepeatRule::new()));

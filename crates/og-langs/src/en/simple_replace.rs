@@ -118,6 +118,48 @@ impl SimpleReplaceRule {
         rule.load_data(data);
         rule
     }
+
+    /// British words easily confused in American English
+    pub fn american_replace() -> Self {
+        let mut rule = Self::new(
+            "EN_US_SIMPLE_REPLACE",
+            "British words easily confused in American English",
+            "STYLE",
+            "Style",
+        );
+
+        let data = include_str!("../../../../../languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-US/replace.txt");
+        rule.load_data(data);
+        rule
+    }
+
+    /// American words easily confused in British English
+    pub fn british_replace() -> Self {
+        let mut rule = Self::new(
+            "EN_GB_SIMPLE_REPLACE",
+            "American words easily confused in British English",
+            "STYLE",
+            "Style",
+        );
+
+        let data = include_str!("../../../../../languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-GB/replace.txt");
+        rule.load_data(data);
+        rule
+    }
+
+    /// New Zealand specific replacements
+    pub fn new_zealand_replace() -> Self {
+        let mut rule = Self::new(
+            "EN_NZ_SIMPLE_REPLACE",
+            "New Zealand specific replacement",
+            "STYLE",
+            "Style",
+        );
+
+        let data = include_str!("../../../../../languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-NZ/replace.txt");
+        rule.load_data(data);
+        rule
+    }
 }
 
 impl Rule for SimpleReplaceRule {
