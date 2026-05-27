@@ -184,6 +184,7 @@ impl LanguageEngine {
             engine.add_rule(Arc::new(crate::en::SpecificCaseRule::new()));
             engine.add_rule(Arc::new(crate::en::DiacriticsRule::new()));
             engine.add_rule(Arc::new(crate::en::PlainEnglishRule::new()));
+            engine.add_rule(Arc::new(crate::en::CompoundRule::new()));
 
             // Load spellchecker with English word lists
             let mut dict = Dictionary::new();
@@ -247,6 +248,7 @@ impl LanguageEngine {
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::LongSentenceRule::new(30)));
         engine.add_text_level_rule(Arc::new(og_rules::text_level_rules::WordRepeatBeginningRule::new()));
         engine.add_text_level_rule(Arc::new(crate::en::ConsistentApostrophesRule::new()));
+        engine.add_text_level_rule(Arc::new(crate::en::WordCoherencyRule::new()));
 
         engine.rebuild_checker();
         engine

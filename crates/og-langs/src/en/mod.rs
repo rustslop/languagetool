@@ -1,15 +1,19 @@
 pub mod avsan;
+pub mod compound;
 pub mod contraction;
 pub mod consistent_apostrophe;
 pub mod diacritics;
 pub mod plain_english;
 pub mod simple_replace;
 pub mod specific_case;
+pub mod word_coherency;
 
 pub use avsan::AvsAnRule;
+pub use compound::CompoundRule;
 pub use contraction::ContractionSpellingRule;
 pub use consistent_apostrophe::ConsistentApostrophesRule;
 pub use diacritics::DiacriticsRule;
 pub use plain_english::PlainEnglishRule;
 pub use simple_replace::SimpleReplaceRule;
 pub use specific_case::SpecificCaseRule;
+pub use word_coherency::WordCoherencyRule;

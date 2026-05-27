@@ -121,8 +121,6 @@ mod tests {
         let mut tokens = Vec::new();
         let mut byte_pos = 0;
         for word in text.split_whitespace() {
-            let start = text[word.as_ptr() as usize - text.as_ptr() as usize..].as_ptr();
-            // Simple approach: find the word in the text
             if let Some(offset) = text[byte_pos..].find(word) {
                 let word_start = byte_pos + offset;
                 let word_end = word_start + word.len();
