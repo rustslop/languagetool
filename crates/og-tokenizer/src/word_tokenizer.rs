@@ -12,6 +12,46 @@ impl DefaultWordTokenizer {
         c.is_alphanumeric() || c == '_' || c == '\'' || c == '\u{2019}'
     }
 
+    /// Check if we're at the start of a URL, email, or file path.
+    /// Returns the end byte offset if detected, or None.
+    fn try_consume_url_or_email(&self, text: &str, _chars: &[char], _start: usize, byte_start: usize) -> Option<usize> {
+        let remaining = &text[byte_start..];
+
+        // URL patterns
+        if remaining.starts_with("http://") || remaining.starts_with("https://") || remaining.starts_with("ftp://") {
+            return Some(self.consume_url_like(remaining, byte_start));
+        }
+
+        // www. prefix
+        if remaining.starts_with("www.") {
+            return Some(self.consume_url_like(remaining, byte_start));
+        }
+
+        // Email: word@word.word pattern
+        if let Some(at_pos) = remaining.find('@') {
+            if at_pos > 0 && remaining[..at_pos].chars().all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-' || c == '+') {
+                // Check domain part
+                let domain = &remaining[at_pos + 1..];
+                if let Some(slash_pos) = domain.find(|c: char| c.is_whitespace()) {
+                    let domain_part = &domain[..slash_pos];
+                    if domain_part.contains('.') && domain_part.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-') {
+                        let end = byte_start + at_pos + 1 + slash_pos;
+                        return Some(end);
+                    }
+                } else if domain.contains('.') && domain.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-') {
+                    return Some(byte_start + remaining.len());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn consume_url_like(&self, remaining: &str, byte_start: usize) -> usize {
+        let end = remaining.find(|c: char| c.is_whitespace()).unwrap_or(remaining.len());
+        byte_start + end
+    }
+
     /// Split English contractions into separate tokens, matching Java LT behavior.
     /// E.g. "don't" → "Do" + "n't", "can't" → "ca" + "n't", "it's" → "it" + "'s"
     fn split_contractions(&self, tokens: Vec<Token>) -> Vec<Token> {
@@ -138,6 +178,15 @@ impl WordTokenizer for DefaultWordTokenizer {
                 }
                 tokens.push(Token::new(&text[start_byte..end_byte], start_byte, end_byte));
                 byte_offset = end_byte;
+            } else if let Some(url_end) = self.try_consume_url_or_email(text, &chars, i, byte_offset) {
+                // URL or email: consume as single token
+                tokens.push(Token::new(&text[byte_offset..url_end], byte_offset, url_end));
+                // Advance i to match url_end
+                while byte_offset < url_end && i < chars.len() {
+                    byte_offset += chars[i].len_utf8();
+                    i += 1;
+                }
+                byte_offset = url_end;
             } else if self.is_word_char(c) {
                 // Consume word characters
                 let start_byte = byte_offset;
@@ -1047,5 +1096,53 @@ mod tests {
         let tokens = tz.tokenize("test");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text(), "test");
+    }
+
+    // -- URL/Email detection -----------------------------------------------------
+
+    #[test]
+    fn test_url_http() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("Visit http://example.com today");
+        assert_eq!(tokens[0].text(), "Visit");
+        assert_eq!(tokens[1].text(), " ");
+        assert_eq!(tokens[2].text(), "http://example.com");
+        assert_eq!(tokens[3].text(), " ");
+        assert_eq!(tokens[4].text(), "today");
+        assert_offsets_valid(&tokens);
+    }
+
+    #[test]
+    fn test_url_https() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("See https://www.example.com/path?q=1 here");
+        assert_eq!(tokens[2].text(), "https://www.example.com/path?q=1");
+        assert_offsets_valid(&tokens);
+    }
+
+    #[test]
+    fn test_www_url() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("Go to www.example.com now");
+        // "Go" " " "to" " " "www.example.com" " " "now"
+        let texts: Vec<&str> = tokens.iter().map(|t| t.text()).collect();
+        assert!(texts.contains(&"www.example.com"), "Expected 'www.example.com' in tokens: {:?}", texts);
+        assert_offsets_valid(&tokens);
+    }
+
+    #[test]
+    fn test_email() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("Email user@example.com please");
+        assert_eq!(tokens[2].text(), "user@example.com");
+        assert_offsets_valid(&tokens);
+    }
+
+    #[test]
+    fn test_url_no_false_positive() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("I like cats and dogs");
+        // Should not be detected as URL
+        assert!(tokens.iter().all(|t| !t.text().contains('@')));
     }
 }
