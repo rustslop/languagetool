@@ -5,6 +5,8 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+pub const MAX_TEXT_LENGTH: usize = 100_000;
+
 pub struct AppState {
     pub checker: Arc<Checker>,
 }
@@ -21,6 +23,8 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .route("/v2/check", post(crate::handlers::handle_check))
         .route("/v2/languages", get(crate::handlers::handle_languages))
         .route("/v2/version", get(crate::handlers::handle_version))
+        .route("/v2/info", get(crate::handlers::handle_info))
+        .route("/v2/maxtextlength", get(crate::handlers::handle_max_text_length))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

@@ -1,5 +1,4 @@
 use serde::Serialize;
-use og_core::CheckResult;
 
 #[derive(Debug, Serialize)]
 pub struct LanguagesResponse {
@@ -15,4 +14,21 @@ pub struct VersionResponse {
     pub version: String,
     #[serde(rename = "apiVersion")]
     pub api_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InfoResponse {
+    pub name: String,
+    pub version: String,
+    #[serde(rename = "apiVersion")]
+    pub api_version: i32,
+    #[serde(rename = "maxTextLength")]
+    pub max_text_length: usize,
+    pub premium: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MaxTextLengthResponse {
+    #[serde(rename = "maxTextLength")]
+    pub max_text_length: usize,
 }

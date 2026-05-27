@@ -5,8 +5,8 @@ use og_core::CheckRequest;
 use og_core::CheckResult;
 use og_core::Language;
 use crate::request::CheckParams;
-use crate::response::{LanguagesResponse, VersionResponse};
-use crate::server::AppState;
+use crate::response::{InfoResponse, LanguagesResponse, MaxTextLengthResponse, VersionResponse};
+use crate::server::{AppState, MAX_TEXT_LENGTH};
 use std::sync::Arc;
 
 pub async fn handle_check(
@@ -22,6 +22,15 @@ pub async fn handle_check(
             ));
         }
     };
+
+    if text.len() > MAX_TEXT_LENGTH {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Text is too long. Maximum length is {} characters.", MAX_TEXT_LENGTH)
+            })),
+        ));
+    }
 
     let language = match params.get_language() {
         Some(l) => l,
@@ -68,5 +77,21 @@ pub async fn handle_version() -> Json<VersionResponse> {
         name: "OpenGrammar".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: 2,
+    })
+}
+
+pub async fn handle_info() -> Json<InfoResponse> {
+    Json(InfoResponse {
+        name: "OpenGrammar".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        api_version: 2,
+        max_text_length: MAX_TEXT_LENGTH,
+        premium: false,
+    })
+}
+
+pub async fn handle_max_text_length() -> Json<MaxTextLengthResponse> {
+    Json(MaxTextLengthResponse {
+        max_text_length: MAX_TEXT_LENGTH,
     })
 }
