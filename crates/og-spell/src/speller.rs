@@ -1,6 +1,6 @@
 use crate::dictionary::Dictionary;
 use crate::suggestion::SuggestionEngine;
-use og_core::{AnalyzedSentence, AnalyzedTokenReadings, Category, IssueType, RuleMatch, RuleMatchContext, RuleMatchRule, SuggestedReplacement};
+use og_core::{AnalyzedSentence, Category, IssueType, RuleMatch, RuleMatchContext, RuleMatchRule, SuggestedReplacement};
 use og_core::rule::Rule;
 use std::collections::HashSet;
 

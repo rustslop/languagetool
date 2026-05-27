@@ -284,7 +284,7 @@ impl EnglishTagger {
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 3 {
                 let word = parts[0].to_lowercase();
-                let lemma = parts[1].to_string();
+                let _lemma = parts[1].to_string();
                 let postags: Vec<String> = parts[2].split(' ').map(String::from).collect();
                 self.dict.entry(word).or_default();
                 if let Some(existing) = self.dict.get_mut(&parts[0].to_lowercase()) {
@@ -599,7 +599,7 @@ impl EnglishTagger {
                 "(" | "[" | "{" => vec![(("-LRB-").to_string(), None)],
                 ")" | "]" | "}" => vec![(("-RRB-").to_string(), None)],
                 "..." => vec![((".").to_string(), None)],
-                "'s" | "'s" | "\u{2019}s" => vec![
+                "'s" | "\u{2019}s" => vec![
                     ("POS".to_string(), None),
                     ("VBZ".to_string(), None),
                 ],
@@ -1155,7 +1155,7 @@ mod tests {
         let vbg_reading = readings.iter().find(|r| r.has_pos_tag("VBG"));
         assert!(vbg_reading.is_some(), "Should have VBG reading");
         if let Some(r) = vbg_reading {
-            assert_eq!(r.lemma(), Some("runn"), "VBG lemma should strip -ing");
+            assert_eq!(r.lemma(), Some("run"), "VBG lemma should strip -ing");
         }
 
         // Test NNS lemma

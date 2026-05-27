@@ -19,6 +19,7 @@ impl XmlRuleParser {
         Self
     }
 
+    #[allow(unused_assignments, unused_variables)]
     pub fn parse(&self, xml: &str) -> Result<XmlRuleFile, XmlParseError> {
         let expanded = Self::expand_entities(xml);
         let cleaned = Self::strip_doctype(&expanded);

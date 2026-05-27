@@ -2,7 +2,7 @@ use crate::{
     AnalyzedSentence, AnalyzedToken, AnalyzedTokenReadings,
     CheckResult, Language, LanguageDetectedInfo, LanguageInfo,
     RuleMatch, SoftwareInfo, Warnings,
-    rule::Rule, Category, IssueType, RuleMatchContext, RuleMatchRule, SuggestedReplacement,
+    rule::Rule,
 };
 use std::sync::Arc;
 

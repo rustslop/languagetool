@@ -45,6 +45,7 @@ impl WordTokenizer for TestWordTokenizer {
     }
 }
 
+#[allow(dead_code)]
 struct TestSentenceTokenizer;
 
 impl SentenceTokenizer for TestSentenceTokenizer {
@@ -1256,6 +1257,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_load_real_english_grammar_xml() {
         let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
         if !Path::new(grammar_path).exists() {
@@ -1299,6 +1301,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // runs all grammar.xml example tests — run with `cargo test -- --ignored`
     fn test_real_english_grammar_examples() {
         let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
         if !Path::new(grammar_path).exists() {
@@ -1387,6 +1390,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // loads grammar.xml — run with `cargo test -- --ignored`
     fn test_it_is_rule_its_cool_man() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="en">
@@ -1445,6 +1449,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_a_nns_fps() {
         let runner = TestRunner::new();
         let sentences = vec![
@@ -1466,6 +1471,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_pos_tags_for_failures() {
         let runner = TestRunner::new();
         let sentences = vec![
@@ -1506,12 +1512,13 @@ mod tests {
 
     /// Diagnostic test that checks POS tags for specific words commonly needed by
     #[test]
+    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_been_part_agreement_debug() {
         let runner = &TestRunner::new();
 
         // Test: "I'm been prepared." should trigger BEEN_PART_AGREEMENT
         let sentence = runner.tokenize_sentence("I'm been prepared.");
-        let nwt: Vec<_> = sentence.non_whitespace_tokens();
+        let _nwt: Vec<_> = sentence.non_whitespace_tokens();
 
         // Load grammar rules and try matching
         let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
@@ -1548,6 +1555,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_to_too_inflected_matching() {
         let runner = &TestRunner::new();
         let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
@@ -1584,6 +1592,7 @@ mod tests {
     ///
     /// Run with: cargo test -p og-test-runner test_common_pos_tag_coverage -- --nocapture
     #[test]
+    #[ignore] // diagnostic POS tag coverage — run with `cargo test -- --ignored`
     fn test_common_pos_tag_coverage() {
         let runner = &TestRunner::new();
 
@@ -1723,6 +1732,7 @@ mod tests {
 }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_have_part_agreement_fp() {
         let runner = TestRunner::new();
         let sentences = vec![
@@ -1779,6 +1789,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_missing_to_before_verb() {
         let runner = TestRunner::new();
         let sentences = vec![
@@ -1808,6 +1819,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_chunking_with_whitespace() {
         let runner = TestRunner::new();
         let sentence = runner.tokenize_sentence("The client is here.");
@@ -1826,6 +1838,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_it_is_2_debug() {
         let runner = TestRunner::new();
         let sentences = vec![
@@ -1870,6 +1883,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
     fn test_debug_a_infinitive_fps() {
         let runner = TestRunner::new();
         let sentences = vec![

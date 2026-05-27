@@ -20,7 +20,7 @@ impl Tagger for DefaultTagger {
         tokens
             .iter()
             .enumerate()
-            .map(|(i, token)| {
+            .map(|(_i, token)| {
                 use og_core::AnalyzedToken;
                 let at = AnalyzedToken::new(*token, 0, token.len());
                 AnalyzedTokenReadings::new(at)

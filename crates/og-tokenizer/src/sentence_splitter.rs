@@ -215,6 +215,7 @@ impl Default for DefaultSentenceSplitter {
 }
 
 impl SentenceTokenizer for DefaultSentenceSplitter {
+    #[allow(unused_assignments, unused_variables)]
     fn split(&self, text: &str) -> Vec<Sentence> {
         if text.is_empty() {
             return vec![Sentence::new("", 0, 0)];

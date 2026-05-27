@@ -67,7 +67,7 @@ pub fn chunk_tokens(pos_tags: &[&str], tokens: &[&str]) -> Vec<Option<String>> {
     let mut i = 1; // Skip SENT_START at index 0
     while i < n {
         let tag = pos_tags[i];
-        let word = tokens.get(i).map(|s| *s).unwrap_or("");
+        let _word = tokens.get(i).map(|s| *s).unwrap_or("");
 
         // Skip punctuation and sentence boundaries
         if is_punct_tag(tag) {
@@ -321,6 +321,7 @@ fn is_negation(word: &str) -> bool {
     matches!(word.to_lowercase().as_str(), "not" | "n't" | "nt" | "never")
 }
 
+#[allow(dead_code)]
 fn is_auxiliary(tag: &str) -> bool {
     tag == "MD" || tag == "EX"
 }

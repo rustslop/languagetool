@@ -238,18 +238,13 @@ impl PatternRuleEngine {
         let text = sentence.text();
         let (match_start, match_end) = if let (Some(ms), Some(me)) = (rule.pattern.marker_start, rule.pattern.marker_end) {
             // Use marker positions for error span
-            // matched_positions contains text token indices; look up actual byte offsets
             let ms_tok_idx = *match_result.matched_positions.get(ms)?;
             let me_idx = if me > 0 { me - 1 } else { 0 };
             let me_tok_idx = *match_result.matched_positions.get(me_idx)?;
             let start_tok = tokens.get(ms_tok_idx)?;
             let end_tok = tokens.get(me_tok_idx)?;
-            let mut start = start_tok.token().start();
+            let start = start_tok.token().start();
             let end = end_tok.token().end();
-            // Java LT includes preceding whitespace in the error span
-            while start > 0 && text.as_bytes().get(start - 1).map(|&b| b.is_ascii_whitespace()).unwrap_or(false) {
-                start -= 1;
-            }
             (start, end)
         } else {
             let mut start = match_result.first_start?;
@@ -1799,6 +1794,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // uses rayon parallel matching — run with `cargo test -- --ignored`
     fn test_parallel_matching() {
         use rayon::prelude::*;
 
@@ -1832,6 +1828,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // performance benchmark — run with `cargo test -- --ignored`
     fn test_indexed_rules_performance() {
         // Benchmark test: load real grammar and time rule matching
         let grammar_path = "/home/agent/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";

@@ -216,6 +216,7 @@ struct SymbolEntry {
     symbol: String,
     is_opening: bool,
     start_pos: usize,
+    #[allow(dead_code)]
     sentence_idx: usize,
 }
 
@@ -241,7 +242,7 @@ impl TextLevelRule for GenericUnpairedBracketsRule {
         let mut stack: Vec<SymbolEntry> = Vec::new();
 
         // Build all bracket symbols for fast lookup
-        let all_symbols: Vec<&str> = self.start_symbols.iter()
+        let _all_symbols: Vec<&str> = self.start_symbols.iter()
             .chain(self.end_symbols.iter())
             .map(|s| s.as_str())
             .collect();
@@ -663,10 +664,12 @@ impl TextLevelRule for WordRepeatBeginningRule {
 
 // Helper functions
 
+#[allow(dead_code)]
 fn is_normal_whitespace(token: &AnalyzedTokenReadings) -> bool {
     token.is_whitespace() || token.token().token() == "\u{A0}"
 }
 
+#[allow(dead_code)]
 fn is_removable_whitespace(token: &AnalyzedTokenReadings) -> bool {
     (token.is_whitespace() || token.token().token() == "\u{A0}")
         && !is_linebreak(token)
@@ -674,16 +677,19 @@ fn is_removable_whitespace(token: &AnalyzedTokenReadings) -> bool {
         && !contains_invisible(token)
 }
 
+#[allow(dead_code)]
 fn is_linebreak(token: &AnalyzedTokenReadings) -> bool {
     let t = token.token().token();
     t.contains('\n') || t.contains('\r')
 }
 
+#[allow(dead_code)]
 fn contains_invisible(token: &AnalyzedTokenReadings) -> bool {
     let t = token.token().token();
     t.contains('\u{200B}') || t.contains('\u{FEFF}') || t.contains('\u{2060}')
 }
 
+#[allow(dead_code)]
 fn is_smiley_exception(
     token_text: &str,
     all_tokens: &[AnalyzedTokenReadings],
@@ -724,7 +730,6 @@ mod tests {
     fn make_sentence_with_whitespace(text: &str, offset: usize) -> AnalyzedSentence {
         let mut sentence = AnalyzedSentence::new(text, offset, offset + text.len());
         let mut tokens = Vec::new();
-        let mut pos = 0;
         let chars: Vec<char> = text.chars().collect();
         let mut i = 0;
 

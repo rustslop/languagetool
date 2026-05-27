@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use og_core::{
-    AnalyzedSentence, AnalyzedTokenReadings, Category, IssueType, RuleMatch,
+    AnalyzedSentence, Category, IssueType, RuleMatch,
     RuleMatchContext, RuleMatchRule, SuggestedReplacement,
     rule::Rule,
 };
@@ -212,7 +212,7 @@ impl Clone for ReplaceEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use og_core::{AnalyzedToken, AnalyzedSentence};
+    use og_core::{AnalyzedToken, AnalyzedTokenReadings, AnalyzedSentence};
 
     fn make_sentence(text: &str) -> AnalyzedSentence {
         let mut sentence = AnalyzedSentence::new(text, 0, text.len());

@@ -20,7 +20,7 @@ impl DefaultWordTokenizer {
         for token in tokens {
             let text = token.text();
             let start = token.start();
-            let end = token.end();
+            let _end = token.end();
 
             // Only try splitting word tokens that contain an apostrophe
             if !text.contains('\'') && !text.contains('\u{2019}') {
