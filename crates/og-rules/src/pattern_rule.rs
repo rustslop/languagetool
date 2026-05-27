@@ -1124,40 +1124,37 @@ impl PatternRuleEngine {
                 filter.args.contains("suppressMatch:true")
             }
             "org.languagetool.rules.en.EnglishNumberInWordFilter" => {
-                // Number-in-word filter - accept match
+                // Number-in-word filter - accept match (suggestion modification only)
                 true
             }
             "org.languagetool.rules.en.FindSuggestionsFilter" => {
-                // Find suggestions filter - accept match (affects suggestions, not matching)
+                // Find suggestions filter - accept match (suggestion modification only)
                 true
             }
             "org.languagetool.rules.en.AdverbFilter" => {
-                // Adverb filter - accept match
+                // Adverb filter - accept match (suggestion modification only)
                 true
             }
             "org.languagetool.rules.en.OrdinalSuffixFilter" => {
-                // Ordinal suffix filter - accept match
+                // Ordinal suffix filter - accept match (suggestion modification only)
                 true
             }
             "org.languagetool.rules.UnderlineSpacesFilter" => {
-                // Underline spaces filter - accept match
+                // Underline spaces filter - accept match (span expansion only)
                 true
             }
             "org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter" => {
-                // Multitoken speller filter - accept match
+                // Multitoken speller filter - accept match (suggestion modification only)
                 true
             }
             "org.languagetool.rules.DateRangeChecker" => {
-                // Date range checker - accept match
-                true
+                self.apply_date_range_filter(&filter.args, matched_texts)
             }
             "org.languagetool.rules.patterns.RegexAntiPatternFilter" => {
-                // Regex antipattern filter - accept match
-                true
+                self.apply_regex_antipattern_filter(&filter.args, matched_texts)
             }
             "org.languagetool.rules.patterns.ApostropheTypeFilter" => {
-                // Apostrophe type filter - accept match
-                true
+                self.apply_apostrophe_type_filter(&filter.args, matched_texts)
             }
             _ => true, // Unknown filters: accept match
         }
@@ -1259,6 +1256,51 @@ impl PatternRuleEngine {
 
         let current_date = current_date();
         year != current_date.0 && year > 0
+    }
+
+    /// DateRangeChecker: accept match (flag error) if x >= y (invalid date range).
+    fn apply_date_range_filter(&self, args: &str, matched_texts: &[String]) -> bool {
+        let parsed = self.parse_filter_args(args, matched_texts);
+        let x = parsed.get("x").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let y = parsed.get("y").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        x >= y
+    }
+
+    /// RegexAntiPatternFilter: reject match if any antipattern regex matches.
+    fn apply_regex_antipattern_filter(&self, args: &str, matched_texts: &[String]) -> bool {
+        let parsed = self.parse_filter_args(args, matched_texts);
+        if let Some(patterns) = parsed.get("antipatterns") {
+            for pattern in patterns.split('|') {
+                if let Ok(re) = regex::Regex::new(pattern) {
+                    for text in matched_texts {
+                        if re.is_match(text) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// ApostropheTypeFilter: accept match if the token has the expected apostrophe type.
+    fn apply_apostrophe_type_filter(&self, args: &str, matched_texts: &[String]) -> bool {
+        let parsed = self.parse_filter_args(args, matched_texts);
+        let wants_typographic = parsed.get("hasTypographicalApostrophe")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
+        if let Some(word) = parsed.get("wordFrom") {
+            let has_typographic = word.contains('\u{2019}');
+            let has_typewriter = word.contains('\'');
+            if wants_typographic {
+                has_typographic && !has_typewriter
+            } else {
+                has_typewriter || !has_typographic
+            }
+        } else {
+            true
+        }
     }
 }
 
