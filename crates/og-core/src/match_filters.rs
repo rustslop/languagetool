@@ -191,15 +191,19 @@ fn java_split_space(s: &str) -> Vec<&str> {
 }
 
 pub fn original_error_str<'a>(m: &'a RuleMatch, text: &'a str) -> &'a str {
-    let end = m.offset() + m.length();
-    if m.length() == 0
+    error_span(m.offset(), m.length(), text).unwrap_or("")
+}
+
+pub(crate) fn error_span(offset: usize, length: usize, text: &str) -> Option<&str> {
+    let end = offset + length;
+    if length == 0
         || end > text.len()
-        || !text.is_char_boundary(m.offset())
+        || !text.is_char_boundary(offset)
         || !text.is_char_boundary(end)
     {
-        return "";
+        return None;
     }
-    &text[m.offset()..end]
+    Some(&text[offset..end])
 }
 
 fn is_punctuation_only_change(m: &RuleMatch, text: &str) -> bool {
