@@ -1,5 +1,0 @@
-# OpenGrammar-RS rustfmt configuration.
-# Stable-channel options only (nightly-only options are deliberately
-# avoided so `cargo fmt --check` is reproducible on any stable toolchain).
-edition = "2024"
-max_width = 100

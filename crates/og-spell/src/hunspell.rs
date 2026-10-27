@@ -1,697 +1,841 @@
-//! Hunspell `.dic` / `.aff` dictionary support (Phase 6 gap).
-//!
-//! This is a pragmatic Hunspell subset, not a full reimplementation of
-//! `hunspell`'s morphological engine:
-//!
-//! * `.dic` entries with `/FLAG` suffixes and tab-separated morphological
-//!   descriptors (ignored beyond the flags).
-//! * `.aff` `FLAG` modes (`ASCII` default, `LONG`, `NUM`), `COMPOUNDMIN`,
-//!   `COMPOUNDFLAG`, `COMPOUNDBEGIN`/`COMPOUNDMIDDLE`/`COMPOUNDEND`,
-//!   `ONLYINCOMPOUND`, `FORBIDDENWORD`, `NEEDAFFIX`, `KEEPCASE`, `PFX`/`SFX`
-//!   rules with simple conditions (literal chars, `.`, `[...]`, `[^...]` with
-//!   `-` ranges) and one level of `/` continuation flags on the added affix.
-//! * Lookup performs depth-2 affix checking (one prefix AND/OR one suffix
-//!   applied on top of a dictionary stem, verifying BOTH rule flags on the
-//!   stem and honoring the header cross-product permission), which covers the
-//!   common inflections. Deeper recursive continuation expansion is not done.
-//! * Compound acceptance supports 2- and 3-part splits where every part is at
-//!   least `COMPOUNDMIN` characters and carries the required compound flag —
-//!   either directly on the dic stem or via the continuation flags of the
-//!   affix that derived the part (how igerman98/de_AT encodes compound
-//!   markers). Affixed parts without a compound flag are rejected.
-//! * `COMPOUNDPERMITFLAG` is parsed but not enforced; `CIRCUMFIX`,
-//!   `COMPOUNDRULE`, `CHECKCOMPOUNDREP` and friends are not implemented.
-
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use std::fs;
+use std::collections::HashMap;
 use std::path::Path;
 
-#[derive(Debug, thiserror::Error)]
-pub enum HunspellError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Malformed aff file: {0}")]
-    MalformedAff(String),
-    #[error("Malformed dic file: {0}")]
-    MalformedDic(String),
+const MAX_WORD_UTF8_LEN: usize = 100;
+const MAX_SHARPS: usize = 5;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CapType {
+    No,
+    Init,
+    All,
+    Huh,
+    HuhInit,
 }
 
-/// How flags are encoded in the `.aff`/`.dic` files.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum FlagMode {
-    /// One-byte flags (the hunspell default, `FLAG` unset or `FLAG ASCII`).
-    #[default]
-    Ascii,
-    /// Two-byte flags (`FLAG LONG`).
-    Long,
-    /// Comma-separated numeric flags (`FLAG NUM`).
-    Num,
+#[derive(Clone, Debug)]
+struct CondClass {
+    negated: bool,
+    chars: Vec<char>,
 }
 
-/// A parsed affix condition. Hunspell conditions are a small regex dialect;
-/// we support the overwhelmingly common subset: concatenated atoms of a
-/// literal char, `.` (any), `[...]`, and `[^...]`, where classes may contain
-/// `-` ranges. Anything we fail to parse degrades to `Always`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Condition {
-    Always,
-    Atoms(Vec<CondAtom>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum CondAtom {
-    Any,
-    Literal(char),
-    Class {
-        negated: bool,
-        chars: Vec<(char, char)>,
-    },
-}
-
-impl Condition {
-    fn parse(spec: &str) -> Condition {
-        if spec == "." || spec.is_empty() {
-            return Condition::Always;
-        }
-        let chars: Vec<char> = spec.chars().collect();
-        let mut atoms = Vec::new();
-        let mut i = 0;
-        while i < chars.len() {
-            match chars[i] {
-                '.' => atoms.push(CondAtom::Any),
-                '[' => {
-                    let mut j = i + 1;
-                    let negated = j < chars.len() && chars[j] == '^';
-                    if negated {
-                        j += 1;
-                    }
-                    let mut ranges = Vec::new();
-                    let mut start: Option<char> = None;
-                    let mut closed = false;
-                    while j < chars.len() {
-                        match chars[j] {
-                            ']' => {
-                                if let Some(c) = start.take() {
-                                    ranges.push((c, c));
-                                }
-                                closed = true;
-                                break;
-                            }
-                            '-' if start.is_some() && j + 1 < chars.len() => {
-                                let from = start.take().expect("checked is_some");
-                                j += 1;
-                                let to = chars[j];
-                                ranges.push((from, to));
-                            }
-                            c => {
-                                if let Some(prev) = start.take() {
-                                    ranges.push((prev, prev));
-                                }
-                                start = Some(c);
-                            }
-                        }
-                        j += 1;
-                    }
-                    if !closed {
-                        return Condition::Always;
-                    }
-                    atoms.push(CondAtom::Class {
-                        negated,
-                        chars: ranges,
-                    });
-                    i = j;
-                }
-                c => atoms.push(CondAtom::Literal(c)),
-            }
-            i += 1;
-        }
-        Condition::Atoms(atoms)
-    }
-
-    /// Match the condition against a char slice. Hunspell conditions are
-    /// anchored: prefix rules match at the start of the stem, suffix rules
-    /// at its end, and the condition must consume the whole matched window.
-    fn matches_anchored(&self, text: &[char], at_start: bool) -> bool {
-        match self {
-            Condition::Always => true,
-            Condition::Atoms(atoms) => {
-                if text.len() < atoms.len() {
-                    return false;
-                }
-                let window: Vec<char> = if at_start {
-                    text[..atoms.len()].to_vec()
-                } else {
-                    text[text.len() - atoms.len()..].to_vec()
-                };
-                atoms
-                    .iter()
-                    .zip(window.iter())
-                    .all(|(atom, &c)| atom.matches(c))
-            }
-        }
-    }
-}
-
-impl CondAtom {
-    fn matches(&self, c: char) -> bool {
-        match self {
-            CondAtom::Any => true,
-            CondAtom::Literal(l) => *l == c,
-            CondAtom::Class { negated, chars } => {
-                let inside = chars.iter().any(|&(a, b)| c >= a && c <= b);
-                inside != *negated
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AffixKind {
-    Prefix,
-    Suffix,
-}
-
-/// One PFX/SFX rule line.
-#[derive(Debug, Clone)]
-struct AffixRule {
-    kind: AffixKind,
-    /// Canonical (parsed) flag owning this rule.
-    flag: String,
-    /// Chars to strip from the stem ("0" = none).
+#[derive(Clone, Debug)]
+struct AffixLine {
+    name: char,
+    cross: bool,
     strip: String,
-    /// Chars to append (before any `/` continuation flags).
     add: String,
-    condition: Condition,
-    /// Continuation flags carried by forms derived via this rule (the part
-    /// after `/` in the `add` field, e.g. `innen/xyoc` -> x, y, o, c). These
-    /// can carry compound markers (COMPOUNDBEGIN/MIDDLE/END) or further
-    /// affix classes (only consulted at one level).
-    continuation: Vec<String>,
-    /// Whether the owning group header allowed cross-products (`Y`).
-    cross_product: bool,
+    cont: Vec<char>,
+    cond: Vec<CondClass>,
 }
 
-/// Parsed `.aff` data.
-#[derive(Debug, Default)]
-pub struct HunspellAff {
-    flag_mode: FlagMode,
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InCompound {
+    Not,
+    Begin,
+    End,
+}
+
+enum RootHit {
+    Flags(&'static str),
+    Forbidden,
+}
+
+enum CheckResult {
+    NotFound,
+    Found { keepcase: bool },
+    Forbidden,
+}
+
+pub struct HunspellChecker {
+    entries: HashMap<&'static str, Vec<&'static str>>,
+    affixes: Vec<AffixLine>,
+    zero_prefixes: Vec<usize>,
+    zero_suffixes: Vec<usize>,
+    prefixes_by_first: HashMap<char, Vec<usize>>,
+    suffixes_by_last: HashMap<char, Vec<usize>>,
+    compound_begin: Option<char>,
+    compound_middle: Option<char>,
+    compound_end: Option<char>,
+    forbiddenword: Option<char>,
+    permit: Option<char>,
+    only_in_compound: Option<char>,
+    need_affix: Option<char>,
+    circumfix: Option<char>,
+    keepcase: Option<char>,
     compound_min: usize,
-    compound_flag: Option<String>,
-    compound_begin: Option<String>,
-    compound_middle: Option<String>,
-    compound_end: Option<String>,
-    only_in_compound: HashSet<String>,
-    forbidden_word: Option<String>,
-    need_affix: Option<String>,
-    keep_case: Option<String>,
-    /// affix group flag -> cross-product permission from the group header.
-    group_cross_product: HashMap<String, bool>,
-    rules: Vec<AffixRule>,
+    check_sharps: bool,
 }
 
-impl HunspellAff {
-    /// Parse an `.aff` file from its text.
-    pub fn parse(text: &str) -> Result<Self, HunspellError> {
-        let mut aff = HunspellAff {
-            compound_min: 3, // hunspell default
-            ..HunspellAff::default()
-        };
+fn lower_char(c: char) -> char {
+    let mut it = c.to_lowercase();
+    let first = it.next().unwrap_or(c);
+    if it.next().is_some() { c } else { first }
+}
 
-        for raw in text.lines() {
-            let line = raw.split('#').next().unwrap_or("").trim_end();
+fn upper_char(c: char) -> char {
+    let mut it = c.to_uppercase();
+    let first = it.next().unwrap_or(c);
+    if it.next().is_some() { c } else { first }
+}
+
+fn has_flag(flags: &str, flag: Option<char>) -> bool {
+    match flag {
+        Some(f) => flags.contains(f),
+        None => false,
+    }
+}
+
+fn parse_condition(cond: &str) -> Vec<CondClass> {
+    let mut out = Vec::new();
+    let chars: Vec<char> = cond.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '.' => out.push(CondClass {
+                negated: false,
+                chars: Vec::new(),
+            }),
+            '[' => {
+                i += 1;
+                let negated = i < chars.len() && chars[i] == '^';
+                if negated {
+                    i += 1;
+                }
+                let mut set = Vec::new();
+                while i < chars.len() && chars[i] != ']' {
+                    set.push(chars[i]);
+                    i += 1;
+                }
+                out.push(CondClass {
+                    negated,
+                    chars: set,
+                });
+            }
+            c => out.push(CondClass {
+                negated: false,
+                chars: vec![c],
+            }),
+        }
+        i += 1;
+    }
+    out
+}
+
+fn cond_match(cond: &[CondClass], s: &[char], at_start: bool) -> bool {
+    if cond.len() > s.len() {
+        return false;
+    }
+    let offset = if at_start { 0 } else { s.len() - cond.len() };
+    for (i, class) in cond.iter().enumerate() {
+        if class.chars.is_empty() {
+            continue;
+        }
+        let inside = class.chars.contains(&s[offset + i]);
+        if inside == class.negated {
+            return false;
+        }
+    }
+    true
+}
+
+fn cap_type(chars: &[char]) -> CapType {
+    let mut ncap = 0;
+    let mut nneutral = 0;
+    for &c in chars {
+        if c != lower_char(c) {
+            ncap += 1;
+        }
+        if upper_char(c) == lower_char(c) {
+            nneutral += 1;
+        }
+    }
+    let firstcap = !chars.is_empty() && chars[0] != lower_char(chars[0]);
+    if ncap == 0 {
+        CapType::No
+    } else if ncap == 1 && firstcap {
+        CapType::Init
+    } else if ncap == chars.len() || ncap + nneutral == chars.len() {
+        CapType::All
+    } else if ncap > 1 && firstcap {
+        CapType::HuhInit
+    } else {
+        CapType::Huh
+    }
+}
+
+fn mk_all_small(chars: &[char]) -> Vec<char> {
+    chars.iter().map(|&c| lower_char(c)).collect()
+}
+
+fn mk_init_cap(chars: &[char]) -> Vec<char> {
+    let mut out = mk_all_small(chars);
+    if !out.is_empty() {
+        out[0] = upper_char(out[0]);
+    }
+    out
+}
+
+impl HunspellChecker {
+    pub fn load(aff_path: &Path, dic_path: &Path) -> Option<Self> {
+        let aff = std::fs::read_to_string(aff_path).ok()?;
+        let dic: &'static str = Box::leak(std::fs::read_to_string(dic_path).ok()?.into_boxed_str());
+        Self::parse(&aff, dic)
+    }
+
+    fn parse(aff: &str, dic: &'static str) -> Option<Self> {
+        let mut checker = HunspellChecker {
+            entries: HashMap::new(),
+            affixes: Vec::new(),
+            zero_prefixes: Vec::new(),
+            zero_suffixes: Vec::new(),
+            prefixes_by_first: HashMap::new(),
+            suffixes_by_last: HashMap::new(),
+            compound_begin: None,
+            compound_middle: None,
+            compound_end: None,
+            forbiddenword: None,
+            permit: None,
+            only_in_compound: None,
+            need_affix: None,
+            circumfix: None,
+            keepcase: None,
+            compound_min: 3,
+            check_sharps: false,
+        };
+        let mut headers: HashMap<char, bool> = HashMap::new();
+        let lines = aff.lines().peekable();
+        for line in lines {
+            let line = match line.find('#') {
+                Some(0) => continue,
+                Some(pos) => &line[..pos],
+                None => line,
+            };
             if line.trim().is_empty() {
                 continue;
             }
-            let mut tokens = line.split_whitespace();
-            let Some(key) = tokens.next() else { continue };
-            match key {
-                "FLAG" => {
-                    if let Some(mode) = tokens.next() {
-                        aff.flag_mode = match mode {
-                            "LONG" => FlagMode::Long,
-                            "NUM" => FlagMode::Num,
-                            _ => FlagMode::Ascii,
-                        };
-                    }
-                }
-                "COMPOUNDMIN" => {
-                    if let Some(v) = tokens.next().and_then(|t| t.parse().ok()) {
-                        aff.compound_min = v;
-                    }
-                }
-                "COMPOUNDFLAG" => {
-                    aff.compound_flag = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "COMPOUNDBEGIN" => {
-                    aff.compound_begin = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "COMPOUNDMIDDLE" => {
-                    aff.compound_middle = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "COMPOUNDEND" => {
-                    aff.compound_end = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "ONLYINCOMPOUND" => {
-                    if let Some(f) = tokens.next() {
-                        aff.only_in_compound.extend(aff.parse_flags(f));
-                    }
-                }
-                "FORBIDDENWORD" => {
-                    aff.forbidden_word = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "NEEDAFFIX" => {
-                    aff.need_affix = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "KEEPCASE" => {
-                    aff.keep_case = tokens.next().map(|f| aff.canonical_flag_token(f));
-                }
-                "COMPOUNDPERMITFLAG" => {
-                    // Parsed for documentation; not enforced by this subset.
-                    let _ = tokens.next();
-                }
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            match fields[0] {
                 "PFX" | "SFX" => {
-                    // Rule line (headers "PFX F Y 35" are recognized by having
-                    // a non-strip 3rd token; rule lines are "PFX F strip add cond").
-                    let kind = if key == "PFX" {
-                        AffixKind::Prefix
-                    } else {
-                        AffixKind::Suffix
+                    let Some(name) = fields.get(1).and_then(|f| f.chars().next()) else {
+                        continue;
                     };
-                    let flag = match tokens.next() {
-                        Some(f) => aff.canonical_flag_token(f),
-                        None => return Err(HunspellError::MalformedAff(line.to_string())),
-                    };
-                    let Some(strip_tok) = tokens.next() else {
-                        return Err(HunspellError::MalformedAff(line.to_string()));
-                    };
-                    // Header lines: strip token is Y/N and a count follows.
-                    if matches!(strip_tok, "Y" | "N") && tokens.next().is_some() {
-                        aff.group_cross_product
-                            .insert(flag.clone(), strip_tok == "Y");
+                    let is_prefix = fields[0] == "PFX";
+                    if fields.len() == 4 && fields[3].parse::<i32>().is_ok() {
+                        headers.insert(name, fields[2] == "Y");
                         continue;
                     }
-                    let Some(add_tok) = tokens.next() else {
-                        return Err(HunspellError::MalformedAff(line.to_string()));
+                    if fields.len() < 4 {
+                        continue;
+                    }
+                    let cross = headers.get(&name).copied().unwrap_or(true);
+                    let strip = if fields[2] == "0" { "" } else { fields[2] };
+                    let (add, cont) = match fields[3].split_once('/') {
+                        Some((a, f)) => (a, f.chars().collect::<Vec<char>>()),
+                        None => (fields[3], Vec::new()),
                     };
-                    let (add, continuation) = match add_tok.split_once('/') {
-                        Some((a, c)) => (a, aff.parse_flags(c)),
-                        None => (add_tok, Vec::new()),
+                    let add = if add == "0" { "" } else { add };
+                    let cond = if fields.len() > 4 {
+                        parse_condition(fields[4])
+                    } else {
+                        parse_condition(".")
                     };
-                    let cond = tokens.next().unwrap_or(".");
-                    let cross_product = aff.group_cross_product.get(&flag).copied().unwrap_or(true);
-                    aff.rules.push(AffixRule {
-                        kind,
-                        flag,
-                        strip: if strip_tok == "0" {
-                            String::new()
-                        } else {
-                            strip_tok.to_string()
-                        },
-                        add: if add == "0" {
-                            String::new()
-                        } else {
-                            add.to_string()
-                        },
-                        condition: Condition::parse(cond),
-                        continuation,
-                        cross_product,
+                    let idx = checker.affixes.len();
+                    if is_prefix {
+                        match add.chars().next() {
+                            None => checker.zero_prefixes.push(idx),
+                            Some(c) => checker.prefixes_by_first.entry(c).or_default().push(idx),
+                        }
+                    } else {
+                        match add.chars().next_back() {
+                            None => checker.zero_suffixes.push(idx),
+                            Some(c) => checker.suffixes_by_last.entry(c).or_default().push(idx),
+                        }
+                    }
+                    checker.affixes.push(AffixLine {
+                        name,
+                        cross,
+                        strip: strip.to_string(),
+                        add: add.to_string(),
+                        cont,
+                        cond,
                     });
                 }
+                "COMPOUNDBEGIN" => {
+                    checker.compound_begin = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "COMPOUNDMIDDLE" => {
+                    checker.compound_middle = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "COMPOUNDEND" => {
+                    checker.compound_end = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "FORBIDDENWORD" => {
+                    checker.forbiddenword = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "COMPOUNDPERMITFLAG" => {
+                    checker.permit = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "ONLYINCOMPOUND" => {
+                    checker.only_in_compound = fields.get(1).and_then(|f| f.chars().next())
+                }
+                "NEEDAFFIX" => checker.need_affix = fields.get(1).and_then(|f| f.chars().next()),
+                "CIRCUMFIX" => checker.circumfix = fields.get(1).and_then(|f| f.chars().next()),
+                "KEEPCASE" => checker.keepcase = fields.get(1).and_then(|f| f.chars().next()),
+                "COMPOUNDMIN" => {
+                    checker.compound_min = fields.get(1).and_then(|f| f.parse().ok()).unwrap_or(3)
+                }
+                "CHECKSHARPS" => checker.check_sharps = true,
                 _ => {}
             }
         }
-        Ok(aff)
-    }
-
-    /// Load an `.aff` file from disk.
-    pub fn from_file(path: &Path) -> Result<Self, HunspellError> {
-        Self::parse(&fs::read_to_string(path)?)
-    }
-
-    /// Convert a raw flag token from the .aff file into its canonical
-    /// representation (used both for rule ownership and dictionary flags).
-    fn canonical_flag_token(&self, token: &str) -> String {
-        self.parse_flags(token).join(",")
-    }
-
-    /// Parse a raw flag string (from `.dic` word/FLAGS or an `.aff` flag
-    /// field) into canonical flag strings according to the FLAG mode.
-    fn parse_flags(&self, raw: &str) -> Vec<String> {
-        match self.flag_mode {
-            FlagMode::Ascii => raw.chars().map(|c| c.to_string()).collect(),
-            FlagMode::Long => raw
-                .as_bytes()
-                .chunks(2)
-                .filter(|c| c.len() == 2)
-                .map(|c| String::from_utf8_lossy(c).into_owned())
-                .collect(),
-            FlagMode::Num => raw.split(',').map(str::to_string).collect(),
-        }
-    }
-}
-
-/// A Hunspell dictionary: stems with their flags plus the affix data needed
-/// for lookup.
-#[derive(Debug)]
-pub struct HunspellDictionary {
-    /// stem -> canonical flag set
-    entries: HashMap<String, Vec<String>>,
-    aff: HunspellAff,
-}
-
-impl HunspellDictionary {
-    /// Load a dictionary from `.dic` and `.aff` files.
-    pub fn open(dic_path: &Path, aff_path: &Path) -> Result<Self, HunspellError> {
-        let aff = HunspellAff::from_file(aff_path)?;
-        let dic_text = fs::read_to_string(dic_path)?;
-        Self::parse_dic(&dic_text, aff)
-    }
-
-    fn parse_dic(text: &str, aff: HunspellAff) -> Result<Self, HunspellError> {
-        let mut entries: HashMap<String, Vec<String>> = HashMap::new();
-        for (idx, raw) in text.lines().enumerate() {
-            if idx == 0 && raw.trim().chars().all(|c| c.is_ascii_digit()) {
-                continue; // declared entry count
-            }
-            let line = raw.split('\t').next().unwrap_or("");
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
+        let mut seen_first = false;
+        for line in dic.lines() {
+            if !seen_first {
+                seen_first = true;
                 continue;
             }
-            let (word, flags) = match line.split_once('/') {
-                Some((w, f)) => (w, aff.parse_flags(f)),
-                None => (line, Vec::new()),
+            let word_part = match line.find('\t') {
+                Some(pos) => &line[..pos],
+                None => line,
+            };
+            let word = match word_part.find('/') {
+                Some(0) | None => word_part,
+                Some(pos) => &word_part[..pos],
+            };
+            let flags = match word_part.find('/') {
+                Some(pos) if pos > 0 => &word_part[pos + 1..],
+                _ => "",
             };
             if word.is_empty() {
                 continue;
             }
-            entries.entry(word.to_string()).or_default().extend(flags);
+            checker.entries.entry(word).or_default().push(flags);
         }
-        Ok(Self { entries, aff })
+        if checker.entries.is_empty() {
+            return None;
+        }
+        Some(checker)
     }
 
-    /// Number of dictionary stems.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// True when `word` is accepted by the dictionary: a stem, an affixed
-    /// form of a stem (one prefix and/or one suffix), or a valid compound.
-    pub fn is_known(&self, word: &str) -> bool {
-        if word.is_empty() {
+    pub fn spell(&self, word: &str) -> bool {
+        if word.len() >= MAX_WORD_UTF8_LEN {
             return false;
         }
-        // FORBIDDENWORD wins over every other acceptance path.
-        if self.is_forbidden(word) {
-            return false;
+        let all: Vec<char> = word.chars().collect();
+        let start = all.iter().position(|&c| c != ' ').unwrap_or(all.len());
+        let mut end = all.len();
+        let mut abbv = false;
+        while end > start && all[end - 1] == '.' {
+            end -= 1;
+            abbv = true;
         }
-        if self.is_known_stem(word, false) {
+        if end <= start {
             return true;
         }
-        // NEEDAFFIX surfaces are NOT rejected here: igerman98-style
-        // dictionaries mark valid standalone words with h plus a zero-add
-        // rule (e.g. de_AT `SFX j 0 0/xoc .`), so the affixed path below
-        // must still run for them; is_known_stem already rejects the bare
-        // analysis, and a stem with h and no applicable affix simply falls
-        // through to false.
-        let lower = word.to_lowercase();
-        if lower != word {
-            if self.is_forbidden(&lower) {
+        let scw: Vec<char> = all[start..end].to_vec();
+        if self.is_number_like(&scw) {
+            return true;
+        }
+        let captype = cap_type(&scw);
+        match captype {
+            CapType::No | CapType::Huh | CapType::HuhInit => {
+                let mut r = self.check_result(&scw);
+                if matches!(r, CheckResult::NotFound) && abbv {
+                    let mut with_dot = scw.clone();
+                    with_dot.push('.');
+                    r = self.check_result(&with_dot);
+                }
+                !matches!(r, CheckResult::NotFound | CheckResult::Forbidden)
+            }
+            CapType::Init => self.spell_init_cap(&scw, abbv, false),
+            CapType::All => {
+                let mut r = self.check_result(&scw);
+                if matches!(r, CheckResult::NotFound) && abbv {
+                    let mut with_dot = scw.clone();
+                    with_dot.push('.');
+                    r = self.check_result(&with_dot);
+                }
+                if !matches!(r, CheckResult::NotFound) {
+                    return !matches!(r, CheckResult::Forbidden);
+                }
+                if self.check_sharps && scw.windows(2).any(|w| w[0] == 'S' && w[1] == 'S') {
+                    let small = mk_all_small(&scw);
+                    if self.spellsharps(&small, 0, 0, 0) {
+                        return true;
+                    }
+                    let init = mk_init_cap(&scw);
+                    if self.spellsharps(&init, 0, 0, 0) {
+                        return true;
+                    }
+                    if abbv {
+                        let mut small_dot = small;
+                        small_dot.push('.');
+                        if self.spellsharps(&small_dot, 0, 0, 0) {
+                            return true;
+                        }
+                        let mut init_dot = mk_init_cap(&scw);
+                        init_dot.push('.');
+                        if self.spellsharps(&init_dot, 0, 0, 0) {
+                            return true;
+                        }
+                    }
+                }
+                let converged = mk_init_cap(&mk_all_small(&scw));
+                self.spell_init_cap(&converged, abbv, true)
+            }
+        }
+    }
+
+    fn spell_init_cap(&self, scw: &[char], abbv: bool, all_cap_fallthrough: bool) -> bool {
+        match self.check_result(scw) {
+            CheckResult::Forbidden => return false,
+            CheckResult::Found { keepcase } => {
+                if !keepcase || !all_cap_fallthrough {
+                    return true;
+                }
+            }
+            CheckResult::NotFound => {}
+        }
+        let lower = mk_all_small(scw);
+        let mut r = self.check_result(&lower);
+        let mut probe = lower.clone();
+        if matches!(r, CheckResult::NotFound) && abbv {
+            probe.push('.');
+            r = self.check_result(&probe);
+            if matches!(r, CheckResult::NotFound) {
+                let mut init_dot = mk_init_cap(scw);
+                init_dot.push('.');
+                let r4 = self.check_result(&init_dot);
+                if let CheckResult::Found { keepcase } = r4
+                    && (!keepcase || !all_cap_fallthrough)
+                {
+                    return true;
+                }
                 return false;
             }
-            if self.is_known_stem(&lower, true) {
-                return true;
+        }
+        match r {
+            CheckResult::Forbidden => false,
+            CheckResult::NotFound => false,
+            CheckResult::Found { keepcase } => {
+                !(keepcase && (all_cap_fallthrough || !(self.check_sharps && probe.contains(&'ß'))))
             }
         }
-        if self.is_known_affixed(word) {
-            return true;
-        }
-        if lower != word && self.is_known_affixed(&lower) {
-            return true;
-        }
-        self.is_known_compound(word)
     }
 
-    /// A surface form listed with the FORBIDDENWORD flag must be rejected
-    /// outright (these are words hunspell marks as wrong even though they
-    /// look derivable).
-    fn is_forbidden(&self, word: &str) -> bool {
-        let Some(forbidden) = &self.aff.forbidden_word else {
+    fn spellsharps(&self, base: &[char], from: usize, n: usize, repnum: usize) -> bool {
+        let pos = base[from..]
+            .windows(2)
+            .position(|w| w[0] == 's' && w[1] == 's')
+            .map(|p| p + from);
+        if let Some(pos) = pos {
+            if n < MAX_SHARPS {
+                let mut replaced = base.to_vec();
+                replaced[pos] = 'ß';
+                replaced.remove(pos + 1);
+                if self.spellsharps(&replaced, pos + 1, n + 1, repnum + 1) {
+                    return true;
+                }
+                if self.spellsharps(base, pos + 2, n + 1, repnum) {
+                    return true;
+                }
+                return false;
+            }
             return false;
+        }
+        if repnum > 0 {
+            !matches!(self.check_result(base), CheckResult::NotFound)
+        } else {
+            false
+        }
+    }
+
+    fn is_number_like(&self, chars: &[char]) -> bool {
+        #[derive(PartialEq)]
+        enum State {
+            Begin,
+            Num,
+            Sep,
+        }
+        let mut state = State::Begin;
+        for &c in chars {
+            if c.is_ascii_digit() {
+                state = State::Num;
+            } else if c == ',' || c == '.' || c == '-' {
+                if state == State::Sep || state == State::Begin {
+                    break;
+                }
+                state = State::Sep;
+            } else {
+                break;
+            }
+        }
+        !chars.is_empty()
+            && state == State::Num
+            && chars
+                .iter()
+                .all(|c| c.is_ascii_digit() || *c == ',' || *c == '.' || *c == '-')
+    }
+
+    fn check_result(&self, word: &[char]) -> CheckResult {
+        if let Some(homonyms) = self.lookup_flags(word) {
+            if let Some(first) = homonyms.first()
+                && has_flag(first, self.forbiddenword)
+            {
+                return CheckResult::Forbidden;
+            }
+            for entry in homonyms {
+                if has_flag(entry, self.need_affix) || has_flag(entry, self.only_in_compound) {
+                    continue;
+                }
+                return CheckResult::Found {
+                    keepcase: has_flag(entry, self.keepcase),
+                };
+            }
+        }
+        if let Some(hit) = self.affix_check(word, None, InCompound::Not) {
+            return match hit {
+                RootHit::Forbidden => CheckResult::Forbidden,
+                RootHit::Flags(flags) => {
+                    if has_flag(flags, self.only_in_compound) {
+                        CheckResult::NotFound
+                    } else {
+                        CheckResult::Found {
+                            keepcase: has_flag(flags, self.keepcase),
+                        }
+                    }
+                }
+            };
+        }
+        if (self.compound_begin.is_some() || self.compound_middle.is_some())
+            && (self.compound_check(word, 0, true) || self.compound_check(word, 0, false))
+        {
+            return CheckResult::Found { keepcase: false };
+        }
+        CheckResult::NotFound
+    }
+
+    fn lookup_flags(&self, word: &[char]) -> Option<&Vec<&'static str>> {
+        let mut buf = [0u8; 128];
+        let mut len = 0;
+        for &c in word {
+            let mut encoded = [0u8; 4];
+            let s = c.encode_utf8(&mut encoded);
+            for &b in s.as_bytes() {
+                if len == buf.len() {
+                    let key = word.iter().collect::<String>();
+                    return self.entries.get(key.as_str());
+                }
+                buf[len] = b;
+                len += 1;
+            }
+        }
+        let key = std::str::from_utf8(&buf[..len]).ok()?;
+        self.entries.get(key)
+    }
+
+    fn affix_check(
+        &self,
+        word: &[char],
+        needflag: Option<char>,
+        in_compound: InCompound,
+    ) -> Option<RootHit> {
+        if let Some(hit) = self.prefix_check(word, needflag, in_compound) {
+            return Some(hit);
+        }
+        self.suffix_check(word, needflag, in_compound, None, false)
+    }
+
+    fn suffix_gate(
+        &self,
+        line: &AffixLine,
+        in_compound: InCompound,
+        pfx: Option<&AffixLine>,
+    ) -> bool {
+        if in_compound == InCompound::Begin && !line.cont.contains(&self.permit.unwrap_or('\0')) {
+            return false;
+        }
+        if in_compound == InCompound::Not
+            && self.only_in_compound.is_some()
+            && line.cont.contains(&self.only_in_compound.unwrap_or('\0'))
+        {
+            return false;
+        }
+        if let Some(circ) = self.circumfix {
+            let sfx_has = line.cont.contains(&circ);
+            match pfx {
+                None => {
+                    if sfx_has {
+                        return false;
+                    }
+                }
+                Some(p) => {
+                    let pfx_has = p.cont.contains(&circ);
+                    if pfx_has != sfx_has {
+                        return false;
+                    }
+                }
+            }
+        }
+        if let Some(h) = self.need_affix
+            && line.cont.contains(&h)
+            && !matches!(pfx, Some(p) if !p.cont.contains(&h))
+        {
+            return false;
+        }
+        true
+    }
+
+    fn prefix_gate(&self, line: &AffixLine, in_compound: InCompound) -> bool {
+        if in_compound == InCompound::Not
+            && self.only_in_compound.is_some()
+            && line.cont.contains(&self.only_in_compound.unwrap_or('\0'))
+        {
+            return false;
+        }
+        if in_compound == InCompound::End && !line.cont.contains(&self.permit.unwrap_or('\0')) {
+            return false;
+        }
+        true
+    }
+
+    fn try_suffix_line(
+        &self,
+        idx: usize,
+        word: &[char],
+        needflag: Option<char>,
+        in_compound: InCompound,
+        pfx: Option<&AffixLine>,
+        cross: bool,
+    ) -> Option<RootHit> {
+        let line = &self.affixes[idx];
+        if cross && !line.cross {
+            return None;
+        }
+        let add_chars: Vec<char> = line.add.chars().collect();
+        if word.len() < add_chars.len() || !word.ends_with(&add_chars[..]) {
+            return None;
+        }
+        if !self.suffix_gate(line, in_compound, pfx) {
+            return None;
+        }
+        let stem_len = word.len() - add_chars.len();
+        if stem_len == 0 {
+            return None;
+        }
+        let mut root: Vec<char> = word[..stem_len].to_vec();
+        root.extend(line.strip.chars());
+        if !cond_match(&line.cond, &root, false) {
+            return None;
+        }
+        let badflag = if in_compound == InCompound::Not {
+            self.only_in_compound
+        } else {
+            None
         };
-        self.entries
-            .get(word)
-            .is_some_and(|flags| flags.iter().any(|f| f == forbidden))
-    }
-
-    /// Direct stem lookup. Standalone stems are rejected when they carry
-    /// ONLYINCOMPOUND or NEEDAFFIX (both mean "not legal on its own"); when
-    /// the lookup is a lowercased fallback, KEEPCASE entries are rejected.
-    fn is_known_stem(&self, word: &str, lowercased: bool) -> bool {
-        self.entries.get(word).is_some_and(|flags| {
-            if flags.iter().any(|f| self.aff.only_in_compound.contains(f)) {
-                return false;
-            }
-            if let Some(need) = &self.aff.need_affix
-                && flags.iter().any(|f| f == need)
+        let entries = self.lookup_flags(&root)?;
+        for entry in entries {
+            if let Some(bad) = badflag
+                && entry.contains(bad)
             {
-                return false;
+                continue;
             }
-            if lowercased
-                && let Some(keep) = &self.aff.keep_case
-                && flags.iter().any(|f| f == keep)
+            if !entry.contains(line.name) && !matches!(pfx, Some(p) if p.cont.contains(&line.name))
             {
-                return false;
-            }
-            true
-        })
-    }
-
-    /// Check stem + flags combination for affix application (compound-only
-    /// stems are legal here when they carry the affix flag).
-    fn stem_accepts(&self, stem: &str, flag: &str) -> bool {
-        self.entries
-            .get(stem)
-            .is_some_and(|flags| flags.iter().any(|f| f == flag))
-    }
-
-    fn is_known_affixed(&self, word: &str) -> bool {
-        let word_chars: Vec<char> = word.chars().collect();
-        // Depth-1: one suffix or one prefix on a dic stem. Depth-2: word =
-        // prefix + stem + suffix — reverse the suffix to get the stem+strip
-        // form, reverse the prefix on that, and require the reconstructed
-        // stem to carry BOTH affix flags (and both groups to permit
-        // cross-products).
-        for sfx in &self.aff.rules {
-            if sfx.kind != AffixKind::Suffix {
                 continue;
             }
-            if let Some(stem) = self.apply_rule(&word_chars, sfx) {
-                if self.stem_accepts(&stem, &sfx.flag) {
-                    return true;
-                }
-                if self.pair_applies(&stem, sfx, AffixKind::Prefix) {
-                    return true;
+            if cross {
+                let p = pfx?;
+                if !entry.contains(p.name) && !line.cont.contains(&p.name) {
+                    continue;
                 }
             }
-        }
-        for pfx in &self.aff.rules {
-            if pfx.kind != AffixKind::Prefix {
+            if let Some(f) = needflag
+                && !entry.contains(f)
+                && !line.cont.contains(&f)
+            {
                 continue;
             }
-            if let Some(stem) = self.apply_rule(&word_chars, pfx) {
-                if self.stem_accepts(&stem, &pfx.flag) {
-                    return true;
+            return Some(if has_flag(entry, self.forbiddenword) {
+                RootHit::Forbidden
+            } else {
+                RootHit::Flags(entry)
+            });
+        }
+        None
+    }
+
+    fn try_prefix_line(
+        &self,
+        idx: usize,
+        word: &[char],
+        needflag: Option<char>,
+        in_compound: InCompound,
+    ) -> Option<RootHit> {
+        let line = &self.affixes[idx];
+        let add_chars: Vec<char> = line.add.chars().collect();
+        if word.len() < add_chars.len() || !word.starts_with(&add_chars[..]) {
+            return None;
+        }
+        if !self.prefix_gate(line, in_compound) {
+            return None;
+        }
+        let stem_len = word.len() - add_chars.len();
+        if stem_len == 0 {
+            return None;
+        }
+        let mut root: Vec<char> = line.strip.chars().collect();
+        root.extend_from_slice(&word[add_chars.len()..]);
+        if !cond_match(&line.cond, &root, true) {
+            return None;
+        }
+        if let Some(entries) = self.lookup_flags(&root) {
+            for entry in entries {
+                if !entry.contains(line.name) {
+                    continue;
                 }
-                if self.pair_applies(&stem, pfx, AffixKind::Suffix) {
-                    return true;
+                if self.need_affix.is_some() && line.cont.contains(&self.need_affix.unwrap()) {
+                    continue;
                 }
+                if let Some(f) = needflag
+                    && !entry.contains(f)
+                    && !line.cont.contains(&f)
+                {
+                    continue;
+                }
+                return Some(if has_flag(entry, self.forbiddenword) {
+                    RootHit::Forbidden
+                } else {
+                    RootHit::Flags(entry)
+                });
             }
         }
-        false
-    }
-
-    /// Depth-2 helper: `first` was reverse-applied to the surface; check
-    /// whether an affix of `second_kind` applies on top, verifying both
-    /// flags on the reconstructed stem and the cross-product permission of
-    /// both groups.
-    fn pair_applies(&self, stem1: &str, first: &AffixRule, second_kind: AffixKind) -> bool {
-        if !first.cross_product {
-            return false;
-        }
-        let stem1_chars: Vec<char> = stem1.chars().collect();
-        self.aff.rules.iter().any(|second| {
-            second.kind == second_kind
-                && second.cross_product
-                && self
-                    .apply_rule(&stem1_chars, second)
-                    .is_some_and(|stem0| self.stem_accepts_two(&stem0, &first.flag, &second.flag))
-        })
-    }
-
-    /// Like [`Self::stem_accepts`] but requiring two flags on the same stem.
-    fn stem_accepts_two(&self, stem: &str, flag_a: &str, flag_b: &str) -> bool {
-        self.entries.get(stem).is_some_and(|flags| {
-            flags.iter().any(|f| f == flag_a) && flags.iter().any(|f| f == flag_b)
-        })
-    }
-
-    /// Reverse-apply `rule` to `word`: if `word` could have been produced by
-    /// applying the rule to a stem, return that stem.
-    fn apply_rule(&self, word: &[char], rule: &AffixRule) -> Option<String> {
-        let add: Vec<char> = rule.add.chars().collect();
-        match rule.kind {
-            AffixKind::Suffix => {
-                if word.len() < add.len() || !word.ends_with(&add) {
-                    return None;
-                }
-                let mut stem: Vec<char> = word[..word.len() - add.len()].to_vec();
-                // Applying the rule means removing what it added and restoring
-                // what it stripped; for suffix rules the strip goes back on
-                // the end of the stem.
-                let strip: Vec<char> = rule.strip.chars().collect();
-                stem.extend(strip);
-                if !self.condition_ok(rule, &stem) {
-                    return None;
-                }
-                Some(stem.into_iter().collect())
-            }
-            AffixKind::Prefix => {
-                if word.len() < add.len() || !word.starts_with(&add) {
-                    return None;
-                }
-                let mut stem: Vec<char> = word[add.len()..].to_vec();
-                let strip: Vec<char> = rule.strip.chars().collect();
-                let mut restored: Vec<char> = strip;
-                restored.extend(stem);
-                stem = restored;
-                if !self.condition_ok(rule, &stem) {
-                    return None;
-                }
-                Some(stem.into_iter().collect())
-            }
-        }
-    }
-
-    /// Conditions apply to the stem after stripping (before the strip is
-    /// restored), matched from the relevant edge.
-    /// Hunspell affix conditions are matched against the stem *before* the
-    /// strip is removed — i.e. against the reconstructed stem — anchored at
-    /// the start for prefixes and the end for suffixes.
-    fn condition_ok(&self, rule: &AffixRule, stem: &[char]) -> bool {
-        rule.condition
-            .matches_anchored(stem, rule.kind == AffixKind::Prefix)
-    }
-
-    /// Compound check: 2- or 3-part split, all parts >= COMPOUNDMIN, each
-    /// part accepted as a compound member via COMPOUNDFLAG or the positional
-    /// COMPOUNDBEGIN/MIDDLE/END flag — present either on the dic stem or in
-    /// the continuation flags of the affix that derived the part.
-    fn is_known_compound(&self, word: &str) -> bool {
-        if self.aff.compound_flag.is_none()
-            && self.aff.compound_begin.is_none()
-            && self.aff.compound_middle.is_none()
-            && self.aff.compound_end.is_none()
+        if line.cross
+            && let Some(hit) = self.suffix_check(&root, needflag, in_compound, Some(line), true)
         {
-            return false;
+            return Some(hit);
         }
-        let chars: Vec<char> = word.chars().collect();
-        let min = self.aff.compound_min;
-        if chars.len() < min * 2 {
-            return false;
-        }
-        let two_part = (min..=chars.len() - min).map(|i| (i, None::<usize>));
-        let three_part = (min..=chars.len().saturating_sub(2 * min))
-            .flat_map(|i| (i + min..=chars.len() - min).map(move |j| (i, Some(j))));
-        for (i, j) in two_part.chain(three_part) {
-            let parts: Vec<&[char]> = match j {
-                Some(j) => vec![&chars[..i], &chars[i..j], &chars[j..]],
-                None => vec![&chars[..i], &chars[i..]],
-            };
-            if parts.iter().enumerate().all(|(idx, part)| {
-                let s: String = part.iter().collect();
-                self.is_compound_member(&s, idx, parts.len())
-            }) {
-                return true;
-            }
-        }
-        false
+        None
     }
 
-    fn required_compound_flag(&self, index: usize, total: usize) -> Option<&String> {
-        if index == 0 {
-            return self.aff.compound_begin.as_ref();
-        }
-        if index + 1 == total {
-            return self.aff.compound_end.as_ref();
-        }
-        self.aff.compound_middle.as_ref()
-    }
-
-    fn is_compound_member(&self, part: &str, index: usize, total: usize) -> bool {
-        if self.is_forbidden(part) {
-            return false;
-        }
-        let required = self.required_compound_flag(index, total);
-
-        // 1. The part is a dic stem: it must carry the required compound
-        //    flag (or COMPOUNDFLAG) itself.
-        if let Some(flags) = self.entries.get(part) {
-            if self.has_any_compound_flag(flags, required) {
-                return true;
-            }
-            // No early NEEDAFFIX rejection: a stem with NEEDAFFIX can still
-            // qualify as a member via branch 2 (a zero-add affix whose
-            // continuation flags carry the compound marker), which is how
-            // igerman98 encodes compoundable h-flagged stems.
-        }
-
-        // 2. The part is affixed: the derived form's flags are the stem's
-        //    flags plus the affix's continuation flags (this is where
-        //    igerman98-style dictionaries keep COMPOUNDBEGIN/MIDDLE markers).
-        //    A derived form with no compound flag is NOT a valid member.
-        let part_chars: Vec<char> = part.chars().collect();
-        for rule in &self.aff.rules {
-            let Some(stem) = self.apply_rule(&part_chars, rule) else {
-                continue;
-            };
-            if !self.stem_accepts(&stem, &rule.flag) {
-                continue;
-            }
-            let Some(stem_flags) = self.entries.get(&stem) else {
-                continue;
-            };
-            let mut derived: Vec<&String> = stem_flags.iter().collect();
-            derived.extend(rule.continuation.iter());
-            if self.has_any_compound_flag_ref(&derived, required) {
-                return true;
+    fn prefix_check(
+        &self,
+        word: &[char],
+        needflag: Option<char>,
+        in_compound: InCompound,
+    ) -> Option<RootHit> {
+        let tail = word
+            .first()
+            .and_then(|c| self.prefixes_by_first.get(c))
+            .into_iter()
+            .flatten();
+        for idx in self.zero_prefixes.iter().copied().chain(tail.copied()) {
+            if let Some(hit) = self.try_prefix_line(idx, word, needflag, in_compound) {
+                return Some(hit);
             }
         }
-        false
+        None
     }
 
-    fn has_any_compound_flag(&self, flags: &[String], required: Option<&String>) -> bool {
-        self.has_any_compound_flag_ref(&flags.iter().collect::<Vec<_>>(), required)
+    fn suffix_check(
+        &self,
+        word: &[char],
+        needflag: Option<char>,
+        in_compound: InCompound,
+        pfx: Option<&AffixLine>,
+        cross: bool,
+    ) -> Option<RootHit> {
+        let tail = word
+            .last()
+            .and_then(|c| self.suffixes_by_last.get(c))
+            .into_iter()
+            .flatten();
+        for idx in self.zero_suffixes.iter().copied().chain(tail.copied()) {
+            if let Some(hit) = self.try_suffix_line(idx, word, needflag, in_compound, pfx, cross) {
+                return Some(hit);
+            }
+        }
+        None
     }
 
-    fn has_any_compound_flag_ref(&self, flags: &[&String], required: Option<&String>) -> bool {
-        if let Some(cf) = &self.aff.compound_flag
-            && flags.contains(&cf)
+    fn compound_first_ok(&self, part: &[char], wordnum: usize) -> Option<bool> {
+        let need = if wordnum == 0 {
+            self.compound_begin
+        } else {
+            self.compound_middle
+        }?;
+        if let Some(entries) = self.lookup_flags(part) {
+            for entry in entries {
+                if has_flag(entry, self.need_affix) {
+                    continue;
+                }
+                if !entry.contains(need) {
+                    continue;
+                }
+                if has_flag(entry, self.forbiddenword) {
+                    return Some(false);
+                }
+                return Some(true);
+            }
+        }
+        if let Some(RootHit::Flags(_)) =
+            self.suffix_check(part, Some(need), InCompound::Begin, None, false)
         {
-            return true;
+            return Some(true);
         }
-        required.is_some_and(|w| flags.contains(&w))
+        if let Some(RootHit::Flags(_)) = self.prefix_check(part, Some(need), InCompound::Begin) {
+            return Some(true);
+        }
+        None
     }
-}
 
-impl fmt::Display for HunspellDictionary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HunspellDictionary({} stems)", self.entries.len())
+    fn compound_second_ok(&self, part: &[char]) -> Option<bool> {
+        let need = self.compound_end?;
+        if let Some(entries) = self.lookup_flags(part) {
+            for entry in entries {
+                if has_flag(entry, self.need_affix) {
+                    continue;
+                }
+                if !entry.contains(need) {
+                    continue;
+                }
+                if has_flag(entry, self.forbiddenword) {
+                    return Some(false);
+                }
+                return Some(true);
+            }
+        }
+        match self.affix_check(part, Some(need), InCompound::End) {
+            Some(RootHit::Forbidden) => Some(false),
+            Some(RootHit::Flags(_)) => Some(true),
+            None => None,
+        }
+    }
+
+    fn compound_check(&self, word: &[char], wordnum: usize, two_word_only: bool) -> bool {
+        let cmin = self.compound_min;
+        if word.len() < cmin * 2 {
+            return false;
+        }
+        for i in cmin..word.len() - cmin + 1 {
+            let part1 = &word[..i];
+            let part2 = &word[i..];
+            match self.compound_first_ok(part1, wordnum) {
+                Some(false) => return false,
+                Some(true) => {}
+                None => continue,
+            }
+            match self.compound_second_ok(part2) {
+                Some(false) => return false,
+                Some(true) => return true,
+                None => {}
+            }
+            if !two_word_only && self.compound_check(part2, wordnum + 1, false) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -699,267 +843,592 @@ impl fmt::Display for HunspellDictionary {
 mod tests {
     use super::*;
 
-    const AFF: &str = "\
-# test affix file
-COMPOUNDMIN 3
-COMPOUNDFLAG C
-ONLYINCOMPOUND O
-PFX P Y 1
-PFX P 0 un .
-SFX S Y 2
-SFX S y ies [^aeiou]y
-SFX S 0 s .
-";
-
-    const DIC: &str = "\
-5
-happy/S
-run/CS
-read/PSC
-dog/CS
-blue/OS
-";
-
-    fn test_dict() -> HunspellDictionary {
-        let aff = HunspellAff::parse(AFF).expect("aff parses");
-        HunspellDictionary::parse_dic(DIC, aff).expect("dic parses")
-    }
-
-    #[test]
-    fn stems_are_known() {
-        let dict = test_dict();
-        assert!(dict.is_known("happy"));
-        assert!(dict.is_known("run"));
-        assert!(dict.is_known("read"));
-    }
-
-    #[test]
-    fn suffixed_forms_are_known() {
-        let dict = test_dict();
-        // SFX S 0 s . => runs, reads, dogs
-        assert!(dict.is_known("runs"));
-        assert!(dict.is_known("reads"));
-        // SFX S y ies [^aeiou]y => happiest stem "happy" via ies->y
-        assert!(dict.is_known("happies"));
-    }
-
-    #[test]
-    fn prefixed_forms_are_known() {
-        let dict = test_dict();
-        // PFX P 0 un . on "read" => "unread"
-        assert!(dict.is_known("unread"));
-    }
-
-    #[test]
-    fn prefix_plus_suffix_is_known() {
-        let dict = test_dict();
-        assert!(dict.is_known("unreads"));
-    }
-
-    #[test]
-    fn compounds_are_known() {
-        let dict = test_dict();
-        // dog/C + run/C => "dogrun"
-        assert!(dict.is_known("dogrun"));
-        // run/C + dog/C
-        assert!(dict.is_known("rundog"));
-    }
-
-    #[test]
-    fn only_in_compound_stems_are_rejected_standalone() {
-        let dict = test_dict();
-        assert!(
-            !dict.is_known("blue"),
-            "ONLYINCOMPOUND stem must not be standalone"
+    fn de_checker() -> Option<HunspellChecker> {
+        let dir = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/resource/de/hunspell",
         );
+        HunspellChecker::load(&dir.join("de_DE.aff"), &dir.join("de_DE.dic"))
     }
 
     #[test]
-    fn unknown_words_are_rejected() {
-        let dict = test_dict();
-        assert!(!dict.is_known("qqqzzz"));
-        assert!(!dict.is_known(""));
-        assert!(!dict.is_known("zz"));
-    }
-
-    #[test]
-    fn flag_mode_long_parses_two_byte_flags() {
-        let aff = HunspellAff::parse("FLAG LONG\nSFX AA Y 1\nSFX AA 0 s .\n").unwrap();
-        let flags = aff.parse_flags("AB");
-        assert_eq!(flags, vec!["AB".to_string()]);
-    }
-
-    #[test]
-    fn flag_mode_num_parses_comma_flags() {
-        let aff = HunspellAff::parse("FLAG NUM\nCOMPOUNDFLAG 7\n").unwrap();
-        assert_eq!(aff.compound_flag.as_deref(), Some("7"));
-    }
-
-    #[test]
-    fn condition_negated_class() {
-        let aff = HunspellAff::parse("SFX S Y 1\nSFX S y ies [^aeiou]y\n").unwrap();
-        let rule = &aff.rules[0];
-        // Condition is checked on the stem (before stripping "y").
-        let happy: Vec<char> = "happy".chars().collect();
-        assert!(rule.condition.matches_anchored(&happy, false));
-        let day: Vec<char> = "day".chars().collect();
-        assert!(
-            !rule.condition.matches_anchored(&day, false),
-            "ay ends in vowel y"
-        );
-    }
-
-    const AFF2: &str = "COMPOUNDMIN 3
-COMPOUNDBEGIN B
-COMPOUNDMIDDLE M
-COMPOUNDEND E
-FORBIDDENWORD F
-NEEDAFFIX N
-KEEPCASE K
-SFX T Y 1
-SFX T 0 ting/BE .
-PFX Q Y 1
-PFX Q 0 re .
-SFX R N 1
-SFX R 0 ly .
-";
-
-    const DIC2: &str = "5
-star/TN
-badword/F
-acme/K
-door/E
-happy/S
-form/QR
-";
-
-    fn test_dict2() -> HunspellDictionary {
-        let aff = HunspellAff::parse(AFF2).expect("aff2 parses");
-        HunspellDictionary::parse_dic(DIC2, aff).expect("dic2 parses")
-    }
-
-    #[test]
-    fn cross_product_n_groups_do_not_combine() {
-        let dict = test_dict2();
-        // Prefix Q and suffix R both apply to "form", but the R group header
-        // is N (no cross-products), so prefix+suffix must NOT combine.
-        assert!(dict.is_known("reform"));
-        assert!(dict.is_known("formly"));
-        assert!(
-            !dict.is_known("reformly"),
-            "N cross-product group must not combine with a prefix"
-        );
-    }
-
-    #[test]
-    fn forbidden_word_is_rejected() {
-        let dict = test_dict2();
-        // "badword" is a dic stem, but its FORBIDDENWORD flag means it must
-        // be rejected even though a plain stem lookup would accept it.
-        assert!(!dict.is_known("badword"));
-    }
-
-    #[test]
-    fn need_affix_stem_rejected_but_affixed_form_accepted() {
-        let dict = test_dict2();
-        // "star" carries NEEDAFFIX: illegal standalone.
-        assert!(!dict.is_known("star"));
-        // "starting" = star + SFX T ("ting", continuation B+E): legal.
-        assert!(dict.is_known("starting"));
-    }
-
-    #[test]
-    fn keep_case_rejects_lowercased_fallback() {
-        let dict = test_dict2();
-        assert!(dict.is_known("acme"));
-        assert!(!dict.is_known("ACME"), "KEEPCASE must not accept ACME");
-        assert!(
-            !dict.is_known("Acme"),
-            "lowercased fallback of a KEEPCASE entry must be rejected"
-        );
-    }
-
-    #[test]
-    fn compound_via_continuation_flags() {
-        let dict = test_dict2();
-        // "starting" (derived, continuation B=COMPOUNDBEGIN) + "door" (E=
-        // COMPOUNDEEND) is a valid 2-part compound.
-        assert!(dict.is_known("startingdoor"));
-        // 3-part: starting + starting (B..E? middle needs M) — use
-        // continuation B+E on both parts; middle position needs M so this
-        // must fail.
-        assert!(!dict.is_known("startingstartingdoor"));
-    }
-
-    #[test]
-    fn flag_free_affixed_compound_parts_are_rejected() {
-        let dict = test_dict();
-        // "runs" (affixed, but "run" has no compound flag C beyond its own
-        // C — actually run/CS carries C, so use a non-compound stem):
-        // "reads" is affixed from read/PSC (C present) — instead use happy/S:
-        // "happies" is affixed and carries no compound flag, so it must not
-        // be a compound member even next to a flagged part.
-        assert!(
-            !dict.is_known("happiesdog"),
-            "affixed part without compound flag"
-        );
-        // And a non-flagged plain stem is not a member either.
-        assert!(!dict.is_known("happydog"));
-    }
-
-    #[test]
-    fn loads_real_german_hunspell_when_root_present() {
-        let Some(root) = crate::resource::lt_resource_root() else {
-            eprintln!("Skipping: LT resource root not found");
+    fn test_de_spell_parity() {
+        let Some(checker) = de_checker() else {
             return;
         };
-        let dir = root.join("de/src/main/resources/org/languagetool/resource/de/hunspell");
-        let dic = dir.join("de_AT.dic");
-        let aff = dir.join("de_AT.aff");
-        if !dic.is_file() || !aff.is_file() {
-            eprintln!("Skipping: de_AT hunspell files not found");
-            return;
+        let accepted = [
+            "Haus",
+            "hocheffizientes",
+            "hocheffizient",
+            "vorhaben",
+            "vorhast",
+            "hochexplosiv",
+            "rüber",
+            "lassen",
+            "hinterher",
+            "spioniert",
+            "hinterherspionieren",
+            "reinlassen",
+            "hervorgeholt",
+            "Arbeitszimmer",
+            "Straße",
+        ];
+        for word in accepted {
+            assert!(checker.spell(word), "expected accepted: {word}");
         }
-        let dict = HunspellDictionary::open(&dic, &aff).expect("de_AT parses");
-        assert!(dict.len() > 100_000, "expected a large dictionary");
-        for known in ["und", "Haus", "Straße"] {
-            assert!(dict.is_known(known), "{known} should be known");
+        let rejected = [
+            "rüberlassen",
+            "hinterherspioniert",
+            "rüberbringen",
+            "hierherholen",
+            "Hausx",
+            "xyqv",
+        ];
+        for word in rejected {
+            assert!(!checker.spell(word), "expected rejected: {word}");
         }
-        assert!(!dict.is_known("qqqzzzvvv"));
+    }
 
-        // FORBIDDENWORD (flag d, 395 de_AT entries): must-reject.
+    struct TempAffDic {
+        aff: std::path::PathBuf,
+        dic: std::path::PathBuf,
+    }
+
+    impl TempAffDic {
+        fn new(name: &str, aff: &str, dic: &str) -> Self {
+            let dir = std::env::temp_dir();
+            let files = TempAffDic {
+                aff: dir.join(format!(
+                    "og-spell-hunspell-{name}-{}.aff",
+                    std::process::id()
+                )),
+                dic: dir.join(format!(
+                    "og-spell-hunspell-{name}-{}.dic",
+                    std::process::id()
+                )),
+            };
+            std::fs::write(&files.aff, aff).unwrap();
+            std::fs::write(&files.dic, dic).unwrap();
+            files
+        }
+
+        fn load(&self) -> HunspellChecker {
+            HunspellChecker::load(&self.aff, &self.dic).expect("fixture loads")
+        }
+    }
+
+    impl Drop for TempAffDic {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.aff);
+            let _ = std::fs::remove_file(&self.dic);
+        }
+    }
+
+    #[test]
+    fn load_fails_for_missing_or_empty_inputs() {
+        let missing = TempAffDic::new("missing", "", "");
+        assert!(HunspellChecker::load(&missing.aff, &missing.dic).is_none());
+        let empty = TempAffDic::new("emptydic", "COMPOUNDMIN 3\n", "0\n");
+        assert!(HunspellChecker::load(&empty.aff, &empty.dic).is_none());
+    }
+
+    #[test]
+    fn parser_skips_malformed_lines_and_comments() {
+        let files = TempAffDic::new(
+            "parse",
+            "# leading comment\nCOMPOUNDMIN 3 # trailing comment\nPFX\nSFX A 0\nSFX B 0 s\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\n",
+            "3\nsun/BO\nshine/E\nnosuffix/B\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("sun"));
+        assert!(checker.spell("shine"));
+        assert!(checker.spell("sunshine"));
+        assert!(!checker.spell("sunshines"));
+    }
+
+    #[test]
+    fn plain_lookup_and_number_like_words() {
+        let files = TempAffDic::new("plain", "", "3\nhello\nworld\nfoo\n");
+        let checker = files.load();
+        assert!(checker.spell("hello"));
+        assert!(checker.spell("Hello"));
+        assert!(checker.spell("HELLO"));
+        assert!(!checker.spell("helxo"));
+        assert!(!checker.spell("hELLO"));
+        assert!(!checker.spell("HEllo"));
+        assert!(checker.spell("1,5"));
+        assert!(checker.spell("3-4"));
+        assert!(checker.spell("1.2.3"));
+        assert!(!checker.spell("x2"));
+        assert!(!checker.spell("12a"));
+        assert!(checker.spell("."));
+        assert!(checker.spell("   "));
+        assert!(checker.spell("  hello"));
+        assert!(!checker.spell(&"a".repeat(100)));
+    }
+
+    #[test]
+    fn abbreviations_recheck_with_trailing_dot() {
+        let files = TempAffDic::new("abbv", "", "3\nusw.\nhello\nABc.\n");
+        let checker = files.load();
+        assert!(checker.spell("usw."));
+        assert!(checker.spell("Usw."));
+        assert!(checker.spell("ABc."));
+        assert!(checker.spell("Hello."));
+        assert!(!checker.spell("wrld."));
+    }
+
+    #[test]
+    fn suffix_and_prefix_expansion_with_conditions() {
+        let files = TempAffDic::new(
+            "affix",
+            "SFX A Y 1\nSFX A 0 s .\nPFX B Y 1\nPFX B 0 un .\nSFX S e ing .\nSFX N 0 s [^x]\n",
+            "5\nword/A\nhappy/BA\nmake/S\nfox/N\ncats/N\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("word"));
+        assert!(checker.spell("words"));
+        assert!(!checker.spell("wordss"));
+        assert!(checker.spell("happy"));
+        assert!(checker.spell("unhappy"));
+        assert!(checker.spell("unhappys"));
+        assert!(checker.spell("make"));
+        assert!(checker.spell("making"));
+        assert!(checker.spell("cats"));
+        assert!(checker.spell("catss"));
+        assert!(checker.spell("fox"));
+        assert!(!checker.spell("foxs"));
+    }
+
+    #[test]
+    fn forbidden_words_reject_stems_and_affixed_forms() {
+        let files = TempAffDic::new(
+            "forbidden",
+            "FORBIDDENWORD X\nSFX A Y 1\nSFX A 0 s .\n",
+            "3\nword\nbad/X\nevil/AX\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("word"));
+        assert!(!checker.spell("bad"));
+        assert!(!checker.spell("evil"));
+        assert!(!checker.spell("evils"));
+    }
+
+    #[test]
+    fn needaffix_stems_only_match_with_an_affix() {
+        let files = TempAffDic::new(
+            "needaffix",
+            "NEEDAFFIX N\nSFX A Y 1\nSFX A 0 s .\nPFX U Y 1\nPFX U 0 0 .\nSFX V 0 0 .\n",
+            "4\nbare/NA\nword\nzug/NU\nqux/NV\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("bare"));
+        assert!(checker.spell("bares"));
+        assert!(checker.spell("zug"));
+        assert!(checker.spell("qux"));
+    }
+
+    #[test]
+    fn needaffix_continuation_blocks_the_affix_line() {
+        let files = TempAffDic::new(
+            "needaffixcont",
+            "NEEDAFFIX N\nPFX P Y 1\nPFX P 0 pre/N .\nPFX Q Y 1\nPFX Q 0 pre .\n",
+            "3\nhappy/P\nglad/Q\nother\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("prehappy"));
+        assert!(checker.spell("happy"));
+    }
+
+    #[test]
+    fn keepcase_words_reject_recapitalizations() {
+        let files = TempAffDic::new(
+            "keepcase",
+            "KEEPCASE K\nSFX A Y 1\nSFX A 0 s .\n",
+            "3\nstreet/K\nway/AK\nplain\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("street"));
+        assert!(!checker.spell("Street"));
+        assert!(!checker.spell("STREET"));
+        assert!(checker.spell("way"));
+        assert!(checker.spell("ways"));
+        assert!(!checker.spell("Ways"));
+        assert!(checker.spell("Plain"));
+        assert!(checker.spell("PLAIN"));
+    }
+
+    #[test]
+    fn checksharps_lets_allcaps_strasse_match_strasse_with_sharp_s() {
+        let with = TempAffDic::new(
+            "sharps",
+            "KEEPCASE K\nCHECKSHARPS\n",
+            "2\nstraße/K\nplain\n",
+        );
+        let checker = with.load();
+        assert!(checker.spell("straße"));
+        assert!(checker.spell("Straße"));
+        assert!(checker.spell("STRASSE"));
+        assert!(checker.spell("STRASSE."));
+
+        let without = TempAffDic::new("nosharps", "KEEPCASE K\n", "2\nstraße/K\nplain\n");
+        let checker = without.load();
+        assert!(checker.spell("straße"));
+        assert!(!checker.spell("Straße"));
+        assert!(!checker.spell("STRASSE"));
+    }
+
+    #[test]
+    fn onlyincompound_words_only_match_inside_compounds() {
+        let files = TempAffDic::new(
+            "onlyincompound",
+            "COMPOUNDBEGIN B\nCOMPOUNDMIDDLE M\nCOMPOUNDEND E\nCOMPOUNDMIN 3\nONLYINCOMPOUND O\nSFX A Y 1\nSFX A 0 s .\n",
+            "4\nsun/BO\nmoon/M\nshine/E\nmid/OA\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("sun"));
+        assert!(checker.spell("shine"));
+        assert!(checker.spell("sunshine"));
+        assert!(checker.spell("sunmoonshine"));
+        assert!(!checker.spell("moonshine"));
+        assert!(!checker.spell("mid"));
+        assert!(!checker.spell("mids"));
+    }
+
+    #[test]
+    fn compoundmin_gates_short_merges() {
+        let long = TempAffDic::new(
+            "cmin3",
+            "COMPOUNDBEGIN B\nCOMPOUNDEND E\n",
+            "2\nab/B\ncde/E\n",
+        );
+        let checker = long.load();
+        assert!(!checker.spell("abcde"));
+
+        let short = TempAffDic::new(
+            "cmin2",
+            "COMPOUNDMIN 2\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\n",
+            "2\nab/B\ncde/E\n",
+        );
+        let checker = short.load();
+        assert!(checker.spell("abcde"));
+    }
+
+    #[test]
+    fn forbidden_compound_parts_abort_the_split() {
+        let files = TempAffDic::new(
+            "forbcomp",
+            "FORBIDDENWORD X\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\nCOMPOUNDMIN 3\n",
+            "4\nbad/BX\ngood/B\ncde/EX\nfgh/E\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("badcde"));
+        assert!(!checker.spell("goodcde"));
+        assert!(checker.spell("goodfgh"));
+    }
+
+    #[test]
+    fn compound_permit_flag_lets_affixed_parts_compound() {
+        let files = TempAffDic::new(
+            "permit",
+            "COMPOUNDBEGIN B\nCOMPOUNDEND E\nCOMPOUNDMIN 3\nCOMPOUNDPERMITFLAG P\nSFX S Y 1\nSFX S 0 s/PB .\nSFX T Y 1\nSFX T 0 s/PE .\n",
+            "4\nsun/BS\nshine/TE\nlamp/E\nword\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("sunslamp"));
+        assert!(checker.spell("sunshine"));
+        assert!(checker.spell("sunshines"));
+
+        let nopermit = TempAffDic::new(
+            "nopermit",
+            "COMPOUNDBEGIN B\nCOMPOUNDEND E\nCOMPOUNDMIN 3\nSFX S Y 1\nSFX S 0 s/B .\n",
+            "2\nsun/BS\nlamp/E\n",
+        );
+        let checker = nopermit.load();
+        assert!(!checker.spell("sunslamp"));
+    }
+
+    #[test]
+    fn circumfix_requires_matching_prefix_and_suffix_flags() {
+        let files = TempAffDic::new(
+            "circumfix",
+            "CIRCUMFIX Z\nPFX Q Y 1\nPFX Q 0 be/Z .\nPFX R Y 1\nPFX R 0 be .\nSFX C Y 1\nSFX C 0 ing/Z .\nSFX D Y 1\nSFX D 0 ing .\n",
+            "4\ncome/QC\narrive/QD\ngo/C\nwalk/D\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("becomeing"));
+        assert!(!checker.spell("begoing"));
+        assert!(!checker.spell("becoming"));
+        assert!(!checker.spell("comeing"));
+        assert!(checker.spell("walking"));
+        assert!(!checker.spell("going"));
+    }
+
+    #[test]
+    fn non_cross_product_prefix_rejects_further_suffixes() {
+        let files = TempAffDic::new(
+            "nocross",
+            "PFX N N 1\nPFX N 0 un .\nSFX A Y 1\nSFX A 0 s .\n",
+            "2\nhappy/NA\nother\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("unhappy"));
+        assert!(!checker.spell("unhappys"));
+    }
+
+    #[test]
+    fn oversized_still_spell_checks_through_the_fallback_lookup() {
+        let strip = "a".repeat(130);
+        let files = TempAffDic::new(
+            "overflow",
+            &format!("SFX F Y 1\nSFX F {strip} 0 .\n"),
+            "2\nword/F\nother\n",
+        );
+        let checker = files.load();
+        let long = "b".repeat(99);
+        assert!(!checker.spell(&long));
+        assert!(checker.spell("word"));
+    }
+
+    #[test]
+    fn allcap_forbidden_word_is_rejected_directly() {
+        let files = TempAffDic::new("allcapbad", "FORBIDDENWORD X\n", "2\nBAD/X\nword\n");
+        let checker = files.load();
+        assert!(!checker.spell("BAD"));
+        assert!(checker.spell("WORD"));
+    }
+
+    #[test]
+    fn sharps_falls_back_to_the_capitalized_dotted_form() {
+        let files = TempAffDic::new(
+            "sharpsinit",
+            "KEEPCASE K\nCHECKSHARPS\n",
+            "2\nStraße./K\nx\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("STRASSE."));
+        assert!(!checker.spell("STRASSE"));
+    }
+
+    #[test]
+    fn sharps_recursion_is_capped() {
+        let files = TempAffDic::new("sharpscap", "CHECKSHARPS\n", "2\nx\ny\n");
+        let checker = files.load();
+        assert!(!checker.spell("SSSSSSSS"));
+    }
+
+    #[test]
+    fn needaffix_continuation_on_a_suffix_gates_it_out() {
+        let files = TempAffDic::new(
+            "needaffixsfx",
+            "NEEDAFFIX N\nSFX M Y 1\nSFX M 0 s/N .\n",
+            "3\nword/M\nother\nx\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("word"));
+        assert!(!checker.spell("words"));
+    }
+
+    #[test]
+    fn compound_permit_on_a_prefix_lets_it_end_a_compound() {
+        let with = TempAffDic::new(
+            "permitpfx",
+            "COMPOUNDBEGIN B\nCOMPOUNDEND E\nCOMPOUNDMIN 3\nCOMPOUNDPERMITFLAG P\nPFX F Y 1\nPFX F 0 vor/PB .\n",
+            "2\nsun/B\ngang/EF\n",
+        );
+        let checker = with.load();
+        assert!(checker.spell("sunvorgang"));
+
+        let without = TempAffDic::new(
+            "nopermitpfx",
+            "COMPOUNDBEGIN B\nCOMPOUNDEND E\nCOMPOUNDMIN 3\nPFX G Y 1\nPFX G 0 vor/B .\n",
+            "2\nsun/B\ngang/G\n",
+        );
+        let checker = without.load();
+        assert!(!checker.spell("sunvorgang"));
+    }
+
+    #[test]
+    fn zero_length_affix_stems_are_rejected() {
+        let files = TempAffDic::new(
+            "zerostem",
+            "SFX A Y 1\nSFX A 0 s .\nPFX B Y 1\nPFX B 0 un .\n",
+            "3\nword/A\nhappy/B\nx\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("s"));
+        assert!(!checker.spell("un"));
+        assert!(checker.spell("unhappy"));
+    }
+
+    #[test]
+    fn prefix_condition_must_match_the_root_start() {
+        let files = TempAffDic::new(
+            "prefixcond",
+            "PFX Z Y 1\nPFX Z 0 ab [cd]\n",
+            "3\nfoo/Z\ncoo/Z\nx\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("abfoo"));
+        assert!(checker.spell("abcoo"));
+    }
+
+    #[test]
+    fn forbidden_root_is_rejected_through_the_prefix() {
+        let files = TempAffDic::new(
+            "forbprefix",
+            "FORBIDDENWORD X\nPFX B Y 1\nPFX B 0 un .\n",
+            "2\nevil/BX\nword/B\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("unevil"));
+        assert!(checker.spell("unword"));
+    }
+
+    #[test]
+    fn condition_longer_than_the_stem_rejects_the_affix() {
+        let files = TempAffDic::new("longcond", "SFX A Y 1\nSFX A 0 s abcd\n", "2\nab/A\nx\n");
+        let checker = files.load();
+        assert!(checker.spell("ab"));
+        assert!(!checker.spell("abs"), "stem shorter than the condition");
+    }
+
+    #[test]
+    fn repeated_separators_are_not_number_like() {
+        let files = TempAffDic::new("numbers", "", "2\nhaus\nx\n");
+        let checker = files.load();
+        assert!(!checker.spell("1..2"));
+        assert!(!checker.spell(",5"));
+        assert!(checker.spell("1.5"));
+    }
+
+    #[test]
+    fn init_capital_forms_hit_exact_then_lower_lookups() {
+        let files = TempAffDic::new("initcap", "FORBIDDENWORD F\n", "3\nHaus\nBöse/F\nhaus/F\n");
+        let checker = files.load();
+        assert!(checker.spell("Haus"), "exact init-cap form found");
+        assert!(!checker.spell("Böse"), "exact forbidden init-cap form");
+        assert!(!checker.spell("Hausx"));
+        let lower_forbidden = TempAffDic::new("initcaplow", "FORBIDDENWORD F\n", "2\nhaus/F\nx\n");
+        let checker = lower_forbidden.load();
         assert!(
-            !dict.is_known("Abendwand"),
-            "FORBIDDENWORD dic entry must be rejected"
+            !checker.spell("Haus"),
+            "init-cap falls through to the forbidden lowercase form"
+        );
+    }
+
+    #[test]
+    fn abbreviation_falls_back_to_the_capitalized_dotted_form() {
+        let files = TempAffDic::new("abbvinit", "", "3\nStr.\nhaus\nx\n");
+        let checker = files.load();
+        assert!(checker.spell("Str."));
+        assert!(!checker.spell("Wrz."));
+    }
+
+    #[test]
+    fn sharps_all_cap_walks_small_then_init_cap_forms() {
+        let init_only = TempAffDic::new("sharpsinitword", "CHECKSHARPS\n", "2\nGröße\nx\n");
+        let checker = init_only.load();
+        assert!(
+            checker.spell("GRÖSSE"),
+            "small form fails, init-cap ß-form matches"
         );
 
-        // NEEDAFFIX (flag h): "Abiturienten" carries h but igerman98 pairs
-        // h with the zero-add SFX j (continuation xoc), so real hunspell
-        // accepts the standalone surface — and so must we. The h+bare-stem
-        // analysis stays rejected (is_known_stem); the zero-add affix
-        // analysis accepts it.
-        assert!(
-            dict.is_known("Abiturienten"),
-            "h-flagged stem with zero-add rule must be accepted standalone"
-        );
-        assert!(dict.is_known("Abiturientinnen"));
-        // And as a compound first part via the SFX j continuation flags.
-        assert!(dict.is_known("Abiturientenecke"));
+        let small_dot = TempAffDic::new("sharpssmalldot", "CHECKSHARPS\n", "2\ngröße.\nx\n");
+        let checker = small_dot.load();
+        assert!(checker.spell("GRÖSSE."), "dotted small form matches");
 
-        // Positive compound through continuation flags: "Abiturientinnen"
-        // derives with continuation xyoc (x = COMPOUNDBEGIN via SFX g) and
-        // "ecke" carries z (COMPOUNDEEND) — the compound itself is NOT a dic
-        // stem, so this exercises the real compound path.
+        let init_dot = TempAffDic::new("sharpsinitdot", "CHECKSHARPS\n", "2\nGröße.\nx\n");
+        let checker = init_dot.load();
+        assert!(checker.spell("GRÖSSE."), "dotted init-cap form matches");
+    }
+
+    #[test]
+    fn sharps_recursion_can_skip_an_ss_pair() {
+        let files = TempAffDic::new("sharpsskip", "CHECKSHARPS\n", "2\ngrossstraße\nx\n");
+        let checker = files.load();
         assert!(
-            dict.is_known("Abiturientinnenecke"),
-            "compound with continuation-flagged first part must be accepted"
+            checker.spell("GROSSSTRASSE"),
+            "the first SS stays literal, the second becomes ß"
         );
-        // Over-acceptance regression: "schuh" (EPSTozm) has COMPOUNDEEND z
-        // but no BEGIN flag, and no affix of "schuh" carries one, so
-        // "schuhecke" is not a legal compound.
+    }
+
+    #[test]
+    fn sharps_recursion_cap_stops_with_pairs_left() {
+        let files = TempAffDic::new("sharpscap2", "CHECKSHARPS\n", "2\nx\ny\n");
+        let checker = files.load();
+        assert!(!checker.spell(&"S".repeat(12)));
+    }
+
+    #[test]
+    fn onlyincompound_root_rejects_affixed_lookups_too() {
+        let files = TempAffDic::new(
+            "oicaffix",
+            "ONLYINCOMPOUND O\nSFX A Y 1\nSFX A 0 e .\nPFX U Y 1\nPFX U 0 un .\n",
+            "2\nteil/OAU\nhaus\n",
+        );
+        let checker = files.load();
+        assert!(!checker.spell("teil"));
         assert!(
-            !dict.is_known("schuhecke"),
-            "part without COMPOUNDBEGIN must be rejected"
+            !checker.spell("teile"),
+            "suffixed root is only valid in compounds"
+        );
+        assert!(
+            !checker.spell("unteil"),
+            "prefixed root is only valid in compounds"
+        );
+        assert!(checker.spell("haus"));
+    }
+
+    #[test]
+    fn compound_first_part_can_match_through_a_prefix() {
+        let files = TempAffDic::new(
+            "comppfx",
+            "COMPOUNDMIN 3\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\nPFX U Y 1\nPFX U 0 un/B .\n",
+            "2\nwalk/U\nway/E\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("unwalkway"));
+        assert!(!checker.spell("unwalkwayx"));
+    }
+
+    #[test]
+    fn compound_second_part_skips_needaffix_and_unflagged_entries() {
+        let files = TempAffDic::new(
+            "compsecond",
+            "COMPOUNDMIN 3\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\nNEEDAFFIX Z\nSFX S Y 1\nSFX S 0 s/E .\n",
+            "5\nsun/B\nway/EZ\nway/E\nway/S\nways/A\n",
+        );
+        let checker = files.load();
+        assert!(checker.spell("sunway"), "needaffix homonym is skipped");
+        assert!(
+            checker.spell("sunways"),
+            "unflagged entry falls through to the affix"
+        );
+    }
+
+    #[test]
+    fn compound_second_part_rejects_forbidden_affix_roots() {
+        let files = TempAffDic::new(
+            "compsecondforb",
+            "COMPOUNDMIN 3\nCOMPOUNDBEGIN B\nCOMPOUNDEND E\nFORBIDDENWORD F\nCOMPOUNDPERMITFLAG P\nSFX S Y 1\nSFX S 0 s/EP .\n",
+            "3\nsun/B\nevil/FS\nway/E\n",
+        );
+        let checker = files.load();
+        assert!(
+            !checker.spell("sunevils"),
+            "forbidden root poisons the split"
+        );
+        assert!(checker.spell("sunway"));
+    }
+
+    #[test]
+    fn keepcase_words_reject_the_all_capital_fallthrough() {
+        let files = TempAffDic::new("keepcaseallcap", "KEEPCASE K\n", "2\nHaus/K\nx\n");
+        let checker = files.load();
+        assert!(checker.spell("Haus"));
+        assert!(
+            !checker.spell("HAUS"),
+            "KEEPCASE form rejects the all-cap walk"
         );
     }
 }

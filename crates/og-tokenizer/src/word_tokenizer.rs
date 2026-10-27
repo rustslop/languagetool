@@ -1,19 +1,126 @@
 use crate::WordTokenizer;
 use og_core::Token;
+use std::sync::Arc;
 
-pub struct DefaultWordTokenizer;
+enum HyphenMode {
+    InRuns,
+    InnerOnly,
+    Delimiter,
+}
+
+type EnWordTagged = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
+pub struct DefaultWordTokenizer {
+    english_contractions: bool,
+    english_word_chars: bool,
+    hyphens: HyphenMode,
+    dutch: bool,
+    esperanto: bool,
+    en_word_tagged: Option<EnWordTagged>,
+}
 
 impl DefaultWordTokenizer {
     pub fn new() -> Self {
-        Self
+        Self {
+            english_contractions: true,
+            english_word_chars: true,
+            hyphens: HyphenMode::InnerOnly,
+            dutch: false,
+            esperanto: false,
+            en_word_tagged: None,
+        }
+    }
+
+    pub fn new_english(en_word_tagged: EnWordTagged) -> Self {
+        Self {
+            english_contractions: true,
+            english_word_chars: true,
+            hyphens: HyphenMode::InnerOnly,
+            dutch: false,
+            esperanto: false,
+            en_word_tagged: Some(en_word_tagged),
+        }
+    }
+
+    pub fn new_generic() -> Self {
+        Self {
+            english_contractions: false,
+            english_word_chars: false,
+            hyphens: HyphenMode::InRuns,
+            dutch: false,
+            esperanto: false,
+            en_word_tagged: None,
+        }
+    }
+
+    pub fn new_splitting_hyphen() -> Self {
+        Self {
+            english_contractions: false,
+            english_word_chars: false,
+            hyphens: HyphenMode::Delimiter,
+            dutch: false,
+            esperanto: false,
+            en_word_tagged: None,
+        }
+    }
+
+    pub fn new_dutch() -> Self {
+        Self {
+            english_contractions: false,
+            english_word_chars: false,
+            hyphens: HyphenMode::InRuns,
+            dutch: true,
+            esperanto: false,
+            en_word_tagged: None,
+        }
+    }
+
+    pub fn new_esperanto() -> Self {
+        Self {
+            english_contractions: false,
+            english_word_chars: false,
+            hyphens: HyphenMode::InRuns,
+            dutch: false,
+            esperanto: true,
+            en_word_tagged: None,
+        }
     }
 
     fn is_word_char(&self, c: char) -> bool {
-        c.is_alphanumeric() || c == '_' || c == '\'' || c == '\u{2019}'
+        if self.dutch {
+            return !is_nl_delimiter(c);
+        }
+        if self.esperanto {
+            return !is_base_delimiter(c);
+        }
+        c.is_alphanumeric()
+            || c == '_'
+            || c == '\''
+            || c == '\u{2019}'
+            || (self.english_word_chars && is_english_extra_word_char(c))
     }
 
-    /// Check if we're at the start of a URL, email, or file path.
-    /// Returns the end byte offset if detected, or None.
+    fn starts_run(&self, c: char) -> bool {
+        self.is_word_char(c) || (matches!(self.hyphens, HyphenMode::InRuns) && c == '-')
+    }
+
+    fn continues_run(&self, chars: &[char], i: usize, started: bool) -> bool {
+        let c = chars[i];
+        if self.is_word_char(c) {
+            return true;
+        }
+        if c != '-' {
+            return false;
+        }
+        match self.hyphens {
+            HyphenMode::InRuns => true,
+            HyphenMode::InnerOnly => {
+                started && i + 1 < chars.len() && self.is_word_char(chars[i + 1])
+            }
+            HyphenMode::Delimiter => false,
+        }
+    }
+
     fn try_consume_url_or_email(
         &self,
         text: &str,
@@ -23,7 +130,6 @@ impl DefaultWordTokenizer {
     ) -> Option<usize> {
         let remaining = &text[byte_start..];
 
-        // URL patterns
         if remaining.starts_with("http://")
             || remaining.starts_with("https://")
             || remaining.starts_with("ftp://")
@@ -31,37 +137,33 @@ impl DefaultWordTokenizer {
             return Some(self.consume_url_like(remaining, byte_start));
         }
 
-        // www. prefix
         if remaining.starts_with("www.") {
             return Some(self.consume_url_like(remaining, byte_start));
         }
 
-        // Email: word@word.word pattern
-        if let Some(at_pos) = remaining.find('@') {
-            if at_pos > 0
-                && remaining[..at_pos]
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-' || c == '+')
-            {
-                // Check domain part
-                let domain = &remaining[at_pos + 1..];
-                if let Some(slash_pos) = domain.find(|c: char| c.is_whitespace()) {
-                    let domain_part = &domain[..slash_pos];
-                    if domain_part.contains('.')
-                        && domain_part
-                            .chars()
-                            .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
-                    {
-                        let end = byte_start + at_pos + 1 + slash_pos;
-                        return Some(end);
-                    }
-                } else if domain.contains('.')
-                    && domain
+        if let Some(at_pos) = remaining.find('@')
+            && at_pos > 0
+            && remaining[..at_pos]
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-' || c == '+')
+        {
+            let domain = &remaining[at_pos + 1..];
+            if let Some(slash_pos) = domain.find(|c: char| c.is_whitespace()) {
+                let domain_part = &domain[..slash_pos];
+                if domain_part.contains('.')
+                    && domain_part
                         .chars()
                         .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
                 {
-                    return Some(byte_start + remaining.len());
+                    let end = byte_start + at_pos + 1 + slash_pos;
+                    return Some(end);
                 }
+            } else if domain.contains('.')
+                && domain
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
+            {
+                return Some(byte_start + remaining.len());
             }
         }
 
@@ -75,110 +177,212 @@ impl DefaultWordTokenizer {
         byte_start + end
     }
 
-    /// Split English contractions into separate tokens, matching Java LT behavior.
-    /// E.g. "don't" → "Do" + "n't", "can't" → "ca" + "n't", "it's" → "it" + "'s"
     fn split_contractions(&self, tokens: Vec<Token>) -> Vec<Token> {
         let mut result = Vec::with_capacity(tokens.len());
 
         for token in tokens {
             let text = token.text();
             let start = token.start();
-            let _end = token.end();
 
-            // Only try splitting word tokens that contain an apostrophe
+            if self.dutch {
+                for (from, to) in dutch_quote_pieces(text) {
+                    if to > from {
+                        result.push(Token::new(&text[from..to], start + from, start + to));
+                    }
+                }
+                continue;
+            }
+
             if !text.contains('\'') && !text.contains('\u{2019}') {
                 result.push(token);
                 continue;
             }
 
-            if let Some(split) = self.try_split_contraction(text, start) {
-                result.extend(split);
-            } else {
-                result.push(token);
+            if !self.english_contractions {
+                let mut segment_start = 0usize;
+                let mut offset = 0usize;
+                for c in text.chars() {
+                    let len = c.len_utf8();
+                    if c == '\'' || c == '\u{2019}' {
+                        if offset > segment_start {
+                            let seg = &text[segment_start..offset];
+                            result.push(Token::new(seg, start + segment_start, start + offset));
+                        }
+                        let apos = &text[offset..offset + len];
+                        result.push(Token::new(apos, start + offset, start + offset + len));
+                        segment_start = offset + len;
+                    }
+                    offset += len;
+                }
+                if offset > segment_start {
+                    let seg = &text[segment_start..offset];
+                    result.push(Token::new(seg, start + segment_start, start + offset));
+                }
+                continue;
+            }
+
+            let pieces = contraction_pieces(text).unwrap_or_else(|| vec![text.to_string()]);
+            let mut piece_offset = 0usize;
+            for piece in &pieces {
+                self.words_to_add(piece, start + piece_offset, &mut result);
+                piece_offset += piece.len();
             }
         }
 
         result
     }
 
-    /// Record on each non-whitespace token the whitespace text that
-    /// immediately preceded it (Java LT `whitespaceBefore` tracking).
-    fn attach_whitespace_before(&self, mut tokens: Vec<Token>) -> Vec<Token> {
-        let mut pending: Option<String> = None;
-        for token in &mut tokens {
-            if token.is_whitespace() {
-                pending = Some(token.text().to_string());
-            } else if let Some(ws) = pending.take() {
-                token.set_whitespace_before(Some(ws));
+    fn words_to_add(&self, s: &str, token_start: usize, out: &mut Vec<Token>) {
+        let mut rest = s;
+        let mut offset = 0usize;
+        while let Some(stripped) = rest.strip_prefix('-') {
+            out.push(Token::new(
+                "-",
+                token_start + offset,
+                token_start + offset + 1,
+            ));
+            offset += 1;
+            rest = stripped;
+        }
+        let mut hyphens_at_end = 0usize;
+        while let Some(stripped) = rest.strip_suffix('-') {
+            rest = stripped;
+            hyphens_at_end += 1;
+        }
+        let body_len = rest.len();
+        if !rest.is_empty() {
+            let keep_whole =
+                if !rest.contains('-') && !rest.contains('\'') && !rest.contains('\u{2019}') {
+                    true
+                } else {
+                    let normalized = rest.replace('\u{00AD}', "").replace('\u{2019}', "'");
+                    self.en_word_tagged
+                        .as_ref()
+                        .is_none_or(|tagged| tagged(&normalized))
+                        || CAMEL_CASE_HYPHEN_WORDS
+                            .iter()
+                            .any(|w| rest.eq_ignore_ascii_case(w))
+                };
+            if keep_whole {
+                out.push(Token::new(
+                    rest,
+                    token_start + offset,
+                    token_start + offset + body_len,
+                ));
+            } else {
+                let mut segment_start = 0usize;
+                let mut walk = 0usize;
+                for c in rest.chars() {
+                    let len = c.len_utf8();
+                    if c == '\'' || c == '\u{2019}' {
+                        if walk > segment_start {
+                            let seg = &rest[segment_start..walk];
+                            out.push(Token::new(
+                                seg,
+                                token_start + offset + segment_start,
+                                token_start + offset + walk,
+                            ));
+                        }
+                        let apos = &rest[walk..walk + len];
+                        out.push(Token::new(
+                            apos,
+                            token_start + offset + walk,
+                            token_start + offset + walk + len,
+                        ));
+                        segment_start = walk + len;
+                    }
+                    walk += len;
+                }
+                if walk > segment_start {
+                    let seg = &rest[segment_start..walk];
+                    out.push(Token::new(
+                        seg,
+                        token_start + offset + segment_start,
+                        token_start + offset + walk,
+                    ));
+                }
             }
         }
-        tokens
+        offset += body_len;
+        for _ in 0..hyphens_at_end {
+            out.push(Token::new(
+                "-",
+                token_start + offset,
+                token_start + offset + 1,
+            ));
+            offset += 1;
+        }
     }
 
-    fn try_split_contraction(&self, text: &str, start: usize) -> Option<Vec<Token>> {
-        let lower = text.to_lowercase();
-        let normalized = lower.replace('\u{2019}', "'");
-        let chars: Vec<char> = text.chars().collect();
-        let text_len = text.len();
+    pub fn split_trailing_hyphens(&self, tokens: Vec<Token>) -> Vec<Token> {
+        let mut result = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let text = token.text();
+            if text.len() > 1 && text.ends_with('-') {
+                let start = token.start();
+                let hyphen_at = start + text.len() - 1;
+                result.push(Token::new(&text[..text.len() - 1], start, hyphen_at));
+                result.push(Token::new("-", hyphen_at, hyphen_at + 1));
+            } else {
+                result.push(token);
+            }
+        }
+        result
+    }
 
-        // Pattern 1: n't contractions (Java regex group 1 + group 2)
-        // Matches: (stem)(n't) where stem is are/is/was/do/does/did/have/etc.
-        let nt_stems = [
-            "are", "is", "were", "was", "do", "does", "did", "have", "has", "had", "wo", "would",
-            "ca", "could", "sha", "should", "must", "ai", "ought", "might", "need", "may", "am",
-            "dare", "used", "use",
-        ];
-        for stem in &nt_stems {
-            if let Some(rest) = normalized.strip_prefix(stem) {
-                if rest == "n't" {
-                    // The split is BEFORE the 'n', so prefix = stem, suffix = n't
-                    // stem is ASCII, so its byte length = char count
-                    let byte_offset = stem.len();
-                    if byte_offset > 0 && byte_offset < text_len {
-                        return Some(vec![
-                            Token::new(&text[..byte_offset], start, start + byte_offset),
-                            Token::new(&text[byte_offset..], start + byte_offset, start + text_len),
-                        ]);
+    pub fn split_underscores(&self, tokens: Vec<Token>) -> Vec<Token> {
+        let mut result = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let text = token.text();
+            if !text.contains('_') || text == "_" {
+                result.push(token);
+                continue;
+            }
+            let start = token.start();
+            let mut segment_start = 0usize;
+            let mut offset = 0usize;
+            for (i, b) in text.bytes().enumerate() {
+                if b == b'_' {
+                    if i > segment_start {
+                        let seg = &text[segment_start..i];
+                        result.push(Token::new(seg, start + segment_start, start + i));
                     }
+                    result.push(Token::new("_", start + i, start + i + 1));
+                    segment_start = i + 1;
                 }
+                offset = i + 1;
+            }
+            if offset > segment_start {
+                let seg = &text[segment_start..];
+                result.push(Token::new(seg, start + segment_start, start + text.len()));
             }
         }
+        result
+    }
 
-        // Pattern 2: 't prefix for 'twas, 'twere
-        let t_prefixes = ["'twas", "'twere", "'tis", "'twas"];
-        for tp in &t_prefixes {
-            if normalized == *tp {
-                // Split at 't + rest
-                let byte_offset: usize = chars[..2].iter().map(|c| c.len_utf8()).sum(); // 't is 2 chars
-                if byte_offset > 0 && byte_offset < text_len {
-                    return Some(vec![
-                        Token::new(&text[..byte_offset], start, start + byte_offset),
-                        Token::new(&text[byte_offset..], start + byte_offset, start + text_len),
-                    ]);
+    fn join_variation_selectors(&self, tokens: Vec<Token>) -> Vec<Token> {
+        if !self.english_word_chars {
+            return tokens;
+        }
+        let mut result: Vec<Token> = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            let text = token.text();
+            if is_variation_selector(text)
+                && let Some(last) = result.last()
+            {
+                let merged = Token::new(
+                    format!("{}{}", last.text(), text),
+                    last.start(),
+                    last.end() + text.len(),
+                );
+                if let Some(slot) = result.last_mut() {
+                    *slot = merged;
                 }
+            } else {
+                result.push(token);
             }
         }
-
-        // Pattern 3: suffix contractions: 's, 'm, 're, 'll, 've, 'd
-        // Find the apostrophe in the original text
-        let apos_char_idx = chars.iter().position(|c| *c == '\'' || *c == '\u{2019}')?;
-        let byte_offset: usize = chars[..apos_char_idx].iter().map(|c| c.len_utf8()).sum();
-
-        if byte_offset == 0 || byte_offset >= text_len {
-            return None;
-        }
-
-        let suffix_text = &text[byte_offset..];
-        let suffix_normalized: String = suffix_text.to_lowercase().replace('\u{2019}', "'");
-        let valid_suffixes = ["'s", "'m", "'re", "'ll", "'ve", "'d"];
-        if valid_suffixes.contains(&suffix_normalized.as_str()) {
-            return Some(vec![
-                Token::new(&text[..byte_offset], start, start + byte_offset),
-                Token::new(suffix_text, start + byte_offset, start + text_len),
-            ]);
-        }
-
-        None
+        result
     }
 }
 
@@ -188,12 +392,373 @@ impl Default for DefaultWordTokenizer {
     }
 }
 
+fn is_english_extra_word_char(c: char) -> bool {
+    matches!(
+        c,
+        '±' | '§'
+            | '©'
+            | '@'
+            | '€'
+            | '£'
+            | '¥'
+            | '$'
+            | '°'
+            | '%'
+            | '‰'
+            | '‱'
+            | '&'
+            | '\u{FFFD}'
+            | '\u{00AD}'
+            | '\u{00AC}'
+            | '\u{FF0C}'
+            | '\u{FF1F}'
+            | '\u{00A8}'
+    ) || ('\u{0300}'..='\u{036F}').contains(&c)
+}
+
+fn is_variation_selector(text: &str) -> bool {
+    matches!(text.as_bytes(), [0xEF, 0xB8, b] if (0x80..=0x8F).contains(b))
+}
+
+const P0_WORDS: &[&str] = &[
+    "fo'c'sle", "rec'd", "rec's", "ok'd", "cc'd", "cc's", "dj'd", "pm'd", "dm'd", "rsvp'd",
+];
+
+const NT_STEMS: &[&str] = &[
+    "are", "is", "were", "was", "do", "does", "did", "have", "has", "had", "wo", "would", "ca",
+    "could", "sha", "should", "must", "ai", "ought", "might", "need", "may", "am", "dare", "das",
+    "dass", "hai", "used", "use",
+];
+
+const CAMEL_CASE_HYPHEN_WORDS: &[&str] = &[
+    "mers-cov",
+    "mcgraw-hill",
+    "sars-cov-2",
+    "sars-cov",
+    "ph-metre",
+    "ph-metres",
+    "anti-ivg",
+    "anti-uv",
+    "anti-vih",
+    "al-qaida",
+];
+
+fn apostrophe_len(bytes: &[u8]) -> Option<usize> {
+    match bytes.first() {
+        Some(b'\'') => Some(1),
+        Some(0xE2) if bytes.starts_with("\u{2019}".as_bytes()) => Some(3),
+        _ => None,
+    }
+}
+
+fn is_dutch_quote(c: char) -> bool {
+    matches!(c, '\'' | '`' | '\u{2019}' | '\u{2018}' | '\u{00B4}')
+}
+
+fn is_base_delimiter(c: char) -> bool {
+    matches!(c,
+        '\u{0020}' | '\u{00A0}' | '\u{115F}' | '\u{1160}' | '\u{1680}'
+        | '\u{2000}'..='\u{200F}'
+        | '\u{2028}'..='\u{202F}'
+        | '\u{205F}'..='\u{206F}'
+        | '\u{3000}' | '\u{3164}' | '\u{FEFF}' | '\u{FFA0}'
+        | '\u{FFF9}'..='\u{FFFB}'
+        | '\u{00A6}' | '\u{2016}' | '\u{2223}' | '|' | ',' | '.' | ';' | '(' | ')' | '['
+        | ']' | '{' | '}' | '=' | '*' | '#' | '\u{2217}' | '+' | '\u{00D7}' | '\u{00B7}'
+        | '\u{00F7}' | '<' | '>' | '!' | '?' | ':' | '~' | '/' | '\\' | '"' | '\u{00AB}'
+        | '\u{00BB}' | '\u{201E}' | '\u{201C}' | '\u{201D}' | '\u{201B}' | '\u{2032}'
+        | '\u{203A}' | '\u{2039}' | '\u{2026}' | '\u{00BF}' | '\u{00A1}' | '\u{203C}'
+        | '\u{2047}' | '\u{2048}' | '\u{2049}' | '\u{2122}' | '\u{00AE}' | '\u{203D}'
+        | '\u{00B6}' | '\u{FFEB}' | '\u{2E2E}'
+        | '\'' | '`' | '\u{2019}' | '\u{2018}' | '\u{00B4}'
+        | '\u{2012}'..='\u{2015}'
+        | '\u{2500}' | '\u{3161}' | '\u{2713}'
+        | '\u{25CF}' | '\u{25CB}' | '\u{25C6}' | '\u{27A2}' | '\u{25A0}' | '\u{25A1}'
+        | '\u{2605}' | '\u{274F}' | '\u{2794}' | '\u{21B5}' | '\u{2756}' | '\u{25AA}'
+        | '\u{2751}' | '\u{2022}'
+        | '\u{2B9A}' | '\u{2265}' | '\u{2192}' | '\u{21FE}' | '\u{21C9}' | '\u{21D2}'
+        | '\u{21E8}' | '\u{21DB}'
+        | '\u{00B9}' | '\u{00B2}' | '\u{00B3}' | '\u{2070}' | '\u{2071}'
+        | '\u{2074}'..='\u{2079}'
+        | '\t' | '\n' | '\r' | '\u{000B}'
+    )
+}
+
+fn is_nl_delimiter(c: char) -> bool {
+    (is_base_delimiter(c) && !is_dutch_quote(c)) || c == '_'
+}
+
+fn is_eo_letter(c: char) -> bool {
+    c.is_ascii_alphabetic()
+        || matches!(
+            c,
+            'ĉ' | 'ĝ' | 'ĥ' | 'ĵ' | 'ŝ' | 'ŭ' | 'Ĉ' | 'Ĝ' | 'Ĥ' | 'Ĵ' | 'Ŝ' | 'Ŭ'
+        )
+}
+
+const EO_APOS1: &str = "\u{1}\u{1}EO@APOS1\u{1}\u{1}";
+const EO_APOS2: &str = "\u{1}\u{1}EO@APOS2\u{1}\u{1}";
+
+fn eo_prepare_apostrophes(text: &str) -> (String, Vec<usize>) {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut map: Vec<usize> = Vec::with_capacity(text.len() + 16);
+    let mut orig = 0usize;
+    let push_mapped = |out: &mut String, map: &mut Vec<usize>, piece: &str, orig: &mut usize| {
+        for _ in 0..piece.len() {
+            map.push(*orig);
+        }
+        out.push_str(piece);
+        *orig += piece.len();
+    };
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c != '\'' {
+            let mut buf = [0u8; 4];
+            push_mapped(&mut out, &mut map, c.encode_utf8(&mut buf), &mut orig);
+            i += 1;
+            continue;
+        }
+        let mut run_start = i;
+        while run_start > 0 && is_eo_letter(chars[run_start - 1]) {
+            run_start -= 1;
+        }
+        let run_len = i - run_start;
+        let before = if run_start > 0 {
+            Some(chars[run_start - 1])
+        } else {
+            None
+        };
+        let boundary_ok =
+            before.is_none_or(|b| !(b.is_ascii_alphanumeric() || b == '_') && b != '\'');
+        if run_len == 0 || !boundary_ok {
+            push_mapped(&mut out, &mut map, "'", &mut orig);
+            i += 1;
+            continue;
+        }
+        let next = chars.get(i + 1).copied();
+        let piece: &str = match next {
+            Some(n) if is_eo_letter(n) || n == '-' => EO_APOS2,
+            _ => EO_APOS1,
+        };
+        for (idx, _) in piece.bytes().enumerate() {
+            map.push(orig + usize::from(idx > 0));
+        }
+        out.push_str(piece);
+        orig += 1;
+        if matches!(next, Some(n) if is_eo_letter(n) || n == '-') {
+            out.push(' ');
+            map.push(orig);
+        }
+        i += 1;
+    }
+    map.push(orig);
+    (out, map)
+}
+
+fn eo_restore_apostrophes(tokens: Vec<Token>, map: &[usize]) -> Vec<Token> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut iter = tokens.into_iter();
+    while let Some(token) = iter.next() {
+        let text = token.text();
+        if text.ends_with(EO_APOS2) {
+            iter.next();
+        }
+        let restored = text.replace(EO_APOS1, "'").replace(EO_APOS2, "'");
+        let start = map[token.start().min(map.len() - 1)];
+        let end = map[token.end().min(map.len() - 1)];
+        out.push(Token::new(restored, start, end));
+    }
+    out
+}
+
+fn dutch_quote_pieces(text: &str) -> Vec<(usize, usize)> {
+    let char_indices: Vec<(usize, char)> = text.char_indices().collect();
+    if char_indices.len() <= 1 {
+        return vec![(0, text.len())];
+    }
+    let n = char_indices.len();
+    let starts_with_quote = is_dutch_quote(char_indices[0].1);
+    let ends_with_quote = is_dutch_quote(char_indices[n - 1].1);
+    let piece = |from: usize, to: usize| {
+        (
+            char_indices[from].0,
+            char_indices[to].0 + char_indices[to].1.len_utf8(),
+        )
+    };
+
+    if starts_with_quote && ends_with_quote && n > 2 {
+        return vec![piece(0, 0), piece(1, n - 2), piece(n - 1, n - 1)];
+    }
+    if ends_with_quote {
+        let mut stem_end = n;
+        while stem_end > 0 && is_dutch_quote(char_indices[stem_end - 1].1) {
+            stem_end -= 1;
+        }
+        let mut pieces = Vec::with_capacity(n - stem_end + 1);
+        if stem_end > 0 {
+            pieces.push(piece(0, stem_end - 1));
+        }
+        for i in stem_end..n {
+            pieces.push(piece(i, i));
+        }
+        return pieces;
+    }
+    if starts_with_quote {
+        let mut quote_end = 0usize;
+        while quote_end < n && is_dutch_quote(char_indices[quote_end].1) {
+            quote_end += 1;
+        }
+        let mut pieces = Vec::with_capacity(quote_end + 1);
+        for i in 0..quote_end {
+            pieces.push(piece(i, i));
+        }
+        if quote_end < n {
+            pieces.push(piece(quote_end, n - 1));
+        }
+        return pieces;
+    }
+    vec![(0, text.len())]
+}
+
+fn starts_with_ascii_ci(hay: &str, needle: &str) -> bool {
+    let mut hay_bytes = hay.as_bytes().iter();
+    needle.as_bytes().iter().all(|nb| {
+        hay_bytes
+            .next()
+            .is_some_and(|hb| hb.eq_ignore_ascii_case(nb))
+    })
+}
+
+fn eq_ascii_ci_quote_normalized(hay: &str, word: &str) -> bool {
+    let mut word_chars = word.chars();
+    for hc in hay.chars() {
+        let hc = if hc == '\u{2019}' { '\'' } else { hc };
+        match word_chars.next() {
+            Some(wc) if hc.eq_ignore_ascii_case(&wc) => {}
+            _ => return false,
+        }
+    }
+    word_chars.next().is_none()
+}
+
+fn contraction_pieces(text: &str) -> Option<Vec<String>> {
+    if P0_WORDS
+        .iter()
+        .any(|w| eq_ascii_ci_quote_normalized(text, w))
+    {
+        return Some(vec![text.to_string()]);
+    }
+    if let Some(pieces) = nt_contraction_pieces(text) {
+        return Some(pieces);
+    }
+    if let Some(pieces) = suffix_contraction_pieces(text) {
+        return Some(pieces);
+    }
+    t_prefix_pieces(text)
+}
+
+fn nt_contraction_pieces(text: &str) -> Option<Vec<String>> {
+    let mut pieces = Vec::new();
+    let mut body = text;
+    if let Some(len) = apostrophe_len(text.as_bytes()) {
+        pieces.push(text[..len].to_string());
+        body = &text[len..];
+    }
+    for stem in NT_STEMS {
+        if body.len() > stem.len() && starts_with_ascii_ci(body, stem) {
+            let rest = &body[stem.len()..];
+            let bytes = rest.as_bytes();
+            if bytes.first().is_some_and(|b| b.eq_ignore_ascii_case(&b'n'))
+                && apostrophe_len(&bytes[1..]).is_some_and(|alen| {
+                    let t = &bytes[1 + alen..];
+                    t.len() == 1 && t[0].eq_ignore_ascii_case(&b't')
+                })
+            {
+                pieces.push(body[..stem.len()].to_string());
+                pieces.push(rest.to_string());
+                return Some(pieces);
+            }
+        }
+    }
+    None
+}
+
+fn suffix_contraction_pieces(text: &str) -> Option<Vec<String>> {
+    let len = text.len();
+    for split in (1..len).rev() {
+        if !text.is_char_boundary(split) {
+            continue;
+        }
+        let tail = &text[split..];
+        let Some(apos_len) = apostrophe_len(tail.as_bytes()) else {
+            continue;
+        };
+        let after_apos = &tail[apos_len..];
+        for (suffix, slen) in [
+            ("m", 1),
+            ("re", 2),
+            ("ll", 2),
+            ("ve", 2),
+            ("d", 1),
+            ("s", 1),
+        ] {
+            if !starts_with_ascii_ci(after_apos, suffix) {
+                continue;
+            }
+            let rest = &after_apos[slen..];
+            if rest.is_empty() {
+                return Some(vec![text[..split].to_string(), tail.to_string()]);
+            }
+            if rest == "'" || rest == "-" || rest == "\u{2019}" {
+                return Some(vec![
+                    text[..split].to_string(),
+                    tail[..tail.len() - rest.len()].to_string(),
+                    rest.to_string(),
+                ]);
+            }
+        }
+    }
+    None
+}
+
+fn t_prefix_pieces(text: &str) -> Option<Vec<String>> {
+    for tail_word in ["was", "were", "is"] {
+        if !text.ends_with(tail_word) || text.eq_ignore_ascii_case(tail_word) {
+            continue;
+        }
+        let head = &text[..text.len() - tail_word.len()];
+        let bytes = head.as_bytes();
+        if let Some(alen) = apostrophe_len(bytes)
+            && bytes.len() == alen + 1
+            && bytes[alen].eq_ignore_ascii_case(&b't')
+        {
+            return Some(vec![head.to_string(), tail_word.to_string()]);
+        }
+    }
+    None
+}
+
 impl WordTokenizer for DefaultWordTokenizer {
     fn tokenize(&self, text: &str) -> Vec<Token> {
         if text.is_empty() {
             return Vec::new();
         }
 
+        if self.esperanto {
+            let (prepared, map) = eo_prepare_apostrophes(text);
+            let raw = self.tokenize_base(&prepared);
+            return eo_restore_apostrophes(raw, &map);
+        }
+
+        let tokens = self.tokenize_base(text);
+        self.split_contractions(self.join_variation_selectors(tokens))
+    }
+}
+
+impl DefaultWordTokenizer {
+    fn tokenize_base(&self, text: &str) -> Vec<Token> {
         let mut tokens = Vec::new();
         let chars: Vec<char> = text.chars().collect();
         let mut i = 0;
@@ -203,7 +768,6 @@ impl WordTokenizer for DefaultWordTokenizer {
             let c = chars[i];
 
             if c.is_whitespace() {
-                // Consume whitespace as a single token
                 let start_byte = byte_offset;
                 let mut end_byte = byte_offset;
                 while i < chars.len() && chars[i].is_whitespace() {
@@ -219,23 +783,20 @@ impl WordTokenizer for DefaultWordTokenizer {
             } else if let Some(url_end) =
                 self.try_consume_url_or_email(text, &chars, i, byte_offset)
             {
-                // URL or email: consume as single token
                 tokens.push(Token::new(
                     &text[byte_offset..url_end],
                     byte_offset,
                     url_end,
                 ));
-                // Advance i to match url_end
                 while byte_offset < url_end && i < chars.len() {
                     byte_offset += chars[i].len_utf8();
                     i += 1;
                 }
                 byte_offset = url_end;
-            } else if self.is_word_char(c) {
-                // Consume word characters
+            } else if self.starts_run(c) {
                 let start_byte = byte_offset;
                 let mut end_byte = byte_offset;
-                while i < chars.len() && self.is_word_char(chars[i]) {
+                while i < chars.len() && self.continues_run(&chars, i, end_byte > start_byte) {
                     end_byte += chars[i].len_utf8();
                     i += 1;
                 }
@@ -246,7 +807,6 @@ impl WordTokenizer for DefaultWordTokenizer {
                 ));
                 byte_offset = end_byte;
             } else {
-                // Punctuation or other single character
                 let start_byte = byte_offset;
                 let end_byte = byte_offset + c.len_utf8();
                 tokens.push(Token::new(
@@ -259,7 +819,7 @@ impl WordTokenizer for DefaultWordTokenizer {
             }
         }
 
-        self.attach_whitespace_before(self.split_contractions(tokens))
+        tokens
     }
 }
 
@@ -268,11 +828,18 @@ mod tests {
     use super::*;
     use crate::WordTokenizer;
 
+    fn en_tz() -> DefaultWordTokenizer {
+        let tagger = og_tagger::english_tagger::shared_english_tagger().expect("shared en tagger");
+        DefaultWordTokenizer::new_english(std::sync::Arc::new(move |w: &str| {
+            tagger.is_word_tagged(w)
+        }))
+    }
+
     #[test]
     fn test_basic_tokenization() {
         let tokenizer = DefaultWordTokenizer::new();
         let tokens = tokenizer.tokenize("Hello world");
-        assert_eq!(tokens.len(), 3); // "Hello", " ", "world"
+        assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].text(), "Hello");
         assert_eq!(tokens[1].text(), " ");
         assert_eq!(tokens[2].text(), "world");
@@ -305,7 +872,6 @@ mod tests {
     fn test_apostrophe() {
         let tokenizer = DefaultWordTokenizer::new();
         let tokens = tokenizer.tokenize("don't");
-        // Java LT splits "don't" → "do" + "n't"
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "do");
         assert_eq!(tokens[1].text(), "n't");
@@ -333,11 +899,6 @@ mod tests {
         assert_eq!(tokens[0].text(), "café");
     }
 
-    // ========================================================================
-    // Exhaustive test suite
-    // ========================================================================
-
-    /// Helper: collect just the token texts from a tokenize call.
     fn token_texts(tokenizer: &DefaultWordTokenizer, input: &str) -> Vec<String> {
         tokenizer
             .tokenize(input)
@@ -346,12 +907,8 @@ mod tests {
             .collect()
     }
 
-    /// Helper: verify that start/end offsets are monotonically increasing,
-    /// contiguous (no gaps, no overlaps), and that each token's text length
-    /// matches its byte span.
     fn assert_offsets_valid(tokens: &[Token]) {
         for (i, tok) in tokens.iter().enumerate() {
-            // The text length in bytes must equal end - start.
             assert_eq!(
                 tok.text().len(),
                 tok.end() - tok.start(),
@@ -374,14 +931,10 @@ mod tests {
         }
     }
 
-    /// Helper: verify that the concatenation of all token texts equals the
-    /// original input string.
     fn assert_reconstruction(tokens: &[Token], original: &str) {
         let reconstructed: String = tokens.iter().map(|t| t.text()).collect();
         assert_eq!(reconstructed, original);
     }
-
-    // -- 1. Basic tokenization with offset checks ----------------------------
 
     #[test]
     fn test_basic_two_words() {
@@ -391,7 +944,6 @@ mod tests {
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, "Hello world");
 
-        // Verify individual offsets
         assert_eq!(tokens[0].start(), 0);
         assert_eq!(tokens[0].end(), 5);
         assert_eq!(tokens[1].start(), 5);
@@ -399,8 +951,6 @@ mod tests {
         assert_eq!(tokens[2].start(), 6);
         assert_eq!(tokens[2].end(), 11);
     }
-
-    // -- 2. Punctuation separation -------------------------------------------
 
     #[test]
     fn test_period_at_end() {
@@ -419,14 +969,11 @@ mod tests {
     #[test]
     fn test_multiple_trailing_punctuation() {
         let tz = DefaultWordTokenizer::new();
-        // Each punctuation character is a separate token (non-word, non-whitespace).
         let tokens = tz.tokenize("Wow!!!");
         assert_eq!(token_texts(&tz, "Wow!!!"), vec!["Wow", "!", "!", "!"]);
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, "Wow!!!");
     }
-
-    // -- 3. Comma handling ---------------------------------------------------
 
     #[test]
     fn test_comma_separation() {
@@ -454,44 +1001,36 @@ mod tests {
         assert_reconstruction(&tokens, "a,b");
     }
 
-    // -- 4. Apostrophe preservation ------------------------------------------
-
     #[test]
     fn test_apostrophe_in_contractions() {
         let tz = DefaultWordTokenizer::new();
 
-        // don't → "do" + "n't" (Java LT behavior)
         let tokens = tz.tokenize("don't");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "do");
         assert_eq!(tokens[1].text(), "n't");
         assert_offsets_valid(&tokens);
 
-        // it's → "it" + "'s"
         let tokens = tz.tokenize("it's");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "it");
         assert_eq!(tokens[1].text(), "'s");
 
-        // I'm → "I" + "'m"
         let tokens = tz.tokenize("I'm");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "I");
         assert_eq!(tokens[1].text(), "'m");
 
-        // can't → "ca" + "n't"
         let tokens = tz.tokenize("can't");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "ca");
         assert_eq!(tokens[1].text(), "n't");
 
-        // won't → "wo" + "n't"
         let tokens = tz.tokenize("won't");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "wo");
         assert_eq!(tokens[1].text(), "n't");
 
-        // they're → "they" + "'re"
         let tokens = tz.tokenize("they're");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "they");
@@ -512,17 +1051,13 @@ mod tests {
 
     #[test]
     fn test_unicode_right_single_quotation_mark() {
-        // \u{2019} is the right single quotation mark (curly apostrophe)
-        // Java LT also splits curly apostrophe contractions: "don't" → "do" + "n't"
-        let tz = DefaultWordTokenizer::new();
+        let tz = en_tz();
         let tokens = tz.tokenize("don\u{2019}t");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "do");
         assert_eq!(tokens[1].text(), "n\u{2019}t");
         assert_offsets_valid(&tokens);
     }
-
-    // -- 5. Multiple spaces --------------------------------------------------
 
     #[test]
     fn test_two_spaces() {
@@ -556,13 +1091,10 @@ mod tests {
     fn test_mixed_whitespace() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("a \t b");
-        // " \t " is three whitespace characters consumed as one token
         assert_eq!(tokens[1].text(), " \t ");
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, "a \t b");
     }
-
-    // -- 6. Numbers ----------------------------------------------------------
 
     #[test]
     fn test_number_at_start() {
@@ -588,7 +1120,6 @@ mod tests {
     #[test]
     fn test_alphanumeric_mixed() {
         let tz = DefaultWordTokenizer::new();
-        // Underscore is a word char, so this is a single token
         let tokens = tz.tokenize("hello_123");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text(), "hello_123");
@@ -598,7 +1129,6 @@ mod tests {
     #[test]
     fn test_decimal_number() {
         let tz = DefaultWordTokenizer::new();
-        // Period is NOT a word char, so "3.14" splits into "3", ".", "14"
         let tokens = tz.tokenize("3.14");
         assert_eq!(token_texts(&tz, "3.14"), vec!["3", ".", "14"]);
         assert_offsets_valid(&tokens);
@@ -607,13 +1137,10 @@ mod tests {
     #[test]
     fn test_number_with_comma() {
         let tz = DefaultWordTokenizer::new();
-        // Comma is not a word char: "1,000" -> "1", ",", "000"
         let tokens = tz.tokenize("1,000");
         assert_eq!(token_texts(&tz, "1,000"), vec!["1", ",", "000"]);
         assert_offsets_valid(&tokens);
     }
-
-    // -- 7. Mixed punctuation ------------------------------------------------
 
     #[test]
     fn test_exclamation_and_question() {
@@ -641,7 +1168,6 @@ mod tests {
     #[test]
     fn test_ellipsis_standalone() {
         let tz = DefaultWordTokenizer::new();
-        // Each dot is a separate token since '.' is not a word/whitespace char
         let tokens = tz.tokenize("...");
         assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].text(), ".");
@@ -651,14 +1177,11 @@ mod tests {
         assert_reconstruction(&tokens, "...");
     }
 
-    // -- 8. Hyphenated words -------------------------------------------------
-
     #[test]
     fn test_hyphenated_word() {
         let tz = DefaultWordTokenizer::new();
-        // Hyphen '-' is NOT a word char, so "well-known" splits
         let tokens = tz.tokenize("well-known");
-        assert_eq!(token_texts(&tz, "well-known"), vec!["well", "-", "known"]);
+        assert_eq!(token_texts(&tz, "well-known"), vec!["well-known"]);
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, "well-known");
     }
@@ -669,12 +1192,10 @@ mod tests {
         let tokens = tz.tokenize("state-of-the-art");
         assert_eq!(
             token_texts(&tz, "state-of-the-art"),
-            vec!["state", "-", "of", "-", "the", "-", "art"]
+            vec!["state-of-the-art"]
         );
         assert_offsets_valid(&tokens);
     }
-
-    // -- 9. Parentheses ------------------------------------------------------
 
     #[test]
     fn test_parentheses_around_word() {
@@ -704,16 +1225,12 @@ mod tests {
         assert_offsets_valid(&tokens);
     }
 
-    // -- 10. Empty string ----------------------------------------------------
-
     #[test]
     fn test_empty_string_returns_no_tokens() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("");
         assert!(tokens.is_empty());
     }
-
-    // -- 11. Single word -----------------------------------------------------
 
     #[test]
     fn test_single_word() {
@@ -736,8 +1253,6 @@ mod tests {
         assert_eq!(tokens[0].end(), 1);
     }
 
-    // -- 12. Multiple punctuation (standalone) --------------------------------
-
     #[test]
     fn test_only_punctuation() {
         let tz = DefaultWordTokenizer::new();
@@ -747,14 +1262,17 @@ mod tests {
         assert_reconstruction(&tokens, "!?.,;");
     }
 
-    // -- 13. Special characters -----------------------------------------------
-
     #[test]
     fn test_at_symbol() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("user@host");
-        assert_eq!(token_texts(&tz, "user@host"), vec!["user", "@", "host"]);
+        assert_eq!(token_texts(&tz, "user@host"), vec!["user@host"]);
         assert_offsets_valid(&tokens);
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(
+            token_texts(&generic, "user@host"),
+            vec!["user", "@", "host"]
+        );
     }
 
     #[test]
@@ -769,24 +1287,55 @@ mod tests {
     fn test_dollar_sign() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("$100");
-        assert_eq!(token_texts(&tz, "$100"), vec!["$", "100"]);
+        assert_eq!(token_texts(&tz, "$100"), vec!["$100"]);
         assert_offsets_valid(&tokens);
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(token_texts(&generic, "$100"), vec!["$", "100"]);
     }
 
     #[test]
     fn test_percent_sign() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("100%");
-        assert_eq!(token_texts(&tz, "100%"), vec!["100", "%"]);
+        assert_eq!(token_texts(&tz, "100%"), vec!["100%"]);
         assert_offsets_valid(&tokens);
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(token_texts(&generic, "100%"), vec!["100", "%"]);
     }
 
     #[test]
     fn test_ampersand() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("A&B");
-        assert_eq!(token_texts(&tz, "A&B"), vec!["A", "&", "B"]);
+        assert_eq!(token_texts(&tz, "A&B"), vec!["A&B"]);
         assert_offsets_valid(&tokens);
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(token_texts(&generic, "A&B"), vec!["A", "&", "B"]);
+    }
+
+    #[test]
+    fn test_english_word_characters_from_java() {
+        let tz = DefaultWordTokenizer::new();
+        assert_eq!(token_texts(&tz, "40–45%"), vec!["40", "–", "45%"]);
+        assert_eq!(token_texts(&tz, "$12,50"), vec!["$12", ",", "50"]);
+        assert_eq!(
+            token_texts(&tz, "€5 and £3"),
+            vec!["€5", " ", "and", " ", "£3"]
+        );
+        assert_eq!(token_texts(&tz, "12‰"), vec!["12‰"]);
+        assert_eq!(token_texts(&tz, "90°"), vec!["90°"]);
+        assert_eq!(token_texts(&tz, "±2"), vec!["±2"]);
+        assert_eq!(token_texts(&tz, "§2"), vec!["§2"]);
+        assert_eq!(token_texts(&tz, "©2024"), vec!["©2024"]);
+        assert_eq!(token_texts(&tz, "Q&A's"), vec!["Q&A", "'s"]);
+        assert_eq!(token_texts(&tz, "cafe\u{0301}"), vec!["cafe\u{0301}"]);
+        assert_eq!(token_texts(&tz, "a\u{00AD}b"), vec!["a\u{00AD}b"]);
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(token_texts(&generic, "90°"), vec!["90", "°"]);
+        assert_eq!(
+            token_texts(&generic, "cafe\u{0301}"),
+            vec!["cafe", "\u{0301}"]
+        );
     }
 
     #[test]
@@ -869,8 +1418,6 @@ mod tests {
         assert_offsets_valid(&tokens);
     }
 
-    // -- 14. Leading and trailing whitespace ----------------------------------
-
     #[test]
     fn test_leading_space() {
         let tz = DefaultWordTokenizer::new();
@@ -938,70 +1485,61 @@ mod tests {
         assert_offsets_valid(&tokens);
     }
 
-    // -- Token classification via Token methods --------------------------------
-
     #[test]
     fn test_token_is_word_classification() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("Hello, world!");
-        assert!(tokens[0].is_word()); // "Hello"
-        assert!(!tokens[1].is_word()); // ","
-        assert!(!tokens[2].is_word()); // " "
-        assert!(tokens[3].is_word()); // "world"
-        assert!(!tokens[4].is_word()); // "!"
+        assert!(tokens[0].is_word());
+        assert!(!tokens[1].is_word());
+        assert!(!tokens[2].is_word());
+        assert!(tokens[3].is_word());
+        assert!(!tokens[4].is_word());
     }
 
     #[test]
     fn test_token_is_whitespace_classification() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("a b");
-        assert!(!tokens[0].is_whitespace()); // "a"
-        assert!(tokens[1].is_whitespace()); // " "
-        assert!(!tokens[2].is_whitespace()); // "b"
+        assert!(!tokens[0].is_whitespace());
+        assert!(tokens[1].is_whitespace());
+        assert!(!tokens[2].is_whitespace());
     }
 
     #[test]
     fn test_token_is_punctuation_classification() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("a, b!");
-        // tokens: ["a", ",", " ", "b", "!"]
-        assert!(!tokens[0].is_punctuation()); // "a"
-        assert!(tokens[1].is_punctuation()); // ","
-        assert!(!tokens[2].is_punctuation()); // " "
-        assert!(!tokens[3].is_punctuation()); // "b"
-        assert!(tokens[4].is_punctuation()); // "!"
+        assert!(!tokens[0].is_punctuation());
+        assert!(tokens[1].is_punctuation());
+        assert!(!tokens[2].is_punctuation());
+        assert!(!tokens[3].is_punctuation());
+        assert!(tokens[4].is_punctuation());
     }
 
     #[test]
     fn test_token_len() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("Hi  world");
-        assert_eq!(tokens[0].len(), 2); // "Hi"
-        assert_eq!(tokens[1].len(), 2); // "  "
-        assert_eq!(tokens[2].len(), 5); // "world"
+        assert_eq!(tokens[0].len(), 2);
+        assert_eq!(tokens[1].len(), 2);
+        assert_eq!(tokens[2].len(), 5);
     }
-
-    // -- Unicode edge cases ---------------------------------------------------
 
     #[test]
     fn test_unicode_multi_byte_characters() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("café résumé");
-        assert_eq!(tokens.len(), 3); // "café", " ", "résumé"
+        assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].text(), "café");
         assert_eq!(tokens[1].text(), " ");
         assert_eq!(tokens[2].text(), "résumé");
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, "café résumé");
 
-        // Verify byte offsets account for multi-byte 'é' (2 bytes each in UTF-8)
-        // "café" = 5 bytes (c=1, a=1, f=1, é=2)
         assert_eq!(tokens[0].start(), 0);
         assert_eq!(tokens[0].end(), 5);
-        // " " = 1 byte
         assert_eq!(tokens[1].start(), 5);
         assert_eq!(tokens[1].end(), 6);
-        // "résumé" = 8 bytes (r=1, é=2, s=1, u=1, m=1, é=2)
         assert_eq!(tokens[2].start(), 6);
         assert_eq!(tokens[2].end(), 14);
     }
@@ -1009,7 +1547,6 @@ mod tests {
     #[test]
     fn test_cjk_characters() {
         let tz = DefaultWordTokenizer::new();
-        // CJK characters are alphabetic, so they form word tokens
         let tokens = tz.tokenize("你好");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text(), "你好");
@@ -1019,8 +1556,6 @@ mod tests {
     #[test]
     fn test_emoji_separate_from_word() {
         let tz = DefaultWordTokenizer::new();
-        // Emojis are not alphanumeric/underscore/apostrophe, so they are
-        // separate tokens
         let tokens = tz.tokenize("Hi👍");
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].text(), "Hi");
@@ -1031,7 +1566,6 @@ mod tests {
     #[test]
     fn test_underscore_in_word() {
         let tz = DefaultWordTokenizer::new();
-        // Underscore is a word char
         let tokens = tz.tokenize("snake_case");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text(), "snake_case");
@@ -1054,8 +1588,6 @@ mod tests {
         assert_eq!(tokens[0].text(), "_");
     }
 
-    // -- Long and complex inputs ----------------------------------------------
-
     #[test]
     fn test_long_sentence() {
         let tz = DefaultWordTokenizer::new();
@@ -1063,9 +1595,7 @@ mod tests {
         let tokens = tz.tokenize(input);
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, input);
-        // Last token should be the period
         assert_eq!(tokens.last().unwrap().text(), ".");
-        // First token should be "The"
         assert_eq!(tokens.first().unwrap().text(), "The");
     }
 
@@ -1090,8 +1620,6 @@ mod tests {
         assert_offsets_valid(&tokens);
         assert_reconstruction(&tokens, input);
     }
-
-    // -- Single punctuation character -----------------------------------------
 
     #[test]
     fn test_single_period() {
@@ -1119,8 +1647,6 @@ mod tests {
         assert_eq!(tokens[0].text(), "!");
     }
 
-    // -- Double quotes and single quotes (non-apostrophe context) -------------
-
     #[test]
     fn test_double_quotes() {
         let tz = DefaultWordTokenizer::new();
@@ -1131,21 +1657,174 @@ mod tests {
 
     #[test]
     fn test_single_quotes_around_word() {
-        let tz = DefaultWordTokenizer::new();
-        // ' at start/end of a word: 'hello'
-        // The tokenizer treats ' as a word char, so "'hello'" becomes one token
+        let tz = en_tz();
         let tokens = tz.tokenize("'hello'");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].text(), "'hello'");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].text(), "'");
+        assert_eq!(tokens[1].text(), "hello");
+        assert_eq!(tokens[2].text(), "'");
+        assert_offsets_valid(&tokens);
     }
 
-    // -- Dash characters ------------------------------------------------------
+    #[test]
+    fn test_dutch_tokenizer_matches_java() {
+        let tz = DefaultWordTokenizer::new_dutch();
+        assert_eq!(
+            token_texts(&tz, "De oma's fiets."),
+            vec!["De", " ", "oma's", " ", "fiets", "."]
+        );
+        assert_eq!(
+            token_texts(&tz, "'s ochtends"),
+            vec!["'", "s", " ", "ochtends"]
+        );
+        assert_eq!(token_texts(&tz, "oma's'"), vec!["oma's", "'"]);
+        assert_eq!(token_texts(&tz, "zo\u{2019}n"), vec!["zo\u{2019}n"]);
+        assert_eq!(
+            token_texts(&tz, "e-mail adres"),
+            vec!["e-mail", " ", "adres"]
+        );
+        assert_eq!(
+            token_texts(&tz, "REMOTE_USER en naam@bedrijf.nl"),
+            vec!["REMOTE", "_", "USER", " ", "en", " ", "naam@bedrijf.nl"]
+        );
+        assert_eq!(token_texts(&tz, "'oma's'"), vec!["'", "oma's", "'"]);
+        let tokens = tz.tokenize("De oma's fiets.");
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "De oma's fiets.");
+    }
+
+    #[test]
+    fn test_dutch_tokenizer_matches_java_test_expectations() {
+        let tz = DefaultWordTokenizer::new_dutch();
+        assert_eq!(
+            token_texts(&tz, "This is\u{00A0}a test"),
+            vec!["This", " ", "is", "\u{00A0}", "a", " ", "test"]
+        );
+        assert_eq!(
+            token_texts(&tz, "Bla bla oma's bla bla 'test"),
+            vec![
+                "Bla", " ", "bla", " ", "oma's", " ", "bla", " ", "bla", " ", "'", "test"
+            ]
+        );
+        assert_eq!(
+            token_texts(&tz, "Ik zie het''"),
+            vec!["Ik", " ", "zie", " ", "het", "'", "'"]
+        );
+        assert_eq!(
+            token_texts(&tz, "''Ik zie het"),
+            vec!["'", "'", "Ik", " ", "zie", " ", "het"]
+        );
+        assert_eq!(
+            token_texts(&tz, "Ik 'zie' het"),
+            vec!["Ik", " ", "'", "zie", "'", " ", "het"]
+        );
+        assert_eq!(
+            token_texts(&tz, "Ik \u{2018}zie\u{2019} het"),
+            vec!["Ik", " ", "\u{2018}", "zie", "\u{2019}", " ", "het"]
+        );
+        assert_eq!(
+            token_texts(&tz, "Ik \u{201C}zie\u{201D} het"),
+            vec!["Ik", " ", "\u{201C}", "zie", "\u{201D}", " ", "het"]
+        );
+        assert_eq!(token_texts(&tz, "'x'"), vec!["'", "x", "'"]);
+        assert_eq!(token_texts(&tz, "`x`"), vec!["`", "x", "`"]);
+    }
+
+    #[test]
+    fn test_esperanto_tokenizer_matches_java() {
+        let tz = DefaultWordTokenizer::new_esperanto();
+        assert_eq!(token_texts(&tz, "L'espero."), vec!["L'", "espero", "."]);
+        assert_eq!(
+            token_texts(&tz, "Dank'al vi, mi sukcesis."),
+            vec![
+                "Dank'", "al", " ", "vi", ",", " ", "mi", " ", "sukcesis", "."
+            ]
+        );
+        assert_eq!(
+            token_texts(&tz, "Neni' okazis."),
+            vec!["Neni'", " ", "okazis", "."]
+        );
+        assert_eq!(
+            token_texts(&tz, "Mi havas un' fraton."),
+            vec!["Mi", " ", "havas", " ", "un'", " ", "fraton", "."]
+        );
+        assert_eq!(token_texts(&tz, "'citita'"), vec!["'", "citita", "'"]);
+        let tokens = tz.tokenize("Dank'al vi");
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "Dank'al vi");
+        assert_eq!((tokens[0].start(), tokens[0].end()), (0, 5));
+        assert_eq!((tokens[1].start(), tokens[1].end()), (5, 7));
+        assert_eq!((tokens[2].start(), tokens[2].end()), (7, 8));
+        assert_eq!((tokens[3].start(), tokens[3].end()), (8, 10));
+    }
+
+    #[test]
+    fn test_dutch_symbols_join_word_runs_like_java_delimiter_complement() {
+        let tz = DefaultWordTokenizer::new_dutch();
+        assert_eq!(token_texts(&tz, "$15."), vec!["$15", "."]);
+        assert_eq!(token_texts(&tz, "20%"), vec!["20%"]);
+        assert_eq!(
+            token_texts(&tz, "Apple Watch\u{00A9}"),
+            vec!["Apple", " ", "Watch\u{00A9}"]
+        );
+        assert_eq!(token_texts(&tz, "&euml;"), vec!["&euml", ";"]);
+        assert_eq!(
+            token_texts(&tz, "be&euml;indigen"),
+            vec!["be&euml", ";", "indigen"]
+        );
+        assert_eq!(
+            token_texts(&tz, "€5 en £3"),
+            vec!["€5", " ", "en", " ", "£3"]
+        );
+        assert_eq!(token_texts(&tz, "15:00"), vec!["15", ":", "00"]);
+        assert_eq!(token_texts(&tz, "a\u{2013}b"), vec!["a", "\u{2013}", "b"]);
+        assert_eq!(token_texts(&tz, "wrd\u{00B2}"), vec!["wrd", "\u{00B2}"]);
+        assert_eq!(token_texts(&tz, "mijn.net"), vec!["mijn", ".", "net"]);
+    }
+
+    #[test]
+    fn test_english_contraction_pipeline_matches_java() {
+        let tz = en_tz();
+        assert_eq!(token_texts(&tz, "it'S"), vec!["it", "'S"]);
+        assert_eq!(token_texts(&tz, "WE'RE"), vec!["WE", "'RE"]);
+        assert_eq!(
+            token_texts(&tz, "We don'T need this."),
+            vec![
+                "We", " ", "do", "n", "'", "T", " ", "need", " ", "this", "."
+            ]
+        );
+        assert_eq!(token_texts(&tz, "'We're'"), vec!["'", "We", "'re", "'"]);
+        assert_eq!(token_texts(&tz, "'twas"), vec!["'", "t", "was"]);
+        assert_eq!(token_texts(&tz, "fo'c'sle"), vec!["fo'c'sle"]);
+        assert_eq!(token_texts(&tz, "doin' that"), vec!["doin'", " ", "that"]);
+        assert_eq!(
+            token_texts(&tz, "ne\u{2019}er e'er o\u{2019}er jack-o'-lantern"),
+            vec![
+                "ne\u{2019}er",
+                " ",
+                "e'er",
+                " ",
+                "o\u{2019}er",
+                " ",
+                "jack-o'-lantern"
+            ]
+        );
+        assert_eq!(
+            token_texts(&tz, "He's sad, but WE'RE happy."),
+            vec![
+                "He", "'s", " ", "sad", ",", " ", "but", " ", "WE", "'RE", " ", "happy", "."
+            ]
+        );
+        assert_eq!(token_texts(&tz, "We'RE"), vec!["We", "'RE"]);
+        let tokens = tz.tokenize("We don'T need this.");
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "We don'T need this.");
+    }
 
     #[test]
     fn test_en_dash() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("10–20");
-        // en dash (U+2013) is not a word char, so it separates tokens
         assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].text(), "10");
         assert_eq!(tokens[1].text(), "\u{2013}");
@@ -1157,7 +1836,6 @@ mod tests {
     fn test_em_dash() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("word—another");
-        // em dash (U+2014) is not a word char
         assert_eq!(tokens.len(), 3);
         assert_eq!(tokens[0].text(), "word");
         assert_eq!(tokens[1].text(), "\u{2014}");
@@ -1165,17 +1843,13 @@ mod tests {
         assert_offsets_valid(&tokens);
     }
 
-    // -- Default trait --------------------------------------------------------
-
     #[test]
     fn test_default_trait() {
-        let tz = DefaultWordTokenizer::default();
+        let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("test");
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].text(), "test");
     }
-
-    // -- URL/Email detection -----------------------------------------------------
 
     #[test]
     fn test_url_http() {
@@ -1201,7 +1875,6 @@ mod tests {
     fn test_www_url() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("Go to www.example.com now");
-        // "Go" " " "to" " " "www.example.com" " " "now"
         let texts: Vec<&str> = tokens.iter().map(|t| t.text()).collect();
         assert!(
             texts.contains(&"www.example.com"),
@@ -1223,50 +1896,190 @@ mod tests {
     fn test_url_no_false_positive() {
         let tz = DefaultWordTokenizer::new();
         let tokens = tz.tokenize("I like cats and dogs");
-        // Should not be detected as URL
         assert!(tokens.iter().all(|t| !t.text().contains('@')));
     }
 
-    // -- whitespace_before tracking -------------------------------------------
-
     #[test]
-    fn test_whitespace_before_first_token_is_none() {
-        let tz = DefaultWordTokenizer::new();
-        let tokens = tz.tokenize("Hello world");
-        assert_eq!(tokens[0].whitespace_before(), None);
+    fn test_splitting_hyphen_cuts_joined_numbers_and_arabic_punctuation() {
+        let tz = DefaultWordTokenizer::new_splitting_hyphen();
+        assert_eq!(
+            token_texts(&tz, "25-03-2022"),
+            vec!["25", "-", "03", "-", "2022"]
+        );
+        assert_eq!(token_texts(&tz, "قال،أحمد؟"), vec!["قال", "،", "أحمد", "؟"]);
     }
 
     #[test]
-    fn test_whitespace_before_attached_to_following_word() {
-        let tz = DefaultWordTokenizer::new();
-        let tokens = tz.tokenize("Hello world");
-        assert_eq!(tokens[2].whitespace_before(), Some(" "));
+    fn test_crimean_tatar_trailing_hyphen_split() {
+        let tz = DefaultWordTokenizer::new_generic();
+        let split = |text: &str| -> Vec<String> {
+            tz.split_trailing_hyphens(tz.tokenize(text))
+                .iter()
+                .map(|t| t.text().to_string())
+                .collect()
+        };
+        assert_eq!(split("abc-"), vec!["abc", "-"]);
+        assert_eq!(split("-abc"), vec!["-abc"]);
+        assert_eq!(split("abc-def"), vec!["abc-def"]);
+        assert_eq!(split("a-b-"), vec!["a-b", "-"]);
+        assert_eq!(split("--"), vec!["-", "-"]);
+        assert_eq!(split(" - "), vec![" ", "-", " "]);
+        assert_eq!(split("ab- def"), vec!["ab", "-", " ", "def"]);
     }
 
     #[test]
-    fn test_whitespace_before_records_multiple_spaces() {
-        let tz = DefaultWordTokenizer::new();
-        let tokens = tz.tokenize("Hello   world");
-        assert_eq!(tokens[2].whitespace_before(), Some("   "));
+    fn test_hyphen_attaches_to_word_runs_at_boundaries() {
+        let tz = DefaultWordTokenizer::new_generic();
+        assert_eq!(token_texts(&tz, "Кое -кто"), vec!["Кое", " ", "-кто"]);
+        assert_eq!(token_texts(&tz, "Кое- кто"), vec!["Кое-", " ", "кто"]);
+        assert_eq!(token_texts(&tz, "well- known"), vec!["well-", " ", "known"]);
+        assert_eq!(token_texts(&tz, " - "), vec![" ", "-", " "]);
+        assert_eq!(token_texts(&tz, "a--b"), vec!["a--b"]);
     }
 
     #[test]
-    fn test_whitespace_before_between_punctuation_and_word() {
+    fn test_english_fullwidth_comma_and_question_mark_stay_in_word_runs() {
         let tz = DefaultWordTokenizer::new();
-        // No whitespace between "," and "b" — stays None.
-        let tokens = tz.tokenize("a, b");
-        assert_eq!(tokens[1].whitespace_before(), None); // ","
-        assert_eq!(tokens[3].whitespace_before(), Some(" ")); // "b"
+        assert_eq!(
+            token_texts(&tz, "Be careful\u{FF0C}this is not a standard comma."),
+            vec![
+                "Be",
+                " ",
+                "careful\u{FF0C}this",
+                " ",
+                "is",
+                " ",
+                "not",
+                " ",
+                "a",
+                " ",
+                "standard",
+                " ",
+                "comma",
+                "."
+            ]
+        );
+        assert_eq!(
+            token_texts(&tz, "Is he an average person\u{FF1F}"),
+            vec![
+                "Is",
+                " ",
+                "he",
+                " ",
+                "an",
+                " ",
+                "average",
+                " ",
+                "person\u{FF1F}"
+            ]
+        );
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(
+            token_texts(&generic, "a\u{FF0C}b"),
+            vec!["a", "\u{FF0C}", "b"]
+        );
     }
 
     #[test]
-    fn test_whitespace_before_only_first_word_after_gap() {
+    fn test_english_hyphens_split_off_at_boundaries_like_words_to_add() {
         let tz = DefaultWordTokenizer::new();
-        // After contraction splitting: "do" carries the gap, "n't" does not.
-        let tokens = tz.tokenize("I don't know");
-        let dont = tokens.iter().find(|t| t.text() == "do").unwrap();
-        let nt = tokens.iter().find(|t| t.text() == "n't").unwrap();
-        assert_eq!(dont.whitespace_before(), Some(" "));
-        assert_eq!(nt.whitespace_before(), None);
+        assert_eq!(token_texts(&tz, "break- up"), vec!["break", "-", " ", "up"]);
+        assert_eq!(
+            token_texts(&tz, "This is great -- ok"),
+            vec!["This", " ", "is", " ", "great", " ", "-", "-", " ", "ok"]
+        );
+        assert_eq!(token_texts(&tz, "well-known"), vec!["well-known"]);
+    }
+
+    #[test]
+    fn test_diaeresis_is_en_word_char() {
+        let tz = DefaultWordTokenizer::new();
+        assert_eq!(token_texts(&tz, "a\u{00A8}b"), vec!["a\u{00A8}b"]);
+    }
+
+    #[test]
+    fn test_p0_curly_apostrophe_variants_stay_whole() {
+        let tz = en_tz();
+        assert_eq!(
+            token_texts(&tz, "fo\u{2019}c\u{2019}sle"),
+            vec!["fo\u{2019}c\u{2019}sle"]
+        );
+        assert_eq!(token_texts(&tz, "rsvp\u{2019}d"), vec!["rsvp\u{2019}d"]);
+    }
+
+    #[test]
+    fn test_camel_case_hyphen_words_stay_whole() {
+        let tz = en_tz();
+        assert_eq!(token_texts(&tz, "MERS-CoV"), vec!["MERS-CoV"]);
+        assert_eq!(token_texts(&tz, "McGraw-Hill"), vec!["McGraw-Hill"]);
+        assert_eq!(token_texts(&tz, "SARS-CoV-2"), vec!["SARS-CoV-2"]);
+        assert_eq!(token_texts(&tz, "pH-metres"), vec!["pH-metres"]);
+        assert_eq!(token_texts(&tz, "al-Qaida"), vec!["al-Qaida"]);
+    }
+
+    #[test]
+    fn test_variation_selectors_join_previous_token() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("word\u{26A0}\u{FE0F}!");
+        assert_eq!(
+            token_texts(&tz, "word\u{26A0}\u{FE0F}!"),
+            vec!["word", "\u{26A0}\u{FE0F}", "!"]
+        );
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "word\u{26A0}\u{FE0F}!");
+        let generic = DefaultWordTokenizer::new_generic();
+        assert_eq!(
+            token_texts(&generic, "word\u{26A0}\u{FE0F}"),
+            vec!["word", "\u{26A0}", "\u{FE0F}"]
+        );
+    }
+
+    #[test]
+    fn test_leading_and_trailing_hyphens_split_off() {
+        let tz = DefaultWordTokenizer::new();
+        let tokens = tz.tokenize("-word");
+        assert_eq!(token_texts(&tz, "-word"), vec!["-", "word"]);
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "-word");
+
+        let tokens = tz.tokenize("word-");
+        assert_eq!(token_texts(&tz, "word-"), vec!["word", "-"]);
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "word-");
+
+        let tokens = tz.tokenize("--word--");
+        assert_eq!(
+            token_texts(&tz, "--word--"),
+            vec!["-", "-", "word", "-", "-"]
+        );
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "--word--");
+    }
+
+    #[test]
+    fn test_split_underscores_separates_the_boundaries() {
+        let tz = en_tz();
+        let texts = |tokens: &[Token]| -> Vec<String> {
+            tokens.iter().map(|t| t.text().to_string()).collect()
+        };
+        let tokens = tz.split_underscores(tz.tokenize("foo_bar"));
+        assert_eq!(texts(&tokens), vec!["foo", "_", "bar"]);
+        assert_offsets_valid(&tokens);
+        assert_reconstruction(&tokens, "foo_bar");
+
+        let tokens = tz.split_underscores(tz.tokenize("foo_"));
+        assert_eq!(texts(&tokens), vec!["foo", "_"]);
+
+        let tokens = tz.split_underscores(tz.tokenize("_foo"));
+        assert_eq!(texts(&tokens), vec!["_", "foo"]);
+
+        let tokens = tz.split_underscores(tz.tokenize("__"));
+        assert_eq!(texts(&tokens), vec!["_", "_"]);
+
+        let tokens = tz.split_underscores(tz.tokenize("plain"));
+        assert_eq!(texts(&tokens), vec!["plain"]);
+
+        let tokens = tz.split_underscores(tz.tokenize("_"));
+        assert_eq!(texts(&tokens), vec!["_"]);
     }
 }

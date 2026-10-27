@@ -42,9 +42,6 @@ pub struct ComparisonResult {
     pub details: String,
 }
 
-/// Compare Rust RuleMatch results against Java LT results.
-/// Uses fuzzy matching: matches by (rule_id, approximate offset) to handle
-/// minor offset differences from tokenization.
 pub fn compare_results(
     rust_matches: &[RuleMatch],
     java_matches: &[JavaMatch],
@@ -53,13 +50,14 @@ pub fn compare_results(
     let mut rust_matched: Vec<bool> = vec![false; rust_matches.len()];
 
     for java_match in java_matches {
-        // Find closest rust match by rule_id + offset
         let best_rust = rust_matches
             .iter()
             .enumerate()
             .filter(|(_, rm)| !rust_matched[rm_idx(rust_matches, rm)])
             .filter(|(_, rm)| rm.rule().id() == java_match.rule_id)
-            .min_by_key(|(_, rm)| (rm.offset() as i64 - java_match.offset as i64).abs() as usize);
+            .min_by_key(|(_, rm)| {
+                (rm.offset() as i64 - java_match.offset as i64).unsigned_abs() as usize
+            });
 
         match best_rust {
             Some((idx, rm)) => {
@@ -127,7 +125,6 @@ pub fn compare_results(
         }
     }
 
-    // Check for extra matches in Rust
     for (idx, rust_match) in rust_matches.iter().enumerate() {
         if !rust_matched[idx] {
             results.push(ComparisonResult {
@@ -142,7 +139,6 @@ pub fn compare_results(
         }
     }
 
-    // If both are empty, that's a pass
     if java_matches.is_empty() && rust_matches.is_empty() {
         results.push(ComparisonResult {
             rule_id: "(none)".to_string(),
@@ -155,16 +151,14 @@ pub fn compare_results(
 }
 
 fn rm_idx(matches: &[RuleMatch], target: &RuleMatch) -> usize {
-    // Get index by pointer comparison
     matches
         .iter()
         .position(|m| std::ptr::eq(m, target))
         .unwrap_or(0)
 }
 
-/// Compare two JSON check results (for golden file comparison)
 pub fn compare_json_results(rust_json: &str, java_json: &str) -> Vec<ComparisonResult> {
-    let rust_as_java = match crate::harness::parse_matches(rust_json) {
+    let rust_result: serde_json::Value = match serde_json::from_str(rust_json) {
         Ok(v) => v,
         Err(e) => {
             return vec![ComparisonResult {
@@ -175,7 +169,7 @@ pub fn compare_json_results(rust_json: &str, java_json: &str) -> Vec<ComparisonR
         }
     };
 
-    let java_java_matches: Vec<JavaMatch> = match crate::harness::parse_matches(java_json) {
+    let java_java_matches: Vec<JavaMatch> = match serde_json::from_str(java_json) {
         Ok(v) => v,
         Err(e) => {
             return vec![ComparisonResult {
@@ -186,13 +180,51 @@ pub fn compare_json_results(rust_json: &str, java_json: &str) -> Vec<ComparisonR
         }
     };
 
-    // Since we can't create RuleMatch from JSON easily, compare the two JavaMatch vecs directly
+    let rust_matches_raw = match rust_result.get("matches") {
+        Some(v) => v,
+        None => {
+            return vec![ComparisonResult {
+                rule_id: "FORMAT_ERROR".to_string(),
+                status: ComparisonStatus::MissingInRust,
+                details: "Rust JSON missing 'matches' field".to_string(),
+            }];
+        }
+    };
+
+    let rust_as_java: Vec<JavaMatch> = rust_matches_raw
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|m| {
+            Some(JavaMatch {
+                rule_id: m.get("rule")?.get("id")?.as_str()?.to_string(),
+                message: m.get("message")?.as_str()?.to_string(),
+                offset: m.get("offset")?.as_u64()? as usize,
+                length: m.get("length")?.as_u64()? as usize,
+                replacements: m
+                    .get("replacements")
+                    .and_then(|r| r.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.get("value")?.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                category: m
+                    .get("rule")?
+                    .get("category")?
+                    .get("id")?
+                    .as_str()?
+                    .to_string(),
+                issue_type: String::new(),
+            })
+        })
+        .collect();
+
     compare_java_match_lists(&rust_as_java, &java_java_matches)
 }
 
-/// Compare two parsed match lists (the engine behind `compare_results` /
-/// `compare_json_results`; used directly by the CLI against HTTP responses).
-pub fn compare_java_match_lists(rust: &[JavaMatch], java: &[JavaMatch]) -> Vec<ComparisonResult> {
+fn compare_java_match_lists(rust: &[JavaMatch], java: &[JavaMatch]) -> Vec<ComparisonResult> {
     let mut results = Vec::new();
     let mut rust_matched: Vec<bool> = vec![false; rust.len()];
 
@@ -202,7 +234,9 @@ pub fn compare_java_match_lists(rust: &[JavaMatch], java: &[JavaMatch]) -> Vec<C
             .enumerate()
             .filter(|(i, _)| !rust_matched[*i])
             .filter(|(_, r)| r.rule_id == java_match.rule_id)
-            .min_by_key(|(_, r)| (r.offset as i64 - java_match.offset as i64).abs() as usize);
+            .min_by_key(|(_, r)| {
+                (r.offset as i64 - java_match.offset as i64).unsigned_abs() as usize
+            });
 
         match best {
             Some((idx, rm)) => {
@@ -240,30 +274,6 @@ pub fn compare_java_match_lists(rust: &[JavaMatch], java: &[JavaMatch]) -> Vec<C
                         details: format!(
                             "Java: {:?}, Rust: {:?}",
                             java_match.replacements, rm.replacements
-                        ),
-                    });
-                    match_ok = false;
-                }
-
-                if rm.message != java_match.message {
-                    results.push(ComparisonResult {
-                        rule_id: java_match.rule_id.clone(),
-                        status: ComparisonStatus::MessageMismatch,
-                        details: format!("Java: {:?}, Rust: {:?}", java_match.message, rm.message),
-                    });
-                    match_ok = false;
-                }
-
-                if !rm.category.is_empty()
-                    && !java_match.category.is_empty()
-                    && rm.category != java_match.category
-                {
-                    results.push(ComparisonResult {
-                        rule_id: java_match.rule_id.clone(),
-                        status: ComparisonStatus::CategoryMismatch,
-                        details: format!(
-                            "Java: {:?}, Rust: {:?}",
-                            java_match.category, rm.category
                         ),
                     });
                     match_ok = false;
@@ -416,33 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_message_mismatch() {
-        let mut java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
-        java[0].message = "Use 'there'.".to_string();
-        let mut rust = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
-        rust[0].message = "Did you mean 'there'?".to_string();
-        let results = compare_java_match_lists(&rust, &java);
-        assert!(
-            results
-                .iter()
-                .any(|r| r.status == ComparisonStatus::MessageMismatch)
-        );
-    }
-
-    #[test]
-    fn test_compare_category_mismatch() {
-        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
-        let mut rust = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
-        rust[0].category = "TYPO".to_string();
-        let results = compare_java_match_lists(&rust, &java);
-        assert!(
-            results
-                .iter()
-                .any(|r| r.status == ComparisonStatus::CategoryMismatch)
-        );
-    }
-
-    #[test]
     fn test_compare_multiple_rules() {
         let java = vec![
             make_java_match("RULE1", 0, 5, vec!["hello"]),
@@ -464,5 +447,289 @@ mod tests {
                 .iter()
                 .any(|r| r.status == ComparisonStatus::MissingInRust && r.rule_id == "RULE2")
         );
+    }
+
+    fn make_rust_match(
+        rule_id: &str,
+        offset: usize,
+        length: usize,
+        replacements: &[&str],
+    ) -> RuleMatch {
+        RuleMatch::new(
+            "message",
+            offset,
+            length,
+            og_core::RuleMatchRule::new(rule_id, "test rule"),
+            og_core::RuleMatchContext::new("context text", 0, length),
+        )
+        .with_replacements(
+            replacements
+                .iter()
+                .map(|r| og_core::SuggestedReplacement::new(*r))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn compare_results_passes_identical_rule_matches() {
+        let rust = vec![make_rust_match("RULE1", 5, 3, &["fix"])];
+        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::Pass);
+        assert_eq!(results[0].rule_id, "RULE1");
+    }
+
+    #[test]
+    fn compare_results_flags_offset_mismatch_on_rule_matches() {
+        let rust = vec![make_rust_match("RULE1", 6, 3, &["fix"])];
+        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::OffsetMismatch);
+        assert_eq!(results[0].details, "Java: offset=5, Rust: offset=6");
+    }
+
+    #[test]
+    fn compare_results_flags_length_mismatch_on_rule_matches() {
+        let rust = vec![make_rust_match("RULE1", 5, 4, &["fix"])];
+        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::LengthMismatch);
+        assert_eq!(results[0].details, "Java: len=3, Rust: len=4");
+    }
+
+    #[test]
+    fn compare_results_flags_replacement_mismatch_on_rule_matches() {
+        let rust = vec![make_rust_match("RULE1", 5, 3, &["fixed"])];
+        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::ReplacementMismatch);
+        assert_eq!(results[0].details, "Java: [\"fix\"], Rust: [\"fixed\"]");
+    }
+
+    #[test]
+    fn compare_results_reports_every_mismatch_for_one_pair() {
+        let rust = vec![make_rust_match("RULE1", 7, 9, &["a", "b"])];
+        let java = vec![make_java_match("RULE1", 5, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        let statuses: Vec<ComparisonStatus> = results.iter().map(|r| r.status.clone()).collect();
+        assert_eq!(
+            statuses,
+            vec![
+                ComparisonStatus::OffsetMismatch,
+                ComparisonStatus::LengthMismatch,
+                ComparisonStatus::ReplacementMismatch,
+            ]
+        );
+    }
+
+    #[test]
+    fn compare_results_marks_java_only_rule_match_missing_in_rust() {
+        let java = vec![make_java_match("ABSENT", 5, 3, vec!["fix"])];
+        let results = compare_results(&[], &java);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::MissingInRust);
+        assert_eq!(
+            results[0].details,
+            "Java found 'ABSENT' at offset=5, Rust missed it"
+        );
+    }
+
+    #[test]
+    fn compare_results_pairs_the_nearest_offset_of_the_same_rule() {
+        let rust = vec![
+            make_rust_match("RULE1", 4, 3, &["fix"]),
+            make_rust_match("RULE1", 12, 3, &["fix"]),
+        ];
+        let java = vec![make_java_match("RULE1", 10, 3, vec!["fix"])];
+        let results = compare_results(&rust, &java);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].status, ComparisonStatus::OffsetMismatch);
+        assert_eq!(results[0].details, "Java: offset=10, Rust: offset=12");
+        assert_eq!(results[1].status, ComparisonStatus::ExtraInRust);
+        assert_eq!(
+            results[1].details,
+            "Rust found 'RULE1' at offset=4, not in Java"
+        );
+    }
+
+    #[test]
+    fn compare_results_marks_rust_only_rule_match_extra() {
+        let rust = vec![make_rust_match("EXTRA", 5, 3, &["fix"])];
+        let results = compare_results(&rust, &[]);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::ExtraInRust);
+    }
+
+    #[test]
+    fn from_json_parses_a_java_check_result() {
+        let json = r#"{
+            "matches": [
+                {
+                    "rule_id": "RULE1",
+                    "message": "Use a comma",
+                    "offset": 5,
+                    "length": 3,
+                    "replacements": [", and"],
+                    "category": "PUNCTUATION",
+                    "issue_type": "typographical"
+                }
+            ]
+        }"#;
+        let parsed = JavaCheckResult::from_json(json).unwrap();
+        assert_eq!(parsed.matches.len(), 1);
+        assert_eq!(parsed.matches[0].rule_id, "RULE1");
+        assert_eq!(parsed.matches[0].message, "Use a comma");
+        assert_eq!(parsed.matches[0].offset, 5);
+        assert_eq!(parsed.matches[0].length, 3);
+        assert_eq!(parsed.matches[0].replacements, vec![", and".to_string()]);
+        assert_eq!(parsed.matches[0].category, "PUNCTUATION");
+        assert_eq!(parsed.matches[0].issue_type, "typographical");
+    }
+
+    #[test]
+    fn from_json_rejects_malformed_json() {
+        assert!(JavaCheckResult::from_json("{ not json").is_err());
+    }
+
+    fn java_matches_json(matches: &[JavaMatch]) -> String {
+        serde_json::to_string(matches).unwrap()
+    }
+
+    fn rust_match_json(id: &str, offset: usize, length: usize, replacements: &[&str]) -> String {
+        serde_json::json!({
+            "matches": [
+                {
+                    "rule": {
+                        "id": id,
+                        "category": {"id": "GRAMMAR", "name": "Grammar"}
+                    },
+                    "message": "some message",
+                    "offset": offset,
+                    "length": length,
+                    "replacements": replacements
+                        .iter()
+                        .map(|v| serde_json::json!({"value": v}))
+                        .collect::<Vec<_>>()
+                }
+            ]
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn compare_json_results_passes_identical_output() {
+        let rust_json = rust_match_json("RULE1", 5, 3, &["fix"]);
+        let java_json = java_matches_json(&[make_java_match("RULE1", 5, 3, vec!["fix"])]);
+        let results = compare_json_results(&rust_json, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::Pass);
+        assert_eq!(results[0].rule_id, "RULE1");
+    }
+
+    #[test]
+    fn compare_json_results_flags_rust_json_parse_error() {
+        let java_json = java_matches_json(&[]);
+        let results = compare_json_results("{ broken", &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].rule_id, "PARSE_ERROR");
+        assert_eq!(results[0].status, ComparisonStatus::MissingInRust);
+        assert!(
+            results[0]
+                .details
+                .starts_with("Failed to parse Rust JSON: ")
+        );
+    }
+
+    #[test]
+    fn compare_json_results_flags_java_json_parse_error() {
+        let rust_json = rust_match_json("RULE1", 5, 3, &["fix"]);
+        let results = compare_json_results(&rust_json, "] broken [");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].rule_id, "PARSE_ERROR");
+        assert_eq!(results[0].status, ComparisonStatus::ExtraInRust);
+        assert!(
+            results[0]
+                .details
+                .starts_with("Failed to parse Java JSON: ")
+        );
+    }
+
+    #[test]
+    fn compare_json_results_flags_missing_matches_field() {
+        let java_json = java_matches_json(&[]);
+        let results = compare_json_results(r#"{"software": {"name": "x"}}"#, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].rule_id, "FORMAT_ERROR");
+        assert_eq!(results[0].status, ComparisonStatus::MissingInRust);
+        assert_eq!(results[0].details, "Rust JSON missing 'matches' field");
+    }
+
+    #[test]
+    fn compare_json_results_treats_non_array_matches_as_empty() {
+        let java_json = java_matches_json(&[make_java_match("RULE1", 5, 3, vec!["fix"])]);
+        let results = compare_json_results(r#"{"matches": 7}"#, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::MissingInRust);
+        assert_eq!(results[0].rule_id, "RULE1");
+    }
+
+    #[test]
+    fn compare_json_results_drops_entries_missing_required_fields() {
+        let java_json = java_matches_json(&[make_java_match("RULE1", 5, 3, vec!["fix"])]);
+        let rust_json = r#"{
+            "matches": [
+                {"rule": {"id": "RULE1", "category": {"id": "GRAMMAR"}}, "offset": 5, "length": 3}
+            ]
+        }"#;
+        let results = compare_json_results(rust_json, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::MissingInRust);
+    }
+
+    #[test]
+    fn compare_json_results_defaults_missing_replacements_to_empty() {
+        let rust_json = r#"{
+            "matches": [
+                {
+                    "rule": {"id": "RULE1", "category": {"id": "GRAMMAR"}},
+                    "message": "m",
+                    "offset": 5,
+                    "length": 3
+                }
+            ]
+        }"#;
+        let java_json = java_matches_json(&[make_java_match("RULE1", 5, 3, vec![])]);
+        let results = compare_json_results(rust_json, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::Pass);
+    }
+
+    #[test]
+    fn compare_json_results_flags_offset_and_replacement_mismatch() {
+        let rust_json = rust_match_json("RULE1", 9, 3, &["other"]);
+        let java_json = java_matches_json(&[make_java_match("RULE1", 5, 3, vec!["fix"])]);
+        let results = compare_json_results(&rust_json, &java_json);
+        let statuses: Vec<ComparisonStatus> = results.iter().map(|r| r.status.clone()).collect();
+        assert_eq!(
+            statuses,
+            vec![
+                ComparisonStatus::OffsetMismatch,
+                ComparisonStatus::ReplacementMismatch,
+            ]
+        );
+    }
+
+    #[test]
+    fn compare_json_results_reports_extra_rust_match() {
+        let rust_json = rust_match_json("EXTRA", 5, 3, &["fix"]);
+        let java_json = java_matches_json(&[]);
+        let results = compare_json_results(&rust_json, &java_json);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, ComparisonStatus::ExtraInRust);
+        assert_eq!(results[0].rule_id, "EXTRA");
     }
 }

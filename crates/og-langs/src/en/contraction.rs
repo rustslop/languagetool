@@ -4,9 +4,6 @@ use og_core::{
 };
 use std::collections::HashMap;
 
-/// Rust port of LanguageTool's ContractionSpellingRule.
-/// Detects missing apostrophes in English contractions (e.g., "dont" → "don't").
-/// Case-sensitive: separate entries for lower/title/upper case.
 pub struct ContractionSpellingRule {
     entries: HashMap<String, Vec<String>>,
 }
@@ -16,12 +13,7 @@ impl ContractionSpellingRule {
         let mut rule = Self {
             entries: HashMap::new(),
         };
-        rule.load_data(
-            &og_spell::read_lt_resource(
-                "en/src/main/resources/org/languagetool/rules/en/contractions.txt",
-            )
-            .unwrap_or_default(),
-        );
+        rule.load_data(include_str!("../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/contractions.txt"));
         rule
     }
 
@@ -93,21 +85,16 @@ impl Rule for ContractionSpellingRule {
                 );
 
                 let rm_rule = RuleMatchRule::new(self.id(), self.description())
-                    .with_category(self.category());
+                    .with_category(self.category())
+                    .with_issue_type(self.issue_type().as_str());
 
-                let context_start = if match_start >= 40 {
-                    match_start - 40
-                } else {
-                    0
-                };
+                let context_start = match_start.saturating_sub(40);
                 let context_end =
                     std::cmp::min(match_start + match_length + 40, sentence.text().len());
                 let context_text = sentence.text()[context_start..context_end].to_string();
 
-                let suggested: Vec<SuggestedReplacement> = replacements
-                    .iter()
-                    .map(|s| SuggestedReplacement::new(s))
-                    .collect();
+                let suggested: Vec<SuggestedReplacement> =
+                    replacements.iter().map(SuggestedReplacement::new).collect();
 
                 matches.push(
                     RuleMatch::new(

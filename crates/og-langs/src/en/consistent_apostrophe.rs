@@ -6,9 +6,6 @@ use og_core::{
 const TYPEWRITER_APOS: char = '\'';
 const TYPOGRAPHIC_APOS: char = '\u{2019}';
 
-/// Rust port of LanguageTool's ConsistentApostrophesRule.
-/// Detects mixed use of typewriter (`'`) and typographic (`'`) apostrophes.
-/// Default-off style rule.
 pub struct ConsistentApostrophesRule;
 
 impl ConsistentApostrophesRule {
@@ -61,7 +58,6 @@ impl TextLevelRule for ConsistentApostrophesRule {
     }
 
     fn match_text(&self, text: &str, sentences: &[AnalyzedSentence]) -> Vec<RuleMatch> {
-        // First pass: check if both apostrophe types appear in the text
         let has_tw = Self::has_typewriter_apos(text);
         let has_tg = Self::has_typographic_apos(text);
 
@@ -70,8 +66,9 @@ impl TextLevelRule for ConsistentApostrophesRule {
         }
 
         let mut matches = Vec::new();
-        let rm_rule =
-            RuleMatchRule::new(self.id(), self.description()).with_category(self.category());
+        let rm_rule = RuleMatchRule::new(self.id(), self.description())
+            .with_category(self.category())
+            .with_issue_type(self.issue_type().as_str());
 
         for sentence in sentences {
             let tokens = sentence.non_whitespace_tokens();
@@ -86,11 +83,7 @@ impl TextLevelRule for ConsistentApostrophesRule {
                     let replacement =
                         token_text.replace(TYPEWRITER_APOS, &TYPOGRAPHIC_APOS.to_string());
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_start + match_length + 40, text.len());
                     let context_text = text[context_start..context_end].to_string();
 
@@ -110,11 +103,7 @@ impl TextLevelRule for ConsistentApostrophesRule {
                     let replacement =
                         token_text.replace(TYPOGRAPHIC_APOS, &TYPEWRITER_APOS.to_string());
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_start + match_length + 40, text.len());
                     let context_text = text[context_start..context_end].to_string();
 

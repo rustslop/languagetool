@@ -1,0 +1,783 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="VA_AP_1">
+    <pattern>
+      <token>du</token>
+      <token>wärst</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_2">
+    <pattern>
+      <token>*</token>
+      <token postag="VER:1:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token>*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_3">
+    <pattern>
+      <token skip="8">weder</token>
+      <token>noch</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_4">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token postag="PRO:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_5">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token regexp="yes">einfach|denn|schon</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_6">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token postag="PRP:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_7">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token postag="ADJ:PRD:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_8">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:PRÄ:.*" postag_regexp="yes"/>
+      <token postag="ZUS"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_9">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:MOD:2:SIN:KJ2"/>
+      <token postag="PRO:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_10">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:MOD:2:SIN:PRÄ"/>
+      <token negate="yes">ich|er|sie|es|wir|ihr|sie</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_11">
+    <pattern>
+      <token>wir</token>
+      <token>frische</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_12">
+    <pattern>
+      <token>zum</token>
+      <token case_sensitive="yes">Du</token>
+      <token regexp="yes" inflected="yes">wechseln|übergehen|schwenken</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_13">
+    <pattern>
+      <token>ich</token>
+      <token>schlafen</token>
+      <token>gehe</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_14">
+    <pattern>
+      <token>ich</token>
+      <token regexp="yes">bin|war</token>
+      <token>du</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_15">
+    <pattern>
+      <token regexp="yes">darum|deswegen|dann|bitte|so|,|-</token>
+      <token postag="VER:IMP:SIN.*" postag_regexp="yes"/>
+      <token>du</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_16">
+    <pattern>
+      <token regexp="yes">[-–]</token>
+      <token postag="VER:.*(AUX|MOD).*" postag_regexp="yes"/>
+      <token>du</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_17">
+    <pattern>
+      <token regexp="yes">-(du|ich|er|sie|wir|ihr)</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_18">
+    <pattern>
+      <token regexp="yes">bin|war|wär</token>
+      <token regexp="yes">i|icke?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_19">
+    <pattern>
+      <token regexp="yes">i|icke?</token>
+      <token regexp="yes">bin|war|wär</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_20">
+    <pattern>
+      <token>du</token>
+      <token>schlafen</token>
+      <token>gehst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_21">
+    <pattern>
+      <token>per</token>
+      <token>du</token>
+      <token regexp="yes">sind|waren|sein|wären|war|ist|gewesen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_22">
+    <pattern>
+      <token>schnellst</token>
+      <token>möglich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_23">
+    <pattern>
+      <token>er</token>
+      <token>schlafen</token>
+      <token>geht</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_24">
+    <pattern>
+      <token>vermittelst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_25">
+    <pattern>
+      <token>du</token>
+      <token>denkst</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_26">
+    <pattern>
+      <token>na</token>
+      <token>komm</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_27">
+    <pattern>
+      <token regexp="yes">muß|mußten?|müßt?en?</token>
+      <token regexp="yes">ich|wir|sie|er|es</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_28">
+    <pattern>
+      <token regexp="yes">ich|wir|sie|er|es</token>
+      <token postag="VER.*INF.*" postag_regexp="yes"/>
+      <token regexp="yes">muß|mußten?|müßt?en?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_29">
+    <pattern>
+      <token regexp="yes">mußt|müßtest|mußtest</token>
+      <token>du</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_30">
+    <pattern>
+      <token>du</token>
+      <token postag="VER.*INF.*" postag_regexp="yes"/>
+      <token regexp="yes">mußt|müßtest|mußtest</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_31">
+    <pattern>
+      <token>ich</token>
+      <token regexp="yes">würd|könnt|werd|wollt|sollt|müsst|fürcht</token>
+      <token regexp="yes">['’`´‘]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_32">
+    <pattern>
+      <token regexp="yes">wir|sie|zu</token>
+      <token regexp="yes">seh|steh|geh</token>
+      <token regexp="yes">['’`´‘]</token>
+      <token>n</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_33">
+    <pattern>
+      <token>ick</token>
+      <token regexp="yes">bin|war|wär|hab|hatte</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_34">
+    <pattern>
+      <token>#</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_35">
+    <pattern>
+      <token>wie</token>
+      <token regexp="yes">du|ihr|er|es|sie</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_36">
+    <pattern>
+      <token regexp="yes">[-:]</token>
+      <token postag="VER.*(MOD|AUX).*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_37">
+    <pattern>
+      <token postag="UNKNOWN|EIG.*" postag_regexp="yes"/>
+      <token>bin</token>
+      <token postag="UNKNOWN|EIG.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_38">
+    <pattern>
+      <token regexp="yes">du|sie</token>
+      <token regexp="yes">schei(ß|ss)</token>
+      <token postag="SUB.*|UNKNOWN" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_39">
+    <pattern>
+      <token>Du</token>
+      <token regexp="yes">bist|warst|wärst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_40">
+    <pattern>
+      <token>als</token>
+      <token>auch</token>
+      <token regexp="yes">er|sie|wir|du|ich|ihr</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_41">
+    <pattern>
+      <token regexp="yes">so|wie|zu</token>
+      <token>lange</token>
+      <token regexp="yes">er|sie|wir|du|ich|ihr</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_42">
+    <pattern>
+      <token regexp="yes" inflected="yes" skip="2">so|genauso|ähnlich</token>
+      <token>wie</token>
+      <token regexp="yes">er|sie|du|ihr|ich</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_43">
+    <pattern>
+      <token postag="VER.*(MOD|AUX).*" postag_regexp="yes"/>
+      <token>wie</token>
+      <token regexp="yes">er|sie|du|ihr|ich</token>
+      <token postag="VER.*INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_44">
+    <pattern>
+      <token>wie</token>
+      <token postag="ADJ:PRD:GRU.*" postag_regexp="yes"/>
+      <token regexp="yes">er|sie|du|ihr|ich</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_45">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:.*" postag_regexp="yes"/>
+      <token postag="ART.*|ADV.*|PRO:POS.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_46">
+    <pattern>
+      <token>,</token>
+      <token postag="EIG:.*|UNKNOWN" postag_regexp="yes"/>
+      <token regexp="yes">und|oder</token>
+      <token>auch</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_47">
+    <pattern>
+      <token postag="VER.*" postag_regexp="yes"/>
+      <token regexp="yes">er|sie|ich|wir|du|es|ihr</token>
+      <token regexp="yes">gleich|bereit|lange|schnelle?|halt|bitte|dank</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_48">
+    <pattern>
+      <token postag="ADV.*|KON.*" postag_regexp="yes"/>
+      <token regexp="yes">er|sie|ich|wir|du|es|ihr</token>
+      <token regexp="yes">gleich|bereit|lange|schnelle?|halt|bitte|dank</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_49">
+    <pattern>
+      <token postag="ADV.*|KON.*" postag_regexp="yes"/>
+      <token regexp="yes">er|sie|ich|wir|du|es|ihr</token>
+      <token regexp="yes">verlegen</token>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_50">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:2:SIN:.*" postag_regexp="yes"/>
+      <token>nicht</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_51">
+    <pattern>
+      <token inflected="yes" skip="-1">machen</token>
+      <token>halt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_52">
+    <pattern>
+      <token postag="VER:.*" postag_regexp="yes"/>
+      <token regexp="yes">du|ihr</token>
+      <token>auch</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_53">
+    <pattern>
+      <token>für</token>
+      <token>Sie</token>
+      <token postag="VER:3:SIN:KJ1:SFT"/>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_54">
+    <pattern>
+      <token regexp="yes">(irgend)?einer?|(irgend)?jemand</token>
+      <token>wie</token>
+      <token>du</token>
+      <token postag="VER:3:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_55">
+    <pattern>
+      <token postag="VER:MOD:2:SIN:PRÄ"/>
+      <token postag="PRO:PER:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_56">
+    <pattern>
+      <token regexp="yes">die|welche</token>
+      <token regexp="yes">.*</token>
+      <token regexp="yes">mehr|weniger</token>
+      <token>als</token>
+      <token regexp="yes">ich|du|e[rs]|sie</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_57">
+    <pattern>
+      <token>wenn</token>
+      <token>du</token>
+      <token>anstelle</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_58">
+    <pattern>
+      <token regexp="yes">ok(ay)?|ja|nein|vielleicht|oh</token>
+      <token regexp="yes">bin|sind</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_59">
+    <pattern>
+      <token>das</token>
+      <token case_sensitive="yes">Du</token>
+      <token inflected="yes">anbieten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_60">
+    <pattern>
+      <token case_sensitive="yes">Du</token>
+      <token regexp="yes" inflected="yes">anreden|ansprechen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_61">
+    <pattern>
+      <token postag="SUB:.*PLU.*" postag_regexp="yes"/>
+      <token>wie</token>
+      <token>Du</token>
+      <token postag="VER:3:PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_62">
+    <pattern>
+      <token>würd</token>
+      <token regexp="yes">[nm]ich|man|ichs|'</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_63">
+    <pattern>
+      <token>,</token>
+      <token postag="VER:MOD:2:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_64">
+    <pattern>
+      <token case_sensitive="yes">Soll</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_65">
+    <pattern>
+      <token case_sensitive="yes">Solltest</token>
+      <token>du</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_66">
+    <pattern>
+      <token case_sensitive="yes">Müsstest</token>
+      <token>dir</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_67">
+    <pattern>
+      <token case_sensitive="yes">Könntest</token>
+      <token>dir</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_68">
+    <pattern>
+      <token case_sensitive="yes">Sollte</token>
+      <token regexp="yes">er|sie</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_69">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">Bin|Kannst|Musst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_70">
+    <pattern>
+      <token>,</token>
+      <token regexp="yes">bin|hast|kannst|musst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_71">
+    <pattern>
+      <token>er</token>
+      <token postag="VER:.*" postag_regexp="yes"/>
+      <token>wird</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_72">
+    <pattern>
+      <token regexp="yes">wie|als</token>
+      <token>ich</token>
+      <token postag="VER:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_73">
+    <pattern>
+      <token regexp="yes">glaube?|denke?|hoffe?|vermute?|behaupte?|wette?</token>
+      <token>ich</token>
+      <token postag="ADV.*|SUB.*|UNKNOWN|ADJ.*|PA[12].*|ART.*|PRP.*|PRO.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_74">
+    <pattern>
+      <token regexp="yes">ich</token>
+      <token postag="VER:INF:NON"/>
+      <token>werde</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_75">
+    <pattern>
+      <token postag="VER:IMP:SIN:.*" postag_regexp="yes"/>
+      <token>du</token>
+      <token regexp="yes">dich|dein|deine[srnm]?|mal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_76">
+    <pattern>
+      <token postag="VER:IMP:SIN:.*" postag_regexp="yes"/>
+      <token>du</token>
+      <token>!</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_77">
+    <pattern>
+      <token>sei</token>
+      <token>du</token>
+      <token>selbst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_78">
+    <pattern>
+      <token>bin</token>
+      <token regexp="yes">dran|dabei</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_79">
+    <pattern>
+      <token>als</token>
+      <token>ich</token>
+      <token postag="PA2:.*" postag_regexp="yes"/>
+      <token>bin</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_80">
+    <pattern>
+      <token>als</token>
+      <token regexp="yes">du|e[rs]|sie|ich</token>
+      <token inflected="yes">sein</token>
+      <token regexp="yes">[\.,]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_81">
+    <pattern>
+      <token regexp="yes">D[au]rf.*|Muss.*</token>
+      <token postag="PRO:PER:NOM:.+" postag_regexp="yes"/>
+      <token postag="VER:INF:.+" postag_regexp="yes"/>
+      <token postag="PKT"/>
+      <token regexp="yes">(?:[^d].*|d(?:[^i].*|i[^e].*|i)?)</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_82">
+    <pattern>
+      <token case_sensitive="yes">(</token>
+      <token postag="VER:2:SIN:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">)</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_83">
+    <pattern>
+      <token postag="VER:MOD:1:PLU:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">wir</token>
+      <token case_sensitive="yes">bitte</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_84">
+    <pattern>
+      <token>ohne</token>
+      <token>sie</token>
+      <token>hätte</token>
+      <token>ich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_85">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="VER:IMP:SIN.+" postag_regexp="yes"/>
+      <token>du</token>
+      <token case_sensitive="yes" negate="yes">?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_86">
+    <pattern>
+      <token regexp="yes">[^a-zäöüß]+du</token>
+      <token postag="VER:2:SIN:PRÄ:SFT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_87">
+    <pattern>
+      <token postag="PRO:IND.*" postag_regexp="yes"/>
+      <token postag="SUB:.+:PLU.*" postag_regexp="yes"/>
+      <token regexp="yes">wie|als</token>
+      <token postag="PRO:PER.+" postag_regexp="yes"/>
+      <token postag="VER:[1-3]:PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_88">
+    <pattern>
+      <token postag="ADV:MOD"/>
+      <token regexp="yes">als</token>
+      <token postag="PRO:PER.+" postag_regexp="yes"/>
+      <token postag="VER:3:SIN.*" postag_regexp="yes"/>
+      <token postag="PRO:IND:NOM:SIN.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_89">
+    <pattern>
+      <token postag="PRO:IND.*" postag_regexp="yes"/>
+      <token regexp="yes">wie</token>
+      <token postag="PRO:PER.+" postag_regexp="yes"/>
+      <token postag="VER:.*:SIN.*" postag_regexp="yes"/>
+      <token postag="PRO:PER:NOM:SIN.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_90">
+    <pattern>
+      <token regexp="yes">kein|keine</token>
+      <token regexp="yes">anderer|andere</token>
+      <token>als</token>
+      <token regexp="yes">ich|du|er|sie|es</token>
+      <token postag="VER:MOD.*:PRÄ" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_91">
+    <pattern>
+      <token postag="ART:DEF.*" postag_regexp="yes"/>
+      <token regexp="yes">gleich(e|en)|selb(e|en)</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token>wie</token>
+      <token postag="PRO:PER:NOM:SIN.*" postag_regexp="yes"/>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_92">
+    <pattern>
+      <token>wenn</token>
+      <token postag="PRO:PER:NOM:SIN.+" postag_regexp="yes"/>
+      <token postag="PRO:PER:NOM.+" postag_regexp="yes"/>
+      <token postag="VER:AUX:[1-3]:SIN:KJ2" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_93">
+    <pattern>
+      <token>wenn</token>
+      <token postag="PRO:PER:NOM:PLU.+" postag_regexp="yes"/>
+      <token postag="PRO:PER:NOM.+" postag_regexp="yes"/>
+      <token postag="VER:AUX:[1-3]:PLU:KJ2" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_94">
+    <pattern>
+      <token>wenn</token>
+      <token>du</token>
+      <token>gehen</token>
+      <token>willst</token>
+      <token>,</token>
+      <token>dann</token>
+      <token>geh</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_95">
+    <pattern>
+      <token>ob</token>
+      <token>ich</token>
+      <token postag="VER:1.+" postag_regexp="yes"/>
+      <token>oder</token>
+      <token postag="VER:1.+" postag_regexp="yes"/>
+      <token inflected="yes">gehen</token>
+      <token postag="VER:MOD:1.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="VA_AP_96">
+    <pattern>
+      <token>mal</token>
+      <token>seh</token>
+      <token regexp="yes">’|'</token>
+      <token>n</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

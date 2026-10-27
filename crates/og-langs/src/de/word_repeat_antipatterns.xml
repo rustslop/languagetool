@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="GWR_AP_1">
+    <pattern>
+      <token case_sensitive="yes">please</token>
+      <token case_sensitive="yes">please</token>
+      <token case_sensitive="yes">please</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_2">
+    <pattern>
+      <token case_sensitive="yes">Late</token>
+      <token case_sensitive="yes">Late</token>
+      <token case_sensitive="yes">Show</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_3">
+    <pattern>
+      <token case_sensitive="yes">Wenn</token>
+      <token case_sensitive="yes">hinter</token>
+      <token case_sensitive="yes">Robben</token>
+      <token case_sensitive="yes">Robben</token>
+      <token case_sensitive="yes">robben</token>
+      <token case_sensitive="yes">,</token>
+      <token case_sensitive="yes">robben</token>
+      <token case_sensitive="yes">Robben</token>
+      <token case_sensitive="yes">Robben</token>
+      <token case_sensitive="yes">hinterher</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_4">
+    <pattern>
+      <token regexp="yes">tägliche(n|m|s)?</token>
+      <token case_sensitive="yes">klein</token>
+      <token case_sensitive="yes">klein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_5">
+    <pattern>
+      <token case_sensitive="yes">Bora</token>
+      <token case_sensitive="yes">Bora</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_6">
+    <pattern>
+      <token case_sensitive="yes">Tuk</token>
+      <token case_sensitive="yes">Tuk</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_7">
+    <pattern>
+      <token case_sensitive="yes">Miu</token>
+      <token case_sensitive="yes">Miu</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_8">
+    <pattern>
+      <token>Moin</token>
+      <token>Moin</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_9">
+    <pattern>
+      <token>Na</token>
+      <token>na</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_10">
+    <pattern>
+      <token>la</token>
+      <token>la</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_11">
+    <pattern>
+      <token case_sensitive="yes">Fragen</token>
+      <token case_sensitive="yes">fragen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_12">
+    <pattern>
+      <token>ha</token>
+      <token>ha</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_13">
+    <pattern>
+      <token>teils</token>
+      <token>teils</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_14">
+    <pattern>
+      <token>Marsch</token>
+      <token>Marsch</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_15">
+    <pattern>
+      <token>hip</token>
+      <token>hip</token>
+      <token>hurra</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_16">
+    <pattern>
+      <token>möp</token>
+      <token>möp</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_17">
+    <pattern>
+      <token>gout</token>
+      <token>gout</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_18">
+    <pattern>
+      <token>piep</token>
+      <token>piep</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_19">
+    <pattern>
+      <token>bla</token>
+      <token>bla</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_20">
+    <pattern>
+      <token>blah</token>
+      <token>blah</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_21">
+    <pattern>
+      <token>oh</token>
+      <token>oh</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_22">
+    <pattern>
+      <token>klopf</token>
+      <token>klopf</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_23">
+    <pattern>
+      <token>ne</token>
+      <token>ne</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_24">
+    <pattern>
+      <token>Fakten</token>
+      <token>Fakten</token>
+      <token>Fakten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_25">
+    <pattern>
+      <token>Top</token>
+      <token>Top</token>
+      <token>Top</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_26">
+    <pattern>
+      <token>Toi</token>
+      <token>Toi</token>
+      <token>Toi</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_27">
+    <pattern>
+      <token>und</token>
+      <token>und</token>
+      <token>und</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_28">
+    <pattern>
+      <token>man</token>
+      <token>man</token>
+      <token>man</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_29">
+    <pattern>
+      <token regexp="yes">wenn|falls</token>
+      <token>das</token>
+      <token>das</token>
+      <token>nächste</token>
+      <token>mal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_30">
+    <pattern>
+      <token>Arbeit</token>
+      <token>Arbeit</token>
+      <token>Arbeit</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_31">
+    <pattern>
+      <token regexp="yes">\*|:|/</token>
+      <token>in</token>
+      <token>in</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_32">
+    <pattern>
+      <token>Üben</token>
+      <token>Üben</token>
+      <token>Üben</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_33">
+    <pattern>
+      <token>cha</token>
+      <token>cha</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_34">
+    <pattern>
+      <token>zack</token>
+      <token>zack</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_35">
+    <pattern>
+      <token>sapiens</token>
+      <token>sapiens</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_36">
+    <pattern>
+      <token>peng</token>
+      <token>peng</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_37">
+    <pattern>
+      <token>bye</token>
+      <token>bye</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_38">
+    <pattern>
+      <token>nicht</token>
+      <token>nicht</token>
+      <token>kommunizieren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_39">
+    <pattern>
+      <token>Dee</token>
+      <token regexp="yes">Dees?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_40">
+    <pattern>
+      <token>Phi</token>
+      <token>Phi</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_41">
+    <pattern>
+      <token regexp="yes">,|wei(ß|ss)|nicht</token>
+      <token>wer</token>
+      <token>wer</token>
+      <token regexp="yes">war|ist|sein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_42">
+    <pattern>
+      <token regexp="yes">ist|war|wäre?|für|dass</token>
+      <token>das</token>
+      <token>das</token>
+      <token postag=".*SUB:.*NEU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_43">
+    <pattern>
+      <token regexp="yes">ist|war|wäre?|für|dass</token>
+      <token>das</token>
+      <token>das</token>
+      <token postag="ADJ:.*" postag_regexp="yes"/>
+      <token postag=".*SUB:.*NEU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_44">
+    <pattern>
+      <token regexp="yes">ist|war|wäre?|für|dass</token>
+      <token>das</token>
+      <token>das</token>
+      <token postag="ADJ:.*NEU.*" postag_regexp="yes"/>
+      <token postag="UNKNOWN"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_45">
+    <pattern>
+      <token regexp="yes">als|wenn</token>
+      <token postag="(PRO|EIG):.*" postag_regexp="yes"/>
+      <token>das</token>
+      <token>das</token>
+      <token postag="ADJ:.*NEU.*" postag_regexp="yes"/>
+      <token postag=".*SUB:.*NEU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_46">
+    <pattern>
+      <token regexp="yes">werden|würden|sollt?en|müsst?en|könnt?en</token>
+      <token>sie</token>
+      <token>sie</token>
+      <token postag="VER:1:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_47">
+    <pattern>
+      <token regexp="yes">wenn|falls|ob</token>
+      <token>das</token>
+      <token>das</token>
+      <token postag="SUB:NOM:SIN:NEU.*" postag_regexp="yes"/>
+      <token regexp="yes" inflected="yes">sein|haben</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_48">
+    <pattern>
+      <token regexp="yes">wenn|falls|ob</token>
+      <token>das</token>
+      <token>das</token>
+      <token postag="(ADJ|PA[12]).*NEU.*" postag_regexp="yes"/>
+      <token postag="SUB:NOM:SIN:NEU.*" postag_regexp="yes"/>
+      <token regexp="yes" inflected="yes">sein|haben</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_49">
+    <pattern>
+      <token case_sensitive="yes">,</token>
+      <token case_sensitive="yes" inflected="yes">der</token>
+      <token case_sensitive="yes" inflected="yes">der</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_50">
+    <pattern>
+      <token regexp="yes">alle|nur|obwohl|lediglich|für|zwar|aber</token>
+      <token case_sensitive="yes">die</token>
+      <token case_sensitive="yes">die</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_51">
+    <pattern>
+      <token postag="PKT|SENT_START|KON:NEB" postag_regexp="yes"/>
+      <token regexp="yes">haben|hatten</token>
+      <token case_sensitive="yes">die</token>
+      <token case_sensitive="yes">die</token>
+      <token postag=".*SUB.*PLU.*|UNKNOWN" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_52">
+    <pattern>
+      <token postag="PKT|SENT_START|KON:NEB" postag_regexp="yes"/>
+      <token regexp="yes">ob|falls</token>
+      <token case_sensitive="yes">die</token>
+      <token case_sensitive="yes">die</token>
+      <token postag=".*SUB.*PLU.*|UNKNOWN" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_53">
+    <pattern>
+      <token case_sensitive="yes">,</token>
+      <token postag="PRP:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes" inflected="yes">der</token>
+      <token case_sensitive="yes" inflected="yes">der</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_54">
+    <pattern>
+      <token case_sensitive="yes">Leben</token>
+      <token case_sensitive="yes">leben</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_55">
+    <pattern>
+      <token case_sensitive="yes">Stellen</token>
+      <token case_sensitive="yes">stellen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_56">
+    <pattern>
+      <token>die</token>
+      <token case_sensitive="yes">ferne</token>
+      <token case_sensitive="yes">Ferne</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_57">
+    <pattern>
+      <token case_sensitive="yes">Essen</token>
+      <token case_sensitive="yes">essen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_58">
+    <pattern>
+      <token regexp="yes">^[_]+$</token>
+      <token regexp="yes">^[_]+$</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="GWR_AP_59">
+    <pattern>
+      <token postag="VER:.*[123]:.+|PKT|ADV:INR" postag_regexp="yes"/>
+      <token case_sensitive="yes">ihr</token>
+      <token case_sensitive="yes">ihr</token>
+      <token postag="SUB.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

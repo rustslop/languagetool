@@ -5,9 +5,7 @@ edition.workspace = true
 
 [dependencies]
 og-core = { workspace = true }
+og-tagger = { workspace = true }
+regex = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
-
-[[bench]]
-name = "dictionaries"
-harness = false

@@ -1,6 +1,5 @@
 use crate::types::XmlPattern;
 
-/// A disambiguation rule from disambiguation.xml
 #[derive(Debug, Clone, Default)]
 pub struct DisambigRule {
     pub id: Option<String>,
@@ -8,49 +7,83 @@ pub struct DisambigRule {
     pub pattern: XmlPattern,
     pub antipatterns: Vec<XmlPattern>,
     pub disambig: DisambigAction,
+    pub unify: Option<UnifySpec>,
+    pub filter_class: Option<String>,
+    pub filter_args: Option<String>,
+    pub untouched_examples: Vec<String>,
+    pub examples: Vec<DisambigExample>,
 }
 
-/// The action to take when a disambiguation rule matches
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+pub struct DisambigExample {
+    pub text: String,
+    pub input_form: Option<String>,
+    pub output_form: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnifySpec {
+    pub feature: String,
+    pub features: Vec<String>,
+    pub negate: bool,
+    pub token_start: usize,
+    pub token_end: usize,
+    pub elem_start: usize,
+    pub elem_end: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UnificationFeature {
+    pub feature: String,
+    pub equivalences: Vec<UnificationEquivalence>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UnificationEquivalence {
+    pub eq_type: String,
+    pub postag: String,
+    pub exact: bool,
+}
+
+#[derive(Debug, Clone, Default)]
 pub enum DisambigAction {
-    /// Replace all readings with the specified readings
     Replace(Vec<DisambigWord>),
-    /// Remove readings matching the specified criteria
     Remove(Vec<DisambigWord>),
-    /// Add readings to the token
+    RemovePostag(String),
     Add(Vec<DisambigWord>),
-    /// Keep only readings matching the postag regex
-    Filter { postag: String },
-    /// Remove all readings (token becomes unknown)
+    Filter {
+        postag: String,
+    },
+    Match(DisambigMatch),
+    #[default]
     FilterAll,
-    /// Mark token as "ignore spelling" (no spell check)
     IgnoreSpelling,
-    /// Apply unification feature matching
     Unify,
-    /// Shorthand: replace all readings with a single POS tag (e.g. <disambig postag="CD"/>)
+    Immunize,
     SetPos(String),
 }
 
-impl Default for DisambigAction {
-    fn default() -> Self {
-        DisambigAction::FilterAll
-    }
+#[derive(Debug, Clone, Default)]
+pub struct DisambigMatch {
+    pub postag: Option<String>,
+    pub postag_regexp: bool,
+    pub postag_replace: Option<String>,
+    pub lemma: Option<String>,
 }
 
-/// A word specification in a disambiguation action
 #[derive(Debug, Clone, Default)]
 pub struct DisambigWord {
     pub pos: Option<String>,
     pub lemma: Option<String>,
+    pub text: String,
 }
 
-/// A set of compiled disambiguation rules
 #[derive(Debug, Clone, Default)]
 pub struct DisambigRuleSet {
     pub rules: Vec<DisambigRule>,
+    pub unifications: Vec<UnificationFeature>,
 }
 
-/// A compiled disambiguation rule (pattern tokens are pre-compiled)
 #[derive(Debug, Clone)]
 pub struct CompiledDisambigRule {
     pub id: Option<String>,
@@ -58,4 +91,9 @@ pub struct CompiledDisambigRule {
     pub pattern: crate::compiler::CompiledPattern,
     pub antipatterns: Vec<crate::compiler::CompiledPattern>,
     pub disambig: DisambigAction,
+    pub unify: Option<UnifySpec>,
+    pub filter_class: Option<String>,
+    pub filter_args: Option<String>,
+    pub untouched_examples: Vec<String>,
+    pub examples: Vec<DisambigExample>,
 }

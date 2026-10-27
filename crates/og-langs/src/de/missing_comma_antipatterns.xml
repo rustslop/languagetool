@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="MCCAP_1">
+    <pattern>
+      <token regexp="yes">gerade|wenn</token>
+      <token>das</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_2">
+    <pattern>
+      <token>anstelle</token>
+      <token regexp="yes">diese[rsm]|de[rsm]|dessen|jene[rsm]|[dms]?eine[rsm]|ihre[rs]|eure[sr]|unse?re[sr]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_3">
+    <pattern>
+      <token>im</token>
+      <token>Zuge</token>
+      <token>dessen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_4">
+    <pattern>
+      <token case_sensitive="yes">mit</token>
+      <token regexp="yes">de[mr]</token>
+      <token regexp="yes">de[mrs]</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">verbindet</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_5">
+    <pattern>
+      <token regexp="yes">eine</token>
+      <token case_sensitive="yes">menge</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_6">
+    <pattern>
+      <token regexp="yes">wie</token>
+      <token case_sensitive="yes">folgt</token>
+      <token postag="VER:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_7">
+    <pattern>
+      <token regexp="yes">gut</token>
+      <token case_sensitive="yes">überlegt</token>
+      <token case_sensitive="yes">sein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_8">
+    <pattern>
+      <token case_sensitive="yes">samt</token>
+      <token postag="SUB:DAT.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_9">
+    <pattern>
+      <token postag="PA2:PRD:GRU:VER|VER:PA2.*" postag_regexp="yes"/>
+      <token case_sensitive="yes">sind</token>
+      <token postag="PKT" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_10">
+    <pattern>
+      <token case_sensitive="yes">am</token>
+      <token postag="ADJ:PRD:SUP"/>
+      <token postag="PRP:.+" postag_regexp="yes"/>
+      <token regexp="yes">d(e[mnr]|ie|as|e([nr]|ss)en)</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_11">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>Aber</token>
+      <token regexp="yes">der|die|denen|das|jenen|einigen|anderen|vielen|manchen|allen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_12">
+    <pattern>
+      <token postag="PA2.*|VER:PA2.*" postag_regexp="yes"/>
+      <token>werden</token>
+      <token regexp="yes">[.!?…:;]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_13">
+    <pattern>
+      <token>werden</token>
+      <token postag="SENT_END" postag_regexp="yes" regexp="yes" inflected="yes">sollen|können|müssen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_14">
+    <pattern>
+      <token postag="PA2.*|VER:PA2.*" postag_regexp="yes"/>
+      <token postag="SENT_END" postag_regexp="yes" regexp="yes" inflected="yes">haben|werden</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_15">
+    <pattern>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+      <token postag="SENT_END" postag_regexp="yes" regexp="yes" inflected="yes">können|werden|sollen|dürfen|müssen|wollen|mögen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_16">
+    <pattern>
+      <token regexp="yes">ja|mal</token>
+      <token case_sensitive="yes">was</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_17">
+    <pattern>
+      <token postag="SENT_START|PKT" postag_regexp="yes"/>
+      <token case_sensitive="yes">aber</token>
+      <token regexp="yes">solange|wenn|wo|wie|was</token>
+      <token regexp="yes">du|er|sie|sich|man|euch|uns|die|der|das</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_18">
+    <pattern>
+      <token case_sensitive="yes">selbst</token>
+      <token case_sensitive="yes">wenn</token>
+      <token regexp="yes">du|er|sie|sich|man|euch|uns|die|der|das</token>
+      <token regexp="yes">die|der|das</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_19">
+    <pattern>
+      <token case_sensitive="yes">wie</token>
+      <token regexp="yes">die|der|das</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_20">
+    <pattern>
+      <token skip="12" inflected="yes">weder</token>
+      <token>noch</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_21">
+    <pattern>
+      <token postag="VER:.*1:SIN:KJ1:.+" postag_regexp="yes"/>
+      <token postag="VER:MOD:[12]:.+" postag_regexp="yes"/>
+      <token postag="PKT|KON:NEB" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_22">
+    <pattern>
+      <token postag="VER:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">bzw</token>
+      <token case_sensitive="yes">.</token>
+      <token postag="VER:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_23">
+    <pattern>
+      <token regexp="yes">w[eu]rden</token>
+      <token postag="PA2:PRD:GRU:VER|VER:PA2.*" postag_regexp="yes"/>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_24">
+    <pattern>
+      <token postag="PA2:PRD:GRU:VER|VER:PA2.*" postag_regexp="yes"/>
+      <token regexp="yes">haben?|hatten?</token>
+      <token postag="VER:EIZ.*" postag_regexp="yes"/>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="MCCAP_25">
+    <pattern>
+      <token postag="VER.*" postag_regexp="yes"/>
+      <token regexp="yes">&#x2063;</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

@@ -48,5 +48,14 @@ tracing-subscriber = "0.3"
 chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 tower = "0.5"
+libc = "0.2"
 http = "1"
 http-body-util = "0.1"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.test]
+opt-level = 3
+debug-assertions = false
+debug = "line-tables-only"

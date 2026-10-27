@@ -9,8 +9,6 @@ struct WordinessEntry {
     message: Option<String>,
 }
 
-/// Rust port of LanguageTool's EnglishPlainEnglishRule.
-/// Suggests simpler alternatives for wordy phrases (e.g., "in order to" → "to").
 pub struct PlainEnglishRule {
     entries: HashMap<String, WordinessEntry>,
     max_words: usize,
@@ -22,12 +20,7 @@ impl PlainEnglishRule {
             entries: HashMap::new(),
             max_words: 0,
         };
-        rule.load_data(
-            &og_spell::read_lt_resource(
-                "en/src/main/resources/org/languagetool/rules/en/wordiness.txt",
-            )
-            .unwrap_or_default(),
-        );
+        rule.load_data(include_str!("../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/wordiness.txt"));
         rule
     }
 
@@ -128,20 +121,17 @@ impl Rule for PlainEnglishRule {
                     let message = entry.message.as_deref().unwrap_or(&default_msg);
 
                     let rm_rule = RuleMatchRule::new(self.id(), self.description())
-                        .with_category(self.category());
+                        .with_category(self.category())
+                        .with_issue_type(self.issue_type().as_str());
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_end + 40, sentence.text().len());
                     let context_text = sentence.text()[context_start..context_end].to_string();
 
                     let replacements: Vec<SuggestedReplacement> = entry
                         .suggestions
                         .iter()
-                        .map(|s| SuggestedReplacement::new(s))
+                        .map(SuggestedReplacement::new)
                         .collect();
 
                     matches.push(

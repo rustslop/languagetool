@@ -10,13 +10,15 @@ struct ReplaceEntry {
     url: Option<String>,
 }
 
-/// Rust port of LanguageTool's SimpleReplaceRule.
-/// Data-driven word/phrase replacement based on replace.txt format.
 pub struct SimpleReplaceRule {
     id: String,
     name: String,
     category_id: String,
     category_name: String,
+    issue_type: String,
+    picky: bool,
+    message_template: Option<String>,
+    suggestions_separator: String,
     entries: HashMap<String, ReplaceEntry>,
 }
 
@@ -27,11 +29,32 @@ impl SimpleReplaceRule {
             name: name.to_string(),
             category_id: category_id.to_string(),
             category_name: category_name.to_string(),
+            issue_type: IssueType::Other("typographical".to_string())
+                .as_str()
+                .to_string(),
+            picky: false,
+            message_template: None,
+            suggestions_separator: " or ".to_string(),
             entries: HashMap::new(),
         }
     }
 
-    /// Load replacement data from LT replace.txt format
+    pub fn with_picky(mut self, picky: bool) -> Self {
+        self.picky = picky;
+        self
+    }
+
+    pub fn with_message_template(mut self, template: &str, suggestions_separator: &str) -> Self {
+        self.message_template = Some(template.to_string());
+        self.suggestions_separator = suggestions_separator.to_string();
+        self
+    }
+
+    fn with_issue_type(mut self, issue_type: IssueType) -> Self {
+        self.issue_type = issue_type.as_str().to_string();
+        self
+    }
+
     pub fn load_data(&mut self, data: &str) {
         for line in data.lines() {
             let line = line.trim();
@@ -77,7 +100,6 @@ impl SimpleReplaceRule {
         }
     }
 
-    /// Create the default English SimpleReplaceRule
     pub fn english_default() -> Self {
         let mut rule = Self::new(
             "EN_SIMPLE_REPLACE",
@@ -86,15 +108,13 @@ impl SimpleReplaceRule {
             "Possible Typo",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/replace.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/replace.txt"
+        );
+        rule.load_data(data);
         rule
     }
 
-    /// Create the English redundancies rule
     pub fn english_redundancies() -> Self {
         let mut rule = Self::new(
             "EN_REDUNDANCY",
@@ -103,15 +123,13 @@ impl SimpleReplaceRule {
             "Redundancy",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/redundancies.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
-        rule
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/redundancies.txt"
+        );
+        rule.load_data(data);
+        rule.with_issue_type(IssueType::Style)
     }
 
-    /// Create the English profanity replacement rule
     pub fn english_profanity() -> Self {
         let mut rule = Self::new(
             "EN_REPLACE_PROFANITY",
@@ -120,15 +138,13 @@ impl SimpleReplaceRule {
             "Possible Typo",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/replace_profanity.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
-        rule
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/replace_profanity.txt"
+        );
+        rule.load_data(data);
+        rule.with_picky(true).with_issue_type(IssueType::Style)
     }
 
-    /// British words easily confused in American English
     pub fn american_replace() -> Self {
         let mut rule = Self::new(
             "EN_US_SIMPLE_REPLACE",
@@ -137,15 +153,13 @@ impl SimpleReplaceRule {
             "Style",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/en-US/replace.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-US/replace.txt"
+        );
+        rule.load_data(data);
         rule
     }
 
-    /// American words easily confused in British English
     pub fn british_replace() -> Self {
         let mut rule = Self::new(
             "EN_GB_SIMPLE_REPLACE",
@@ -154,15 +168,13 @@ impl SimpleReplaceRule {
             "Style",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/en-GB/replace.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-GB/replace.txt"
+        );
+        rule.load_data(data);
         rule
     }
 
-    /// New Zealand specific replacements
     pub fn new_zealand_replace() -> Self {
         let mut rule = Self::new(
             "EN_NZ_SIMPLE_REPLACE",
@@ -171,16 +183,18 @@ impl SimpleReplaceRule {
             "Style",
         );
 
-        let data = og_spell::read_lt_resource(
-            "en/src/main/resources/org/languagetool/rules/en/en-NZ/replace.txt",
-        )
-        .unwrap_or_default();
-        rule.load_data(&data);
+        let data = include_str!(
+            "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/en-NZ/replace.txt"
+        );
+        rule.load_data(data);
         rule
     }
 }
 
 impl Rule for SimpleReplaceRule {
+    fn is_picky(&self) -> bool {
+        self.picky
+    }
     fn id(&self) -> &str {
         &self.id
     }
@@ -198,15 +212,17 @@ impl Rule for SimpleReplaceRule {
     }
 
     fn issue_type(&self) -> IssueType {
-        IssueType::Other("typographical".to_string())
+        IssueType::Other(self.issue_type.clone())
     }
 
     fn match_sentence(&self, sentence: &AnalyzedSentence) -> Vec<RuleMatch> {
         let tokens = sentence.non_whitespace_tokens();
         let mut matches = Vec::new();
 
-        // Check single tokens and 2-3 word phrases
         for i in 0..tokens.len() {
+            if tokens[i].is_ignored_by_speller() || tokens[i].is_immunized() {
+                continue;
+            }
             for len in 1..=3 {
                 if i + len > tokens.len() {
                     break;
@@ -224,32 +240,50 @@ impl Rule for SimpleReplaceRule {
                     let match_end = tokens[last_idx].token().end();
                     let match_length = match_end - match_start;
 
-                    let default_msg = format!(
-                        "Did you mean {}?",
-                        entry
-                            .suggestions
-                            .iter()
-                            .map(|s| format!("\"{}\"", s))
-                            .collect::<Vec<_>>()
-                            .join(" or ")
-                    );
+                    let default_msg = match &self.message_template {
+                        Some(template) => {
+                            let mut msg_suggestions = String::new();
+                            let last = entry.suggestions.len().saturating_sub(1);
+                            for (k, sugg) in entry.suggestions.iter().enumerate() {
+                                if k > 0 {
+                                    msg_suggestions.push_str(if k == last {
+                                        &self.suggestions_separator
+                                    } else {
+                                        ", "
+                                    });
+                                }
+                                msg_suggestions
+                                    .push_str(&format!("<suggestion>{sugg}</suggestion>"));
+                            }
+                            template
+                                .replace("$match", &phrase)
+                                .replace("$suggestions", &msg_suggestions)
+                        }
+                        None => format!(
+                            "Did you mean {}?",
+                            entry
+                                .suggestions
+                                .iter()
+                                .map(|s| format!("\"{s}\""))
+                                .collect::<Vec<_>>()
+                                .join(&self.suggestions_separator)
+                        ),
+                    };
                     let message = entry.message.as_deref().unwrap_or(&default_msg);
 
                     let rm_rule = RuleMatchRule::new(&self.id, &self.name)
-                        .with_category(Category::new(&self.category_id, &self.category_name));
+                        .with_picky(self.picky)
+                        .with_category(Category::new(&self.category_id, &self.category_name))
+                        .with_issue_type(self.issue_type.as_str());
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_end + 40, sentence.text().len());
                     let context_text = sentence.text()[context_start..context_end].to_string();
 
                     let replacements: Vec<SuggestedReplacement> = entry
                         .suggestions
                         .iter()
-                        .map(|s| SuggestedReplacement::new(s))
+                        .map(SuggestedReplacement::new)
                         .collect();
 
                     matches.push(
@@ -267,7 +301,7 @@ impl Rule for SimpleReplaceRule {
                         .with_replacements(replacements)
                         .with_sentence(sentence.text().to_string()),
                     );
-                    break; // Don't report the same start position multiple times
+                    break;
                 }
             }
         }

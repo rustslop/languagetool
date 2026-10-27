@@ -1,30 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-/// Coarse token classification, mirroring Java LT's `StringTagger` token
-/// kinds. Derived lazily from the token text; see [`Token::token_type`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TokenType {
-    /// Contains at least one alphabetic character (e.g. `word`, `n't`, `abc123`).
-    Word,
-    /// All characters are whitespace (e.g. ` `, `\t`, ` \n `).
-    Whitespace,
-    /// All characters are ASCII punctuation and none is alphabetic (e.g. `.`, `!?`).
-    Punctuation,
-    /// Anything else (symbols, emoji, e.g. `+`, `👍`, `$`).
-    Other,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
     text: String,
     start: usize,
     end: usize,
-    /// Whitespace text that immediately preceded this token in the source
-    /// (Java LT's `wsAmount`/`whitespaceBefore` tracking). `None` when the
-    /// token starts a sentence or follows another token directly. Not part
-    /// of the token's byte span — `start`/`end` still cover only `text`.
-    #[serde(default)]
-    whitespace_before: Option<String>,
 }
 
 impl Token {
@@ -33,7 +13,6 @@ impl Token {
             text: text.into(),
             start,
             end,
-            whitespace_before: None,
         }
     }
 
@@ -68,33 +47,6 @@ impl Token {
     pub fn is_word(&self) -> bool {
         self.text.chars().any(|c| c.is_alphabetic())
     }
-
-    /// Coarse classification of this token. Empty tokens are [`TokenType::Whitespace`] (vacuous
-    /// `all()` in `is_whitespace()`, matching `token_type_empty_is_whitespace`).
-    pub fn token_type(&self) -> TokenType {
-        if self.is_whitespace() {
-            TokenType::Whitespace
-        } else if self.is_word() {
-            TokenType::Word
-        } else if self.is_punctuation() {
-            TokenType::Punctuation
-        } else {
-            TokenType::Other
-        }
-    }
-
-    pub fn whitespace_before(&self) -> Option<&str> {
-        self.whitespace_before.as_deref()
-    }
-
-    pub fn set_whitespace_before(&mut self, ws: Option<String>) {
-        self.whitespace_before = ws;
-    }
-
-    pub fn with_whitespace_before(mut self, ws: impl Into<String>) -> Self {
-        self.whitespace_before = Some(ws.into());
-        self
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,11 +55,6 @@ pub struct Sentence {
     start: usize,
     end: usize,
     tokens: Vec<Token>,
-    /// Whitespace that separated this sentence from the previous one
-    /// (Java LT tracks this so rules can detect paragraph breaks).
-    /// `None` for the first sentence. Not part of the `start..end` span.
-    #[serde(default)]
-    whitespace_before: Option<String>,
 }
 
 impl Sentence {
@@ -117,7 +64,6 @@ impl Sentence {
             start,
             end,
             tokens: Vec::new(),
-            whitespace_before: None,
         }
     }
 
@@ -140,19 +86,6 @@ impl Sentence {
     pub fn set_tokens(&mut self, tokens: Vec<Token>) {
         self.tokens = tokens;
     }
-
-    pub fn whitespace_before(&self) -> Option<&str> {
-        self.whitespace_before.as_deref()
-    }
-
-    pub fn set_whitespace_before(&mut self, ws: Option<String>) {
-        self.whitespace_before = ws;
-    }
-
-    pub fn with_whitespace_before(mut self, ws: impl Into<String>) -> Self {
-        self.whitespace_before = Some(ws.into());
-        self
-    }
 }
 
 #[cfg(test)]
@@ -160,78 +93,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn token_type_classifies_word() {
-        let token = Token::new("hello", 0, 5);
-        assert_eq!(token.token_type(), TokenType::Word);
+    fn token_exposes_text_and_offsets() {
+        let token = Token::new("word", 3, 7);
+        assert_eq!(token.text(), "word");
+        assert_eq!(token.start(), 3);
+        assert_eq!(token.end(), 7);
+        assert_eq!(token.len(), 4);
     }
 
     #[test]
-    fn token_type_classifies_whitespace() {
-        let token = Token::new(" \t ", 0, 3);
-        assert_eq!(token.token_type(), TokenType::Whitespace);
+    fn is_empty_follows_text_not_length() {
+        assert!(Token::new("", 0, 0).is_empty());
+        assert!(!Token::new("a", 0, 1).is_empty());
     }
 
     #[test]
-    fn token_type_classifies_punctuation() {
-        assert_eq!(Token::new(".,", 0, 2).token_type(), TokenType::Punctuation);
+    fn is_whitespace_requires_every_char_whitespace() {
+        assert!(Token::new(" \t\n", 0, 3).is_whitespace());
+        assert!(!Token::new("a b", 0, 3).is_whitespace());
+        assert!(!Token::new("word", 0, 4).is_whitespace());
     }
 
     #[test]
-    fn token_type_classifies_ascii_symbols_as_punctuation() {
-        // is_punctuation() accepts any all-ASCII-punctuation text, so
-        // math/currency symbols land in Punctuation, like "," or ".".
-        assert_eq!(Token::new("$", 0, 1).token_type(), TokenType::Punctuation);
-        assert_eq!(Token::new("+", 0, 1).token_type(), TokenType::Punctuation);
+    fn is_punctuation_matches_ascii_punctuation_only() {
+        assert!(Token::new(".,;:", 0, 4).is_punctuation());
+        assert!(!Token::new("a.", 0, 2).is_punctuation());
+        assert!(!Token::new("–", 0, 3).is_punctuation());
     }
 
     #[test]
-    fn token_type_classifies_non_ascii_symbols_as_other() {
-        assert_eq!(Token::new("👍", 0, 4).token_type(), TokenType::Other);
-        assert_eq!(Token::new("€", 0, 3).token_type(), TokenType::Other);
+    fn is_word_requires_an_alphabetic_char() {
+        assert!(Token::new("word", 0, 4).is_word());
+        assert!(Token::new("a1", 0, 2).is_word());
+        assert!(!Token::new("123", 0, 3).is_word());
     }
 
     #[test]
-    fn token_type_empty_is_whitespace() {
-        // Vacuous `all()` — empty text classifies as Whitespace,
-        // matching the existing is_whitespace() behavior.
-        assert_eq!(Token::new("", 0, 0).token_type(), TokenType::Whitespace);
+    fn token_round_trips_through_json() {
+        let token = Token::new("word", 3, 7);
+        let json = serde_json::to_string(&token).unwrap();
+        assert_eq!(json, r#"{"text":"word","start":3,"end":7}"#);
+        let back: Token = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.text(), "word");
+        assert_eq!(back.start(), 3);
+        assert_eq!(back.end(), 7);
     }
 
     #[test]
-    fn token_type_mixed_alnum_is_word() {
-        assert_eq!(Token::new("abc123", 0, 6).token_type(), TokenType::Word);
+    fn sentence_holds_text_offsets_and_tokens() {
+        let mut sentence = Sentence::new("hi there", 2, 10);
+        assert_eq!(sentence.text(), "hi there");
+        assert_eq!(sentence.start(), 2);
+        assert_eq!(sentence.end(), 10);
+        assert!(sentence.tokens().is_empty());
+        sentence.set_tokens(vec![Token::new("hi", 2, 4), Token::new("there", 5, 10)]);
+        assert_eq!(sentence.tokens().len(), 2);
+        assert_eq!(sentence.tokens()[1].text(), "there");
     }
 
     #[test]
-    fn whitespace_before_defaults_to_none() {
-        let token = Token::new("x", 0, 1);
-        assert_eq!(token.whitespace_before(), None);
-    }
-
-    #[test]
-    fn whitespace_before_is_preserved() {
-        let token = Token::new("x", 1, 2).with_whitespace_before(" ");
-        assert_eq!(token.whitespace_before(), Some(" "));
-    }
-
-    #[test]
-    fn sentence_whitespace_before_defaults_to_none() {
-        let sentence = Sentence::new("Hi.", 0, 3);
-        assert_eq!(sentence.whitespace_before(), None);
-    }
-
-    #[test]
-    fn sentence_whitespace_before_is_preserved() {
-        let sentence = Sentence::new("Hi.", 4, 7).with_whitespace_before(". ");
-        assert_eq!(sentence.whitespace_before(), Some(". "));
-    }
-
-    #[test]
-    fn token_deserializes_without_whitespace_before_field() {
-        // Backward compatibility with JSON serialized before the field existed.
-        let json = r#"{"text":"a","start":0,"end":1}"#;
-        let token: Token = serde_json::from_str(json).expect("deserialize legacy Token");
-        assert_eq!(token.text(), "a");
-        assert_eq!(token.whitespace_before(), None);
+    fn sentence_round_trips_through_json() {
+        let mut sentence = Sentence::new("hi", 0, 2);
+        sentence.set_tokens(vec![Token::new("hi", 0, 2)]);
+        let back: Sentence =
+            serde_json::from_str(&serde_json::to_string(&sentence).unwrap()).unwrap();
+        assert_eq!(back.text(), "hi");
+        assert_eq!(back.tokens().len(), 1);
     }
 }

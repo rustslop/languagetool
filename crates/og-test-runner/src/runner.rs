@@ -1,29 +1,11 @@
-use og_core::checker::{Disambiguator, SentenceTokenizer, WordTokenizer};
+use og_core::checker::{Chunker as _, Disambiguator, SentenceTokenizer, WordTokenizer};
 use og_core::{AnalyzedSentence, AnalyzedToken, AnalyzedTokenReadings, SentenceRange};
 use og_rules::pattern_rule::PatternRuleEngine;
 use og_tagger::{EnglishTagger, Tagger, XmlDisambiguator};
-use og_xml::compiler::XmlCompiler;
+use og_xml::compiler::{CompiledRuleSet, XmlCompiler};
 use std::path::Path;
+use std::sync::Arc;
 
-/// Resource directory of the English language module inside the LT resource
-/// root (see `og_spell::resource::lt_resource_root`).
-const EN_RESOURCE_DIR: &str = "en/src/main/resources/org/languagetool/resource/en";
-
-/// Path of a file under the English resource directory, relative to the root.
-fn en_resource(name: &str) -> String {
-    format!("{EN_RESOURCE_DIR}/{name}")
-}
-
-/// Read the real English `grammar.xml` from the LT resource root, if the
-/// upstream checkout is available. Data-backed callers must skip when this
-/// returns `None`.
-pub fn english_grammar_xml() -> Option<String> {
-    og_spell::resource::read_lt_resource(
-        "en/src/main/resources/org/languagetool/rules/en/grammar.xml",
-    )
-}
-
-/// Result of running a single example test
 #[derive(Debug, Clone)]
 pub struct ExampleTestResult {
     pub rule_id: String,
@@ -33,7 +15,6 @@ pub struct ExampleTestResult {
     pub expected_type: String,
 }
 
-/// Summary of running all example tests for a grammar file
 #[derive(Debug)]
 pub struct TestRunSummary {
     pub total: usize,
@@ -48,14 +29,95 @@ impl TestRunSummary {
     }
 }
 
-/// Bridge tokenizer for test runner
-struct TestWordTokenizer;
+enum TestWordTokenizer {
+    Default(bool),
+    German,
+    French(Arc<og_tokenizer::FrenchWordTokenizer>),
+    Arabic,
+    Dutch,
+    CrimeanTatar,
+    Esperanto,
+    Spanish(og_langs::es::word_tokenizer::SpanishWordTokenizer),
+    Portuguese(Arc<og_langs::pt::word_tokenizer::PortugueseWordTokenizer>),
+    Polish(Arc<og_langs::pl::word_tokenizer::PolishWordTokenizer>),
+    Russian(og_langs::ru::word_tokenizer::RussianWordTokenizer),
+    Belarusian(og_langs::be::word_tokenizer::BelarusianWordTokenizer),
+    Breton(og_langs::br::word_tokenizer::BretonWordTokenizer),
+    Catalan(og_langs::ca::word_tokenizer::CatalanWordTokenizer),
+    Greek(og_langs::el::word_tokenizer::GreekWordTokenizer),
+    Persian(og_langs::fa::word_tokenizer::PersianWordTokenizer),
+    Galician(og_langs::gl::word_tokenizer::GalicianWordTokenizer),
+    Japanese(og_langs::ja::JapaneseWordTokenizer),
+    Khmer(og_langs::km::KhmerWordTokenizer),
+    Malayalam(og_langs::ml::MalayalamWordTokenizer),
+    Tamil(og_langs::ta::TamilWordTokenizer),
+    Tagalog(og_langs::tl::TagalogWordTokenizer),
+    Ukrainian(og_langs::uk::UkrainianWordTokenizer),
+    Chinese(og_langs::zh::ChineseWordTokenizer),
+}
 
 impl WordTokenizer for TestWordTokenizer {
     fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
-        let tokenizer = og_tokenizer::DefaultWordTokenizer::new();
         use og_tokenizer::WordTokenizer as _;
-        let tokens = tokenizer.tokenize(text);
+        let tokens = match self {
+            TestWordTokenizer::Default(true) => {
+                static EN: std::sync::OnceLock<std::sync::Arc<og_tokenizer::DefaultWordTokenizer>> =
+                    std::sync::OnceLock::new();
+                let tokenizer =
+                    EN.get_or_init(
+                        || match og_tagger::english_tagger::shared_english_tagger() {
+                            Some(tagger) => std::sync::Arc::new(
+                                og_tokenizer::DefaultWordTokenizer::new_english(
+                                    std::sync::Arc::new(move |w: &str| tagger.is_word_tagged(w)),
+                                ),
+                            ),
+                            None => std::sync::Arc::new(og_tokenizer::DefaultWordTokenizer::new()),
+                        },
+                    );
+                tokenizer.split_underscores(tokenizer.tokenize(text))
+            }
+            TestWordTokenizer::Default(false) => {
+                og_tokenizer::DefaultWordTokenizer::new_generic().tokenize(text)
+            }
+            TestWordTokenizer::German => og_tokenizer::GermanWordTokenizer::new().tokenize(text),
+            TestWordTokenizer::French(fr) => fr.tokenize(text),
+            TestWordTokenizer::Arabic => {
+                og_tokenizer::DefaultWordTokenizer::new_splitting_hyphen().tokenize(text)
+            }
+            TestWordTokenizer::Dutch => {
+                og_tokenizer::DefaultWordTokenizer::new_dutch().tokenize(text)
+            }
+            TestWordTokenizer::CrimeanTatar => {
+                let tz = og_tokenizer::DefaultWordTokenizer::new_generic();
+                tz.split_trailing_hyphens(tz.tokenize(text))
+            }
+            TestWordTokenizer::Esperanto => {
+                og_tokenizer::DefaultWordTokenizer::new_esperanto().tokenize(text)
+            }
+            TestWordTokenizer::Spanish(tz) => tz.tokenize(text),
+            TestWordTokenizer::Portuguese(tz) => {
+                return tz.tokenize(text, offset);
+            }
+            TestWordTokenizer::Polish(tz) => tz.tokenize(text),
+            TestWordTokenizer::Russian(tz) => tz.tokenize(text),
+            TestWordTokenizer::Belarusian(tz) => tz.tokenize(text),
+            TestWordTokenizer::Breton(tz) => tz.tokenize(text),
+            TestWordTokenizer::Catalan(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Greek(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Persian(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Galician(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Japanese(tz) => {
+                return WordTokenizer::tokenize(tz, text, offset);
+            }
+            TestWordTokenizer::Khmer(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Malayalam(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Tamil(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Tagalog(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Ukrainian(tz) => og_tokenizer::WordTokenizer::tokenize(tz, text),
+            TestWordTokenizer::Chinese(tz) => {
+                return tz.tokenize(text, offset);
+            }
+        };
         tokens
             .into_iter()
             .map(|t| {
@@ -71,9 +133,11 @@ struct TestSentenceTokenizer;
 
 impl SentenceTokenizer for TestSentenceTokenizer {
     fn split(&self, text: &str) -> Vec<SentenceRange> {
-        let splitter = og_tokenizer::DefaultSentenceSplitter::new();
         use og_tokenizer::SentenceTokenizer as _;
-        let sentences = splitter.split(text);
+        let sentences = match og_tokenizer::srx::srx_splitter("en") {
+            Some(srx) => srx.split(text),
+            None => og_tokenizer::DefaultSentenceSplitter::new().split(text),
+        };
         sentences
             .into_iter()
             .map(|s| SentenceRange {
@@ -84,111 +148,524 @@ impl SentenceTokenizer for TestSentenceTokenizer {
     }
 }
 
+pub fn generic_dict_stem(code: &str) -> Option<&'static str> {
+    let generic_stems: &[(&str, &str)] = &[
+        ("fr", "french"),
+        ("da", "danish"),
+        ("es", "spanish"),
+        ("pt", "portuguese"),
+        ("nl", "dutch"),
+        ("pl", "polish"),
+        ("ru", "russian"),
+        ("it", "italian"),
+        ("ar", "arabic"),
+        ("ast", "asturian"),
+        ("br", "breton"),
+        ("ca", "catalan"),
+        ("el", "greek"),
+        ("fa", ""),
+        ("ga", "irish"),
+        ("gl", "galician"),
+        ("is", ""),
+        ("ja", ""),
+        ("km", "khmer"),
+        ("ro", "romanian"),
+        ("sk", "slovak"),
+        ("sv", "swedish"),
+        ("crh", "crimean_tatar"),
+        ("ml", "malayalam"),
+        ("ta", "tamil"),
+        ("tl", "tagalog"),
+    ];
+    generic_stems
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, stem)| *stem)
+}
+
+pub enum AnyTagger {
+    English(EnglishTagger),
+    German(og_tagger::GermanTagger),
+    Generic(og_tagger::GenericTagger),
+    GenericShared(std::sync::Arc<og_tagger::GenericTagger>),
+    Arabic(og_tagger::arabic_tagger::ArabicTagger),
+    Esperanto(og_tagger::EsperantoTagger),
+    Spanish(Arc<og_langs::es::tagger::SpanishTagger>),
+    Portuguese(Arc<og_langs::pt::tagger::PortugueseTagger>),
+    French(Arc<og_langs::fr::tagger::FrenchTagger>),
+    Polish(Arc<og_langs::pl::tagger::PolishTagger>),
+    Breton(Arc<og_langs::br::BretonTagger>),
+    Catalan(Arc<og_langs::ca::CatalanTagger>),
+    Galician(Arc<og_langs::gl::GalicianTagger>),
+}
+
+impl AnyTagger {
+    fn tag(&self, tokens: &[&str]) -> Vec<AnalyzedTokenReadings> {
+        match self {
+            AnyTagger::English(t) => Tagger::tag(t, tokens),
+            AnyTagger::German(t) => Tagger::tag(t, tokens),
+            AnyTagger::Generic(t) => Tagger::tag(t, tokens),
+            AnyTagger::GenericShared(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Arabic(t) => Tagger::tag(t, tokens),
+            AnyTagger::Esperanto(t) => Tagger::tag(t, tokens),
+            AnyTagger::Spanish(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Portuguese(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::French(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Polish(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Breton(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Catalan(t) => Tagger::tag(t.as_ref(), tokens),
+            AnyTagger::Galician(t) => Tagger::tag(t.as_ref(), tokens),
+        }
+    }
+}
+
 pub struct TestRunner {
+    language: String,
     pattern_engine: PatternRuleEngine,
-    tagger: EnglishTagger,
-    disambiguator: Option<XmlDisambiguator>,
+    tagger: AnyTagger,
+    disambiguator: Option<Arc<dyn Disambiguator>>,
+    french_tokenizer: Option<Arc<og_tokenizer::FrenchWordTokenizer>>,
+    sentence_splitter: Option<og_tokenizer::srx::SrxSentenceSplitter>,
 }
 
 impl TestRunner {
     pub fn new() -> Self {
-        use og_spell::resource::read_lt_resource;
-        let mut tagger = EnglishTagger::new();
+        Self::for_language("en")
+    }
 
-        // Resource files under the configurable LT resource root
-        // (see og_spell::resource). All of these silently degrade to the
-        // tagger's built-in data when the upstream checkout is absent.
+    pub fn for_language(code: &str) -> Self {
+        let lt_modules =
+            Path::new("/home/agent/opengrammar-rs/languagetool/languagetool-language-modules");
+        let resource_dir = lt_modules.join(format!(
+            "{code}/src/main/resources/org/languagetool/resource/{code}"
+        ));
+        let core_resource_dir = Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-core/src/main/resources/org/languagetool/resource",
+        );
 
-        // Load added.txt if available
-        if let Some(data) = read_lt_resource(&en_resource("added.txt")) {
-            tagger.load_added(&data);
-        }
-
-        // Load uncountable nouns (-> NN:U)
-        if let Some(data) = read_lt_resource(&en_resource("uncountable.txt")) {
-            tagger.load_uncountable(&data);
-        }
-
-        // Load partly-countable nouns (-> NN:UN)
-        if let Some(data) = read_lt_resource(&en_resource("partlycountable.txt")) {
-            tagger.load_partlycountable(&data);
-        }
-
-        // Load FSA dictionary for more accurate POS tagging (only for unknown words)
-        if let Some(data) = read_lt_resource(&en_resource("dict_decoded.txt")) {
-            let count = tagger.load_fsa_dictionary(&data);
-            eprintln!("Loaded {} FSA dictionary entries", count);
-        }
-
-        // Load disambiguation rules if available
-        let disambiguator = {
-            let xml = read_lt_resource(&en_resource("disambiguation.xml"));
-            match xml.map(|xml| XmlDisambiguator::from_xml(&xml)) {
-                Some(Ok(d)) => {
-                    eprintln!("Loaded {} disambiguation rules", d.rule_count());
-                    Some(d)
+        let (tagger, disambiguator, pattern_engine) = std::thread::scope(|scope| {
+            let tagger_h = scope.spawn(|| {
+                if code == "eo"
+                    && resource_dir.exists()
+                    && let Some(tagger) =
+                        og_tagger::EsperantoTagger::from_resource_dir(&resource_dir)
+                {
+                    return AnyTagger::Esperanto(tagger);
                 }
-                Some(Err(e)) => {
-                    eprintln!("Warning: failed to load disambiguation: {}", e);
+                if code == "es"
+                    && let Some(tagger) = og_langs::es::tagger::SpanishTagger::shared_arc()
+                {
+                    return AnyTagger::Spanish(tagger);
+                }
+                if code == "pt"
+                    && let Some(tagger) = og_langs::pt::tagger::PortugueseTagger::shared_arc()
+                {
+                    return AnyTagger::Portuguese(tagger);
+                }
+                if code == "fr"
+                    && let Some(tagger) = og_langs::fr::tagger::FrenchTagger::shared_arc()
+                {
+                    return AnyTagger::French(tagger);
+                }
+                if code == "pl"
+                    && let Some(tagger) = og_langs::pl::tagger::PolishTagger::shared_arc()
+                {
+                    return AnyTagger::Polish(tagger);
+                }
+                if code == "br"
+                    && let Some(tagger) = og_langs::br::BretonTagger::shared_arc()
+                {
+                    return AnyTagger::Breton(tagger);
+                }
+                if code == "ca"
+                    && let Some(tagger) = og_langs::ca::CatalanTagger::shared_arc()
+                {
+                    return AnyTagger::Catalan(tagger);
+                }
+                if code == "gl"
+                    && let Some(tagger) = og_langs::gl::GalicianTagger::shared_arc()
+                {
+                    return AnyTagger::Galician(tagger);
+                }
+                if code == "sr"
+                    && let Some(tagger) =
+                        og_langs::sr::serbian_tagger(og_langs::sr::SerbianVariant::Ekavian)
+                {
+                    return AnyTagger::GenericShared(tagger);
+                }
+                if let Some(stem) = generic_dict_stem(code)
+                    && resource_dir.exists()
+                {
+                    if code == "fr" {
+                        return AnyTagger::Generic(og_tagger::GenericTagger::french(&resource_dir));
+                    }
+                    if code == "ru" {
+                        return AnyTagger::Generic(og_tagger::GenericTagger::russian(
+                            &resource_dir,
+                        ));
+                    }
+                    if code == "ar" {
+                        return AnyTagger::Arabic(
+                            og_tagger::arabic_tagger::ArabicTagger::from_resource_dir(
+                                &resource_dir,
+                            ),
+                        );
+                    }
+                    return AnyTagger::Generic(og_tagger::GenericTagger::from_resource_dir(
+                        &resource_dir,
+                        stem,
+                    ));
+                }
+                if code == "de" && resource_dir.exists() {
+                    og_tagger::GermanTagger::from_resource_dir(&resource_dir)
+                        .map(AnyTagger::German)
+                        .unwrap_or_else(|| AnyTagger::English(EnglishTagger::new()))
+                } else if resource_dir.exists() {
+                    AnyTagger::English(EnglishTagger::from_resource_dir(&resource_dir))
+                } else {
+                    AnyTagger::English(EnglishTagger::new())
+                }
+            });
+
+            let disambiguator_h = scope.spawn(|| {
+                if code == "es"
+                    && let Some(chain) = og_langs::es::build_es_disambiguator(&resource_dir)
+                {
+                    return Some(chain);
+                }
+                if code == "fr"
+                    && let Some(chain) = og_langs::fr::build_fr_disambiguator(&resource_dir)
+                {
+                    return Some(chain);
+                }
+                if code == "pl"
+                    && let Some(chain) = og_langs::pl::build_pl_disambiguator(&resource_dir)
+                {
+                    return Some(chain);
+                }
+                if code == "pt"
+                    && let Some(chain) = og_langs::pt::build_pt_disambiguator(&resource_dir)
+                {
+                    return Some(chain);
+                }
+                if code == "br"
+                    && let Some(disambiguator) = og_langs::br::build_br_disambiguator(&resource_dir)
+                {
+                    return Some(Arc::new(disambiguator));
+                }
+                if code == "uk"
+                    && let Some(disambiguator) = og_tagger::XmlDisambiguator::from_xml(
+                        &std::fs::read_to_string(resource_dir.join("disambiguation.xml"))
+                            .unwrap_or_default(),
+                    )
+                    .ok()
+                {
+                    return Some(Arc::new(disambiguator));
+                }
+                if code == "ga"
+                    && let Some(chain) = og_langs::ga::build_ga_disambiguator(&resource_dir)
+                {
+                    return Some(Arc::new(chain));
+                }
+                if code == "gl"
+                    && let Some(chain) = og_langs::gl::build_gl_disambiguator(&resource_dir)
+                {
+                    return Some(Arc::new(chain));
+                }
+                let disambig_path = resource_dir.join("disambiguation.xml");
+                let english_tagger = (code == "en")
+                    .then(og_tagger::english_tagger::shared_english_tagger)
+                    .flatten();
+                match std::fs::read_to_string(&disambig_path) {
+                    Ok(xml) => {
+                        match XmlDisambiguator::from_xml_with_english(&xml, english_tagger) {
+                            Ok(d) => {
+                                eprintln!("Loaded {} disambiguation rules", d.rule_count());
+                                Some(og_tagger::hybrid_disambiguator(
+                                    code,
+                                    &resource_dir,
+                                    core_resource_dir,
+                                    d,
+                                ))
+                            }
+                            Err(e) => {
+                                eprintln!("Warning: failed to load disambiguation: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => None,
+                }
+            });
+
+            let engine_h = scope.spawn(|| {
+                let generic_multitoken =
+                    ["nl", "pt", "es", "fr"].contains(&code) && resource_dir.exists();
+                let support = if code == "en" && resource_dir.exists() && core_resource_dir.exists()
+                {
+                    og_rules::spelling_support::SpellingSupport::dictionary_from_dir(
+                        &lt_modules.join("en/src/main/resources/org/languagetool/resource/en"),
+                    )
+                    .map(|dict| {
+                        og_rules::spelling_support::SpellingSupport::new_for_language(
+                            std::sync::Arc::new(dict),
+                            core_resource_dir,
+                            &lt_modules.join("en/src/main/resources/org/languagetool/resource/en"),
+                            "en",
+                        )
+                    })
+                } else if generic_multitoken && core_resource_dir.exists() {
+                    let mut dict = og_spell::Dictionary::new();
+                    if code == "nl"
+                        && let Some(shared) =
+                            og_tagger::generic_tagger::shared_dictionary(&resource_dir, "dutch")
+                    {
+                        dict = og_spell::Dictionary::from_shared_words(std::sync::Arc::new(
+                            og_spell::morfologik_view::MorfologikView::new(shared),
+                        ));
+                    }
+                    for name in [
+                        "hunspell/spelling.txt",
+                        "spelling/spelling.txt",
+                        "added.txt",
+                    ] {
+                        if let Ok(words) = std::fs::read_to_string(resource_dir.join(name)) {
+                            for line in words.lines() {
+                                let word = line.trim();
+                                if !word.is_empty() && !word.starts_with('#') {
+                                    dict.add_word(word);
+                                }
+                            }
+                        }
+                    }
+                    Some(
+                        og_rules::spelling_support::SpellingSupport::new_for_language(
+                            std::sync::Arc::new(dict),
+                            core_resource_dir,
+                            &resource_dir,
+                            code,
+                        ),
+                    )
+                } else if code == "de" && resource_dir.exists() && core_resource_dir.exists() {
+                    shared_german_speller_dictionary(&resource_dir).map(|dictionary| {
+                        let mut support =
+                            og_rules::spelling_support::SpellingSupport::new_for_language(
+                                dictionary.clone(),
+                                core_resource_dir,
+                                &resource_dir,
+                                "de",
+                            );
+                        if let Some(checker) = og_spell::hunspell::HunspellChecker::load(
+                            &resource_dir.join("hunspell/de_DE.aff"),
+                            &resource_dir.join("hunspell/de_DE.dic"),
+                        ) {
+                            let base = og_spell::GermanSpeller::new(
+                                dictionary,
+                                &resource_dir,
+                                Some(core_resource_dir),
+                                None,
+                                "de-DE",
+                            );
+                            support = support.with_german_rule_speller(std::sync::Arc::new(
+                                base.with_hunspell_core(std::sync::Arc::new(checker)),
+                            ));
+                        }
+                        support
+                    })
+                } else {
                     None
+                };
+                let mut engine = match support {
+                    Some(support) => {
+                        let mut engine = PatternRuleEngine::new()
+                            .with_spelling_support(std::sync::Arc::new(support));
+                        if let Some(synth) =
+                            og_rules::postponed_adjective::LangSynthesizer::for_language(
+                                &resource_dir,
+                                code,
+                            )
+                        {
+                            engine = engine.with_synthesizer(std::sync::Arc::new(synth));
+                        }
+                        engine
+                    }
+                    None => match og_rules::postponed_adjective::LangSynthesizer::for_language(
+                        &resource_dir,
+                        code,
+                    ) {
+                        Some(synth) => {
+                            PatternRuleEngine::new().with_synthesizer(std::sync::Arc::new(synth))
+                        }
+                        None => PatternRuleEngine::new(),
+                    },
+                };
+                if let Some(synth) = og_rules::postponed_adjective::LangSynthesizer::for_language(
+                    &resource_dir,
+                    code,
+                ) {
+                    engine = engine.with_suggestion_synthesizer(std::sync::Arc::new(synth));
                 }
-                None => None,
-            }
+                engine
+            });
+
+            (
+                tagger_h.join().unwrap(),
+                disambiguator_h.join().unwrap(),
+                engine_h.join().unwrap(),
+            )
+        });
+
+        let french_tokenizer = (code == "fr").then(|| {
+            let dir = lt_modules.join("fr/src/main/resources/org/languagetool/resource/fr");
+            let tagger = og_tagger::GenericTagger::french(&dir);
+            Arc::new(og_tokenizer::FrenchWordTokenizer::new(Arc::new(
+                move |w: &str| tagger.is_word_tagged(w),
+            )))
+        });
+
+        let sentence_splitter = if matches!(code, "eo" | "zh") {
+            None
+        } else {
+            og_tokenizer::srx::srx_splitter(code)
         };
 
         Self {
-            pattern_engine: PatternRuleEngine::new(),
+            language: code.to_string(),
+            pattern_engine,
             tagger,
             disambiguator,
+            french_tokenizer,
+            sentence_splitter,
         }
     }
 
-    /// Tokenize text into an AnalyzedSentence using the real tokenizer + POS tagger + disambiguator
     fn tokenize_sentence(&self, text: &str) -> AnalyzedSentence {
-        let tokenizer = TestWordTokenizer;
+        let tokenizer = match &self.french_tokenizer {
+            Some(fr) => TestWordTokenizer::French(fr.clone()),
+            None if self.language == "de" => TestWordTokenizer::German,
+            None if self.language == "ar" => TestWordTokenizer::Arabic,
+            None if self.language == "nl" => TestWordTokenizer::Dutch,
+            None if self.language == "crh" => TestWordTokenizer::CrimeanTatar,
+            None if self.language == "eo" => TestWordTokenizer::Esperanto,
+            None if self.language == "es" => {
+                TestWordTokenizer::Spanish(og_langs::es::word_tokenizer::SpanishWordTokenizer::new())
+            }
+            None if self.language == "pt" => {
+                og_langs::pt::word_tokenizer::shared_portuguese_word_tokenizer()
+                    .map(TestWordTokenizer::Portuguese)
+                    .unwrap_or(TestWordTokenizer::Default(false))
+            }
+            None if self.language == "pl" => {
+                match og_langs::pl::tagger::PolishTagger::shared_arc() {
+                    Some(tagger) => TestWordTokenizer::Polish(Arc::new(
+                        og_langs::pl::word_tokenizer::PolishWordTokenizer::new(tagger),
+                    )),
+                    None => TestWordTokenizer::Default(false),
+                }
+            }
+            None if self.language == "ru" => {
+                TestWordTokenizer::Russian(og_langs::ru::word_tokenizer::RussianWordTokenizer::new())
+            }
+            None if self.language == "be" => TestWordTokenizer::Belarusian(
+                og_langs::be::word_tokenizer::BelarusianWordTokenizer::new(),
+            ),
+            None if self.language == "br" => {
+                TestWordTokenizer::Breton(og_langs::br::word_tokenizer::BretonWordTokenizer::new())
+            }
+            None if self.language == "ca" => {
+                TestWordTokenizer::Catalan(og_langs::ca::word_tokenizer::CatalanWordTokenizer::new())
+            }
+            None if self.language == "el" => {
+                TestWordTokenizer::Greek(og_langs::el::word_tokenizer::GreekWordTokenizer::new())
+            }
+            None if self.language == "fa" => {
+                TestWordTokenizer::Persian(og_langs::fa::word_tokenizer::PersianWordTokenizer::new())
+            }
+            None if self.language == "gl" => TestWordTokenizer::Galician(
+                og_langs::gl::word_tokenizer::GalicianWordTokenizer::new(),
+            ),
+            None if self.language == "ja" => {
+                TestWordTokenizer::Japanese(og_langs::ja::JapaneseWordTokenizer::new())
+            }
+            None if self.language == "km" => {
+                TestWordTokenizer::Khmer(og_langs::km::KhmerWordTokenizer::new())
+            }
+            None if self.language == "ml" => {
+                TestWordTokenizer::Malayalam(og_langs::ml::MalayalamWordTokenizer::new())
+            }
+            None if self.language == "ta" => {
+                TestWordTokenizer::Tamil(og_langs::ta::TamilWordTokenizer::new())
+            }
+            None if self.language == "tl" => {
+                TestWordTokenizer::Tagalog(og_langs::tl::TagalogWordTokenizer::new())
+            }
+            None if self.language == "uk" => {
+                TestWordTokenizer::Ukrainian(og_langs::uk::UkrainianWordTokenizer::new())
+            }
+            None if self.language == "zh" => {
+                TestWordTokenizer::Chinese(og_langs::zh::word_tokenizer::ChineseWordTokenizer::new())
+            }
+            None => TestWordTokenizer::Default(self.language == "en"),
+        };
         let mut sentence = AnalyzedSentence::new(text, 0, text.len());
         let mut tokens = tokenizer.tokenize(text, 0);
-        // Add SENT_START token
         let start_token = AnalyzedTokenReadings::new(
             AnalyzedToken::new("<S>", 0, 0).with_pos_tags(vec!["SENT_START".to_string()]),
         );
         tokens.insert(0, start_token);
 
-        // Apply POS tagger to non-SENT_START tokens
-        let token_texts: Vec<String> = tokens
-            .iter()
-            .skip(1)
-            .map(|t| t.token().token().to_string())
-            .collect();
-        let text_refs: Vec<&str> = token_texts.iter().map(|s| s.as_str()).collect();
-        let tagged = Tagger::tag(&self.tagger, &text_refs);
+        let tagged = if self.language == "ja" {
+            Vec::new()
+        } else {
+            let token_texts: Vec<String> = tokens
+                .iter()
+                .skip(1)
+                .map(|t| t.token().token().to_string())
+                .collect();
+            let text_refs: Vec<&str> = token_texts.iter().map(|s| s.as_str()).collect();
+            self.tagger.tag(&text_refs)
+        };
 
-        // Merge POS tags back into tokens
         for (i, tagged_atr) in tagged.into_iter().enumerate() {
-            let token_idx = i + 1; // Skip SENT_START
-            if token_idx < tokens.len() {
-                let readings = tagged_atr.readings().to_vec();
-                if !readings.is_empty() {
-                    let primary = tokens[token_idx].token().clone();
-                    let all_tags: Vec<String> = readings
-                        .iter()
-                        .flat_map(|r| r.pos_tags().to_vec())
-                        .collect();
-                    let updated_primary =
-                        AnalyzedToken::new(primary.token(), primary.start(), primary.end())
-                            .with_pos_tags(all_tags)
-                            .with_lemma(readings[0].lemma().unwrap_or(primary.token()).to_string());
-
-                    tokens[token_idx] =
-                        AnalyzedTokenReadings::new(updated_primary).with_readings(readings);
-                }
+            let token_idx = i + 1;
+            if token_idx >= tokens.len() {
+                continue;
             }
+            let start = tokens[token_idx].token().start();
+            let end = tokens[token_idx].token().end();
+            if tagged_atr.readings().is_empty() {
+                let primary = AnalyzedToken::new(tagged_atr.token().token(), start, end);
+                let mut next = AnalyzedTokenReadings::new(primary);
+                if !tagged_atr.chunks().is_empty() {
+                    next.set_chunks(tagged_atr.chunks().to_vec());
+                }
+                tokens[token_idx] = next;
+                continue;
+            }
+            let tagged_chunks = tagged_atr.chunks().to_vec();
+            let text = tagged_atr.token().token().to_string();
+            let readings = tagged_atr.into_readings();
+            let all_tags: Vec<String> = readings
+                .iter()
+                .flat_map(|r| r.pos_tags().to_vec())
+                .collect();
+            let lemma = readings[0]
+                .lemma()
+                .map(str::to_string)
+                .unwrap_or_else(|| text.clone());
+            let updated_primary = AnalyzedToken::new(text, start, end)
+                .with_pos_tags(all_tags)
+                .with_lemma(lemma);
+
+            let mut atr = AnalyzedTokenReadings::new(updated_primary).with_readings(readings);
+            if !tagged_chunks.is_empty() {
+                atr.set_chunks(tagged_chunks);
+            }
+            tokens[token_idx] = atr;
         }
 
         sentence.set_tokens(tokens);
 
-        // Add SENT_END tag to last non-whitespace token (like Java's setSentEnd())
-        // In Java LT, every sentence's last non-whitespace token gets a SENT_END reading added
         let tokens = sentence.tokens_mut();
         for i in (0..tokens.len()).rev() {
             if !tokens[i].is_whitespace()
@@ -204,801 +681,60 @@ impl TestRunner {
             }
         }
 
-        // Apply chunking BEFORE disambiguation (chunk info is needed by disambig rules)
-        self.apply_chunking(&mut sentence);
+        if self.language == "en" {
+            self.apply_chunking(&mut sentence);
+        }
 
-        // Apply disambiguation rules
+        if self.disambiguator.is_some() {
+            sentence.set_pre_disambiguation_tokens(sentence.tokens().to_vec());
+        }
+
         if let Some(ref disambiguator) = self.disambiguator {
             disambiguator.disambiguate(&mut sentence);
         }
 
-        // Apply contextual disambiguation heuristics
-        self.apply_contextual_disambiguation(&mut sentence);
+        if self.language == "de" {
+            og_tagger::german_chunker::shared_german_chunker().add_chunk_tags(&mut sentence);
+        }
 
-        // Re-chunk after disambiguation (POS tags may have changed)
-        self.apply_chunking(&mut sentence);
+        if self.language == "ru" {
+            og_tagger::russian_chunker::shared_russian_chunker().add_chunk_tags(&mut sentence);
+        }
 
         sentence
     }
 
-    /// Apply contextual disambiguation heuristics to reduce false positives.
-    /// These are simple rules that remove unlikely POS tags based on surrounding context.
-    fn apply_contextual_disambiguation(&self, sentence: &mut AnalyzedSentence) {
-        let tokens = sentence.tokens();
-        let n = tokens.len();
-
-        // Build list of non-whitespace token indices
-        let nw: Vec<usize> = (0..n).filter(|&i| !tokens[i].is_whitespace()).collect();
-        if nw.len() < 3 {
-            return;
-        }
-
-        // Build parallel arrays of text and tags for non-ws tokens
-        let nw_text: Vec<&str> = nw.iter().map(|&i| tokens[i].token().token()).collect();
-        let nw_has_tag: Vec<Vec<String>> = nw
-            .iter()
-            .map(|&i| {
-                let mut tags: Vec<String> = Vec::new();
-                for r in tokens[i].readings() {
-                    for t in r.pos_tags() {
-                        if !tags.contains(&t.to_string()) {
-                            tags.push(t.to_string());
-                        }
-                    }
-                }
-                tags
-            })
-            .collect();
-
-        let mut removals: Vec<(usize, String)> = Vec::new(); // (nw_index, tag_to_remove)
-
-        for i in 0..nw.len() {
-            let text = nw_text[i];
-            let lower = text.to_lowercase();
-            let tags = &nw_has_tag[i];
-
-            // Rule 1: After "do/does/did" used as auxiliary (has VB/VBZ/VBD tag),
-            // remove VBZ/VB from following word if it also has NN/NNS.
-            // e.g., "I do flips" → "flips" should be NNS, not VBZ
-            if i >= 1 {
-                let prev_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_do_verb =
-                    (prev_lower == "do" || prev_lower == "does" || prev_lower == "did")
-                        && nw_has_tag[i - 1].iter().any(|t| t.starts_with("VB"));
-                if prev_is_do_verb {
-                    if tags.contains(&"VBZ".to_string()) && tags.iter().any(|t| t.starts_with("NN"))
-                    {
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                    if tags.contains(&"VB".to_string())
-                        && tags.iter().any(|t| t.starts_with("NN"))
-                        && !tags.contains(&"NN:UN".to_string())
-                        && !tags.contains(&"NN:U".to_string())
-                    {
-                        removals.push((i, "VB".to_string()));
-                    }
-                }
-                // Also handle "do not flips" pattern
-                if i >= 2 && nw_text[i - 1].eq_ignore_ascii_case("not") {
-                    let do_idx = i - 2;
-                    let do_lower = nw_text[do_idx].to_lowercase();
-                    let do_is_verb = (do_lower == "do" || do_lower == "does" || do_lower == "did")
-                        && nw_has_tag[do_idx].iter().any(|t| t.starts_with("VB"));
-                    if do_is_verb {
-                        if tags.contains(&"VBZ".to_string())
-                            && tags.iter().any(|t| t.starts_with("NN"))
-                        {
-                            removals.push((i, "VBZ".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 2: "does" as plural of "doe" (deer) - "The does grazed"
-            if lower == "does"
-                && tags.contains(&"VBZ".to_string())
-                && tags.contains(&"NNS".to_string())
-            {
-                if i >= 1 {
-                    let prev_lower = nw_text[i - 1].to_lowercase();
-                    if prev_lower == "the" || prev_lower == "these" || prev_lower == "those" {
-                        if i + 1 < nw.len() {
-                            let next_tags = &nw_has_tag[i + 1];
-                            if next_tags.iter().any(|t| t == "VBD" || t == "VBN") {
-                                removals.push((i, "VBZ".to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 3: After determiner (DT/PRP$), remove VBZ/VBP from noun-like words
-            // e.g., "the dreams" → "dreams" should be NNS
-            // But DON'T remove VB (needed for "a need" etc.)
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_det = prev_tags
-                    .iter()
-                    .any(|t| t == "DT" || t == "PRP$" || t == "PRP_S");
-                if prev_is_det {
-                    if tags.contains(&"VBZ".to_string()) && tags.iter().any(|t| t.starts_with("NN"))
-                    {
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                }
-            }
-
-            // Rule 4: After subject pronouns (I/we/you/they/he/she/it) or proper nouns,
-            // remove IN from words that also have VB (like/love/want/need/hope/try)
-            // e.g., "I like ice cream" → "like" should be VB, not IN
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_subject = prev_tags.iter().any(|t| t == "PRP")
-                    || prev_tags.iter().any(|t| t.starts_with("NNP"));
-                if prev_is_subject {
-                    if tags.contains(&"IN".to_string()) && tags.contains(&"VB".to_string()) {
-                        // Check if it's a verb that can also be preposition (like, love, etc.)
-                        let verb_preps = ["like", "love", "want", "need", "hope", "try"];
-                        if verb_preps.contains(&lower.as_str()) {
-                            removals.push((i, "IN".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 5: After "does/do/did + n't/not", remove IN from following verb-preps
-            // e.g., "doesn't like" → "like" should be VB, not IN
-            if i >= 2 {
-                let prev2_lower = nw_text[i - 2].to_lowercase();
-                let prev1_lower = nw_text[i - 1].to_lowercase();
-                let is_do_nt =
-                    (prev2_lower == "does" || prev2_lower == "do" || prev2_lower == "did")
-                        && (prev1_lower == "n't" || prev1_lower == "not");
-                if is_do_nt {
-                    if tags.contains(&"IN".to_string()) && tags.contains(&"VB".to_string()) {
-                        removals.push((i, "IN".to_string()));
-                    }
-                }
-            }
-
-            // Rule 6: After modal (MD), remove IN from verb-preps
-            // e.g., "will like" → "like" should be VB, not IN
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                if prev_tags.iter().any(|t| t == "MD") {
-                    if tags.contains(&"IN".to_string()) && tags.contains(&"VB".to_string()) {
-                        removals.push((i, "IN".to_string()));
-                    }
-                }
-            }
-
-            // Rule 7: After "to" (IN/TO), remove IN from verb-preps
-            // e.g., "to like" → "like" should be VB, not IN
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_to = prev_tags.iter().any(|t| t == "TO" || t == "IN")
-                    && nw_text[i - 1].eq_ignore_ascii_case("to");
-                if prev_is_to {
-                    if tags.contains(&"IN".to_string()) && tags.contains(&"VB".to_string()) {
-                        removals.push((i, "IN".to_string()));
-                    }
-                }
-            }
-
-            // Rule 8: After DT/PRP$ + singular NN, remove VBP/VBZ from following word if it has NN
-            // e.g., "the bus stop" → "stop" should be NN, not VBP
-            // But DON'T apply when prev is plural (NNS) — "The dogs barks" needs VBZ kept
-            // Reduces SINGULAR_AGREEMENT_SENT_START false positives
-            if i >= 2 {
-                let prev2_tags = &nw_has_tag[i - 2];
-                let prev1_tags = &nw_has_tag[i - 1];
-                let prev2_is_det = prev2_tags
-                    .iter()
-                    .any(|t| t == "DT" || t == "PRP$" || t == "PRP_S");
-                let prev1_is_singular_noun = prev1_tags.iter().any(|t| t.starts_with("NN"))
-                    && !prev1_tags.iter().any(|t| t == "NNS");
-                if prev2_is_det && prev1_is_singular_noun {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        if tags.contains(&"VBP".to_string()) {
-                            removals.push((i, "VBP".to_string()));
-                        }
-                        if tags.contains(&"VBZ".to_string()) {
-                            removals.push((i, "VBZ".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 9: After DT + NN (directly adjacent), remove VBP/VBZ
-            // e.g., "the dreams" → "dreams" should be NNS
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_det = prev_tags
-                    .iter()
-                    .any(|t| t == "DT" || t == "PRP$" || t == "PRP_S");
-                if prev_is_det {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        if tags.contains(&"VBZ".to_string()) {
-                            removals.push((i, "VBZ".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 10: After "have/has/had", prefer VBN over VBD for following word
-            // e.g., "has become" → "become" should be VBN, not VBD
-            // This prevents HAVE_PART_AGREEMENT from matching valid perfect tenses
-            if i >= 1 {
-                let prev_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_have = (prev_lower == "have"
-                    || prev_lower == "has"
-                    || prev_lower == "had"
-                    || prev_lower == "'ve"
-                    || prev_lower == "'s")
-                    && nw_has_tag[i - 1].iter().any(|t| t.starts_with("VB"));
-                if prev_is_have {
-                    // If word has VBN, remove VBD to prefer perfect tense reading
-                    if tags.contains(&"VBN".to_string()) && tags.contains(&"VBD".to_string()) {
-                        removals.push((i, "VBD".to_string()));
-                    }
-                }
-            }
-
-            // Rule 11: After "many/more/most/few/several/some", remove VBZ from NN words
-            // e.g., "many dreams" → "dreams" should be NNS
-            if i >= 1 {
-                let prev_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_quant = [
-                    "many", "more", "most", "few", "several", "some", "these", "those", "various",
-                    "numerous",
-                ]
-                .contains(&prev_lower.as_str());
-                if prev_is_quant {
-                    if tags.iter().any(|t| t.starts_with("NN")) && tags.contains(&"VBZ".to_string())
-                    {
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                }
-            }
-
-            // Rule 12: After PRP subject (he/she/it/they/we/I/you), remove NN/NNS from VB words
-            // when followed by a non-verb. This helps "He walk" match HE_VERB_AGR.
-            if i >= 1 && i + 1 < nw.len() {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_subject = prev_tags.iter().any(|t| t == "PRP");
-                if prev_is_subject {
-                    if tags.contains(&"VB".to_string()) && tags.iter().any(|t| t.starts_with("NN"))
-                    {
-                        let next_tags = &nw_has_tag[i + 1];
-                        let next_is_verb = next_tags
-                            .iter()
-                            .any(|t| t.starts_with("VB") || t.starts_with("MD"));
-                        let next_is_det = next_tags
-                            .iter()
-                            .any(|t| t == "DT" || t == "PRP$" || t == "IN");
-                        if !next_is_verb && !next_is_det && nw_text[i + 1] != "to" {
-                            for nn_tag in ["NN", "NNS"].iter() {
-                                if tags.contains(&nn_tag.to_string()) {
-                                    removals.push((i, nn_tag.to_string()));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 13: After "to" (TO tag), remove NN/NNS from following word if it has VB
-            // e.g., "to walk" → "walk" should be VB, not NN
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_is_to = prev_tags.iter().any(|t| t == "TO")
-                    && nw_text[i - 1].eq_ignore_ascii_case("to");
-                if prev_is_to {
-                    if tags.contains(&"VB".to_string()) {
-                        for nn_tag in ["NN", "NNS"].iter() {
-                            if tags.contains(&nn_tag.to_string()) {
-                                removals.push((i, nn_tag.to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 14: After modal (MD), remove NN/NNS from following word if it has VB
-            // e.g., "will walk" → "walk" should be VB, not NN
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                if prev_tags.iter().any(|t| t == "MD") {
-                    if tags.contains(&"VB".to_string()) {
-                        for nn_tag in ["NN", "NNS"].iter() {
-                            if tags.contains(&nn_tag.to_string()) {
-                                removals.push((i, nn_tag.to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 15: After "have/has/had" + RB?, remove NN from VBN/VBD words
-            // e.g., "has run" → "run" should be VBN, not NN
-            if i >= 1 {
-                let prev_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_have = (prev_lower == "have"
-                    || prev_lower == "has"
-                    || prev_lower == "had"
-                    || prev_lower == "'ve"
-                    || prev_lower == "'s")
-                    && nw_has_tag[i - 1].iter().any(|t| t.starts_with("VB"));
-                let prev_is_have_or_rb = prev_is_have
-                    || (i >= 2 && {
-                        let pp_lower = nw_text[i - 2].to_lowercase();
-                        let pp_is_have = (pp_lower == "have"
-                            || pp_lower == "has"
-                            || pp_lower == "had"
-                            || pp_lower == "'ve"
-                            || pp_lower == "'s")
-                            && nw_has_tag[i - 2].iter().any(|t| t.starts_with("VB"));
-                        pp_is_have && nw_has_tag[i - 1].iter().any(|t| t == "RB")
-                    });
-                if prev_is_have_or_rb {
-                    if tags.contains(&"VBN".to_string()) || tags.contains(&"VBD".to_string()) {
-                        for nn_tag in ["NN", "NNS"].iter() {
-                            if tags.contains(&nn_tag.to_string()) {
-                                removals.push((i, nn_tag.to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 16: After "have/has/had", if word has JJ and VBD/VBN, and next word is a
-            // noun/determiner, remove VBD/VBN to prefer JJ reading.
-            // e.g., "have open positions" → "open" is JJ, not VBN
-            if i >= 1 && i + 1 < nw.len() {
-                let prev_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_have = (prev_lower == "have"
-                    || prev_lower == "has"
-                    || prev_lower == "had"
-                    || prev_lower == "'ve"
-                    || prev_lower == "'s")
-                    && nw_has_tag[i - 1].iter().any(|t| t.starts_with("VB"));
-                if prev_is_have {
-                    let has_jj = tags.contains(&"JJ".to_string());
-                    let has_vbn = tags.contains(&"VBN".to_string());
-                    let has_vbd = tags.contains(&"VBD".to_string());
-                    if has_jj && (has_vbn || has_vbd) {
-                        let next_tags = &nw_has_tag[i + 1];
-                        let next_is_noun_or_det = next_tags.iter().any(|t| {
-                            t.starts_with("NN") || t == "DT" || t == "PRP$" || t == "PRP_S"
-                        });
-                        if next_is_noun_or_det {
-                            if has_vbn {
-                                removals.push((i, "VBN".to_string()));
-                            }
-                            if has_vbd {
-                                removals.push((i, "VBD".to_string()));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Rule 17: After "the/a/an" + JJ, remove VBZ/VBP from following word if it has NN
-            // e.g., "the live music" → "music" should be NN, not VBP
-            if i >= 2 {
-                let prev2_tags = &nw_has_tag[i - 2];
-                let prev1_tags = &nw_has_tag[i - 1];
-                let prev2_is_det = prev2_tags.iter().any(|t| t == "DT");
-                let prev1_is_adj = prev1_tags.iter().any(|t| t.starts_with("JJ"));
-                if prev2_is_det && prev1_is_adj {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        if tags.contains(&"VBZ".to_string()) {
-                            removals.push((i, "VBZ".to_string()));
-                        }
-                        if tags.contains(&"VBP".to_string()) {
-                            removals.push((i, "VBP".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 19: Before a determiner (DT), remove JJR/JJS from nouns
-            // "the better results" → "better" is JJR, "results" is NNS not JJR
-            if i + 1 < nw.len() {
-                let next_tags = &nw_has_tag[i + 1];
-                let next_is_det = next_tags.iter().any(|t| t == "DT");
-                if next_is_det && tags.iter().any(|t| t.starts_with("NN")) {
-                    if tags.contains(&"JJR".to_string()) {
-                        removals.push((i, "JJR".to_string()));
-                    }
-                    if tags.contains(&"JJS".to_string()) {
-                        removals.push((i, "JJS".to_string()));
-                    }
-                }
-            }
-
-            // Rule 20: After IN (preposition), if word has NN and VB, prefer NN
-            // "in the park" → "park" is NN, not VB
-            if i >= 2 && i < nw.len() {
-                let prev2_tags = &nw_has_tag[i - 2];
-                let prev1_tags = &nw_has_tag[i - 1];
-                let prev2_is_in = prev2_tags.iter().any(|t| t == "IN");
-                let prev1_is_det = prev1_tags.iter().any(|t| t == "DT" || t == "PRP$");
-                if prev2_is_in && prev1_is_det {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        removals.push((i, "VB".to_string()));
-                        removals.push((i, "VBP".to_string()));
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                }
-            }
-
-            // Rule 21: After "a/an" (DT), remove VB from words that also have NN
-            // "a need" → "need" is NN, not VB. Fixes A_INFINITIVE FPs.
-            if i >= 1 {
-                let prev_tags = &nw_has_tag[i - 1];
-                let prev_text_lower = nw_text[i - 1].to_lowercase();
-                let prev_is_a_an = prev_text_lower == "a" || prev_text_lower == "an";
-                if prev_is_a_an && prev_tags.iter().any(|t| t == "DT") {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        if tags.contains(&"VB".to_string()) {
-                            removals.push((i, "VB".to_string()));
-                        }
-                        if tags.contains(&"VBP".to_string()) {
-                            removals.push((i, "VBP".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 22: After "many/much/more/most/few/so/as/how/too" + "a/an", remove VB from NN words
-            // This helps MUCH_COUNTABLE, MANY_NN FPs
-            // Already handled by existing rules partially
-
-            // Rule 23: At sentence start (after SENT_START), if word has VB and NN,
-            // prefer NN for words that are commonly nouns.
-            // "Animals can..." → "Animals" is NNS, not VB
-            // But "Walk the dog" → "Walk" should be VB
-            // So only apply if next word is NOT a verb/modifier
-            if i == 0
-                && tags.contains(&"VB".to_string())
-                && tags.iter().any(|t| t.starts_with("NN"))
-            {
-                if nw.len() > 1 {
-                    let next_tags = &nw_has_tag[1];
-                    // If next word is DT, IN, or noun, current word is likely a noun
-                    let next_suggests_noun_subject = next_tags.iter().any(|t| {
-                        t == "DT" || t == "IN" || t.starts_with("NN") || t == "CC" || t == "MD"
-                    });
-                    if next_suggests_noun_subject {
-                        removals.push((i, "VB".to_string()));
-                        removals.push((i, "VBP".to_string()));
-                    }
-                }
-            }
-
-            // Rule 24: After sentence-end period + SENT_START (start of new sentence),
-            // if word has VB and NN, and next word is a verb, prefer VB.
-            // "People think..." → "People" could be NNS or VBZ, but with VB think next, prefer NNS.
-            // Actually handled above by Rule 23.
-            // Instead: if current word has VBZ and NN, and prev is a verb/comma, prefer NN.
-            // "He knows people are..." → "people" should be NNS not VBZ
-
-            // Rule 25: After comma, if word has VBZ/VBP and NN, prefer NN
-            // "In winter, animals migrate" → "animals" is NNS
-            if i >= 1 {
-                let prev_text_lower = nw_text[i - 1].to_lowercase();
-                if prev_text_lower == "," || prev_text_lower == ":" || prev_text_lower == ";" {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        if tags.contains(&"VBZ".to_string()) {
-                            removals.push((i, "VBZ".to_string()));
-                        }
-                        if tags.contains(&"VBP".to_string()) {
-                            removals.push((i, "VBP".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 26: After "the/these/those" + JJ, remove VB from following word if NN
-            // "the open position" → "position" is NN, not VB
-            if i >= 2 {
-                let prev2_text = nw_text[i - 2].to_lowercase();
-                let prev2_is_det = [
-                    "the", "these", "those", "this", "that", "some", "any", "every",
-                ]
-                .contains(&prev2_text.as_str());
-                let prev1_is_adj = nw_has_tag[i - 1].iter().any(|t| t.starts_with("JJ"));
-                if prev2_is_det && prev1_is_adj {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        removals.push((i, "VB".to_string()));
-                        removals.push((i, "VBP".to_string()));
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                }
-            }
-
-            // Rule 27: Before "to" (TO tag), remove VB from words that also have NN
-            // "key to success" → "key" is NN, not VB/JJ
-            // But don't apply after subject pronouns: "I go to school" → "go" is VB
-            if i + 1 < nw.len() {
-                let next_text_lower = nw_text[i + 1].to_lowercase();
-                let next_is_to =
-                    next_text_lower == "to" && nw_has_tag[i + 1].iter().any(|t| t == "TO");
-                if next_is_to {
-                    let prev_is_subject = i >= 1
-                        && nw_has_tag[i - 1].iter().any(|t| {
-                            t == "PRP" || t.starts_with("PRP_S") || t.starts_with("PRP_O")
-                        });
-                    if !prev_is_subject {
-                        if tags.iter().any(|t| t.starts_with("NN")) {
-                            removals.push((i, "VB".to_string()));
-                            removals.push((i, "VBP".to_string()));
-                        }
-                    }
-                }
-            }
-
-            // Rule 28: Before CC (and/or/but) + noun, remove VB from words that have NN
-            // "time and effort" → "time" is NN, not VB
-            if i + 2 < nw.len() {
-                let next_is_cc = nw_has_tag[i + 1].iter().any(|t| t == "CC");
-                let next2_is_nn = nw_has_tag[i + 2].iter().any(|t| t.starts_with("NN"));
-                if next_is_cc && next2_is_nn {
-                    if tags.iter().any(|t| t.starts_with("NN")) {
-                        removals.push((i, "VB".to_string()));
-                        removals.push((i, "VBP".to_string()));
-                        removals.push((i, "VBZ".to_string()));
-                    }
-                }
-            }
-        }
-
-        // Apply removals
-        if removals.is_empty() {
-            return;
-        }
-
-        let tokens_mut = sentence.tokens_mut();
-        for (nw_idx, tag_to_remove) in &removals {
-            if let Some(&real_idx) = nw.get(*nw_idx) {
-                let token = &mut tokens_mut[real_idx];
-                for reading in token.readings_mut() {
-                    reading.set_pos_tags(
-                        reading
-                            .pos_tags()
-                            .iter()
-                            .filter(|t| *t != tag_to_remove)
-                            .cloned()
-                            .collect(),
-                    );
-                }
-                let base = token.token_mut();
-                base.set_pos_tags(
-                    base.pos_tags()
-                        .iter()
-                        .filter(|t| *t != tag_to_remove)
-                        .cloned()
-                        .collect(),
-                );
-            }
-        }
-    }
-
-    /// Apply chunk tags to tokens based on their POS tags.
-    /// Operates only on non-whitespace tokens to avoid whitespace breaking up chunks.
     fn apply_chunking(&self, sentence: &mut AnalyzedSentence) {
-        let tokens = sentence.tokens();
+        og_tagger::chunker::apply_chunk_tags(sentence);
+    }
 
-        // Build index mapping: non-whitespace token positions
-        let mut nw_indices: Vec<usize> = Vec::new();
-        let mut all_tags: Vec<Vec<String>> = Vec::new(); // all POS tags per token
-        let mut token_texts: Vec<&str> = Vec::new();
-
-        for (i, t) in tokens.iter().enumerate() {
-            if t.is_whitespace() {
-                continue;
-            }
-            let tags = t.token().pos_tags();
-            if tags.iter().any(|t| t == "SENT_START" || t == "SENT_END") {
-                continue;
-            }
-            nw_indices.push(i);
-            all_tags.push(tags.to_vec());
-            token_texts.push(t.token().token());
-        }
-
-        // Select best POS tag per token using context heuristics
-        let pos_tags: Vec<&str> = all_tags
-            .iter()
-            .enumerate()
-            .map(|(i, tags)| {
-                if tags.is_empty() {
-                    return "";
-                }
-                if tags.len() == 1 {
-                    return tags[0].as_str();
-                }
-
-                let has_vb = tags.iter().any(|t| t.starts_with("VB"));
-                let has_jj = tags.iter().any(|t| t.starts_with("JJ"));
-                let has_nn = tags.iter().any(|t| t.starts_with("NN") || t == "FW");
-
-                // Look back to find the effective previous verb context
-                // Skip over negation (n't/not/RB) to find the real preceding POS
-                let prev_is_verb = if i > 0 {
-                    all_tags[i - 1]
-                        .iter()
-                        .any(|t| t.starts_with("VB") || t == "MD")
-                } else {
-                    false
-                };
-                // After "do n't" / "does n't" etc, the negation RB is prev, but verb is 2 back
-                let prev_2_is_verb = if i > 1 {
-                    let prev_text = token_texts.get(i - 1).map(|s| *s).unwrap_or("");
-                    let is_negation =
-                        matches!(prev_text.to_lowercase().as_str(), "n't" | "not" | "never")
-                            || all_tags[i - 1].iter().any(|t| t == "RB");
-                    if is_negation {
-                        all_tags[i - 2]
-                            .iter()
-                            .any(|t| t.starts_with("VB") || t == "MD")
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-                let effective_prev_is_verb = prev_is_verb || prev_2_is_verb;
-
-                let prev_is_det = if i > 0 {
-                    all_tags[i - 1]
-                        .iter()
-                        .any(|t| t == "DT" || t == "PRP$" || t == "CD" || t == "WDT")
-                } else {
-                    false
-                };
-
-                // After "have/has/had", prefer adjective/noun over verb for ambiguous words
-                // (e.g., "has open positions" → open should be JJ, not VB)
-                // But ONLY when have is immediately before (not separated by not/n't)
-                // "have not getting" → getting should stay VBG, not become NN
-                let prev_is_have = if i > 0 {
-                    let prev_text = token_texts.get(i - 1).map(|s| *s).unwrap_or("");
-                    prev_is_verb
-                        && matches!(
-                            prev_text.to_lowercase().as_str(),
-                            "have" | "has" | "had" | "'ve" | "'s"
-                        )
-                } else {
-                    false
-                };
-                // Don't apply have-heuristic when separated by negation
-                let effective_prev_is_have = prev_is_have;
-
-                if effective_prev_is_have && has_jj {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("JJ"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-                if effective_prev_is_have && has_nn {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("NN"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-
-                // After a determiner, prefer noun tags over verb tags
-                if prev_is_det && has_nn && has_vb {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("NN"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-
-                // After a verb (including after "do n't"), prefer verb tags over noun tags
-                // But ONLY for specific verbs that commonly take bare infinitives
-                // E.g., "want test" → test should be VB not NN
-                // E.g., "don't want" → want should be VB not NN:UN
-                if effective_prev_is_verb && has_vb && has_nn && !effective_prev_is_have {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("VB"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-
-                // After a verb (including negated), prefer VB over JJ for ambiguous words
-                // E.g., "would like" → like should be VB not JJ
-                // But NOT after have/has/had (where adj is more likely, e.g., "have hard copy")
-                if effective_prev_is_verb && has_vb && has_jj && !effective_prev_is_have {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("VB"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-
-                // After a subject pronoun (PRP), prefer verb/modals over noun tags
-                // E.g., "We want" → want should be VB not NN:UN
-                // E.g., "We would" → would should be MD not NN
-                let prev_is_prp = if i > 0 {
-                    all_tags[i - 1]
-                        .iter()
-                        .any(|t| t == "PRP" || t.starts_with("PRP_S") || t.starts_with("PRP_O"))
-                } else {
-                    false
-                };
-                if prev_is_prp {
-                    let has_md = tags.iter().any(|t| t == "MD");
-                    if has_vb && has_nn {
-                        return tags
-                            .iter()
-                            .find(|t| t.starts_with("VB"))
-                            .map(|s| s.as_str())
-                            .unwrap_or(tags[0].as_str());
-                    }
-                    if has_md && has_nn {
-                        return "MD";
-                    }
-                }
-
-                // Known verb forms should always prefer verb tags
-                // am, is, are, was, were, be, been, being, have, has, had, do, does, did
-                let word_lower = token_texts[i].to_lowercase();
-                if matches!(
-                    word_lower.as_str(),
-                    "am" | "is"
-                        | "are"
-                        | "was"
-                        | "were"
-                        | "be"
-                        | "been"
-                        | "being"
-                        | "have"
-                        | "has"
-                        | "had"
-                        | "do"
-                        | "does"
-                        | "did"
-                        | "doing"
-                        | "done"
-                ) && has_vb
-                {
-                    return tags
-                        .iter()
-                        .find(|t| t.starts_with("VB"))
-                        .map(|s| s.as_str())
-                        .unwrap_or(tags[0].as_str());
-                }
-
-                tags[0].as_str()
-            })
-            .collect();
-
-        // Prepend a fake SENT_START for the chunker
-        let mut all_pos = vec!["SENT_START"];
-        let mut all_texts = vec!["<S>"];
-        all_pos.extend(pos_tags.iter().map(|s| *s));
-        all_texts.extend(token_texts.iter().map(|s| *s));
-
-        let chunks = og_tagger::chunker::chunk_tokens(&all_pos, &all_texts);
-
-        // Map chunks back to original token indices (skip index 0 = SENT_START)
-        let tokens = sentence.tokens_mut();
-        for (chunk_idx, orig_idx) in nw_indices.iter().enumerate() {
-            let chunk_array_idx = chunk_idx + 1; // +1 for SENT_START
-            if let Some(Some(chunk_tag)) = chunks.get(chunk_array_idx) {
-                tokens[*orig_idx].set_chunk(Some(chunk_tag.clone()));
-            }
+    fn analyze_text(&self, text: &str) -> Vec<(AnalyzedSentence, usize)> {
+        use og_tokenizer::SentenceTokenizer as _;
+        match &self.sentence_splitter {
+            Some(splitter) => splitter
+                .split(text)
+                .into_iter()
+                .map(|s| (self.tokenize_sentence(s.text()), s.start()))
+                .collect(),
+            None => Vec::from([(self.tokenize_sentence(text), 0)]),
         }
     }
 
-    /// Strip <marker> tags from example text and return (clean_text, marker_start, marker_end)
+    fn match_rule_across_text(
+        &self,
+        rule: &og_xml::compiler::CompiledRule,
+        clean_text: &str,
+    ) -> Vec<og_core::RuleMatch> {
+        let mut matches = Vec::new();
+        for (sentence, sentence_start) in self.analyze_text(clean_text) {
+            for mut m in self.pattern_engine.match_rule(rule, &sentence) {
+                m.set_offset_length(m.offset() + sentence_start, m.length());
+                matches.push(m);
+            }
+        }
+        matches
+    }
+
     fn extract_marker(text: &str) -> (String, Option<(usize, usize)>) {
         let start_marker = "<marker>";
         let end_marker = "</marker>";
@@ -1010,16 +746,13 @@ impl TestRunner {
             (Some(s), Some(e)) => {
                 let marker_start = s;
                 let marker_end = e - start_marker.len();
-                let clean = text[..s].to_string()
-                    + &text[s + start_marker.len()..e]
-                    + &text[e + end_marker.len()..];
+                let clean = text.replace(start_marker, "").replace(end_marker, "");
                 (clean, Some((marker_start, marker_end)))
             }
             _ => (text.to_string(), None),
         }
     }
 
-    /// Run all example tests from an XML grammar file
     pub fn run_xml_example_tests(&self, xml: &str) -> TestRunSummary {
         let mut results = Vec::new();
         let compiler = XmlCompiler::new();
@@ -1043,106 +776,82 @@ impl TestRunner {
             }
         };
 
+        self.run_rule_set_example_tests(&rule_set)
+    }
+
+    pub fn debug_sentence(&self, text: &str) -> AnalyzedSentence {
+        self.tokenize_sentence(text)
+    }
+
+    pub fn match_rule_on_text(
+        &self,
+        rule: &og_xml::compiler::CompiledRule,
+        text: &str,
+    ) -> (String, Option<(usize, usize)>, Vec<og_core::RuleMatch>) {
+        let (clean_text, marker_range) = Self::extract_marker(text);
+        let matches = self.match_rule_across_text(rule, &clean_text);
+        (clean_text, marker_range, matches)
+    }
+
+    pub fn run_rule_set_example_tests(&self, rule_set: &CompiledRuleSet) -> TestRunSummary {
+        use rayon::prelude::*;
+        use std::collections::HashMap;
+
+        let started = std::time::Instant::now();
+        og_rules::pattern_rule::set_test_date_hack(true);
+
+        let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();
+        let mut groups: Vec<Vec<&og_xml::compiler::CompiledRule>> = Vec::new();
         for rule in &rule_set.rules {
-            for example in &rule.examples {
-                let (clean_text, marker_range) = Self::extract_marker(&example.text);
-
-                let sentence = self.tokenize_sentence(&clean_text);
-                let matches = self.pattern_engine.match_rule(rule, &sentence);
-
-                match example.example_type {
-                    og_xml::types::XmlExampleType::Incorrect => {
-                        if matches.is_empty() {
-                            results.push(ExampleTestResult {
-                                rule_id: rule.id.clone(),
-                                passed: false,
-                                message: format!(
-                                    "Expected match on incorrect example but got none: '{}'",
-                                    clean_text
-                                ),
-                                example_text: clean_text,
-                                expected_type: "incorrect".to_string(),
-                            });
-                        } else if let Some((m_start, m_end)) = marker_range {
-                            // Verify that the marker is within or overlaps the match
-                            let first_match = &matches[0];
-                            let match_start = first_match.offset();
-                            let match_end = match_start + first_match.length();
-                            // Match should contain the marker
-                            let marker_in_match = match_start <= m_start && match_end >= m_end;
-                            if marker_in_match {
-                                results.push(ExampleTestResult {
-                                    rule_id: rule.id.clone(),
-                                    passed: true,
-                                    message: format!(
-                                        "Match {}..{} contains marker {}..{}",
-                                        match_start, match_end, m_start, m_end
-                                    ),
-                                    example_text: clean_text,
-                                    expected_type: "incorrect".to_string(),
-                                });
-                            } else {
-                                results.push(ExampleTestResult {
-                                    rule_id: rule.id.clone(),
-                                    passed: false,
-                                    message: format!(
-                                        "Match {}..{} does not contain marker {}..{}",
-                                        match_start, match_end, m_start, m_end
-                                    ),
-                                    example_text: clean_text,
-                                    expected_type: "incorrect".to_string(),
-                                });
-                            }
-                        } else {
-                            results.push(ExampleTestResult {
-                                rule_id: rule.id.clone(),
-                                passed: true,
-                                message: format!("Matched correctly: '{}'", clean_text),
-                                example_text: clean_text,
-                                expected_type: "incorrect".to_string(),
-                            });
-                        }
-                    }
-                    og_xml::types::XmlExampleType::Correct => {
-                        if !matches.is_empty() {
-                            results.push(ExampleTestResult {
-                                rule_id: rule.id.clone(),
-                                passed: false,
-                                message: format!(
-                                    "Expected no match on correct example but got {}: '{}'",
-                                    matches.len(),
-                                    clean_text
-                                ),
-                                example_text: clean_text,
-                                expected_type: "correct".to_string(),
-                            });
-                        } else {
-                            results.push(ExampleTestResult {
-                                rule_id: rule.id.clone(),
-                                passed: true,
-                                message: format!("No match on correct example: '{}'", clean_text),
-                                example_text: clean_text,
-                                expected_type: "correct".to_string(),
-                            });
-                        }
-                    }
-                    og_xml::types::XmlExampleType::TriggersError => {
-                        // Known false positive - the rule IS expected to match
-                        // We count it as a pass regardless (these are documented known issues)
-                        results.push(ExampleTestResult {
-                            rule_id: rule.id.clone(),
-                            passed: true,
-                            message: format!("Triggers error (known FP): '{}'", clean_text),
-                            example_text: clean_text,
-                            expected_type: "triggers_error".to_string(),
-                        });
-                    }
-                }
+            let key = (rule.id.clone(), rule.sub_id.clone());
+            let next = groups.len();
+            let idx = *group_index.entry(key).or_insert(next);
+            if idx == next {
+                groups.push(vec![rule]);
+            } else {
+                groups[idx].push(rule);
             }
         }
 
+        let pairs: Vec<(
+            &og_xml::compiler::CompiledRule,
+            &og_xml::types::XmlExample,
+            &Vec<&og_xml::compiler::CompiledRule>,
+        )> = groups
+            .iter()
+            .flat_map(|group| {
+                group
+                    .first()
+                    .into_iter()
+                    .flat_map(move |rule| rule.examples.iter().map(move |e| (*rule, e, group)))
+            })
+            .collect();
+
+        let results: Vec<ExampleTestResult> = pairs
+            .par_iter()
+            .map(|(rule, example, group)| {
+                let (clean_text, marker_range) = Self::extract_marker(&example.text);
+                let mut matches = Vec::new();
+                for aux in group.iter() {
+                    matches.extend(self.match_rule_across_text(aux, &clean_text));
+                }
+                Self::evaluate_example(rule, example, &clean_text, marker_range, &matches)
+            })
+            .collect();
+
         let passed = results.iter().filter(|r| r.passed).count();
         let failed = results.len() - passed;
+        let elapsed = started.elapsed();
+        eprintln!(
+            "Suite wall-clock: {:.2}s for {} examples ({:.0} examples/s), {failed} failed",
+            elapsed.as_secs_f64(),
+            results.len(),
+            if elapsed.as_secs_f64() > 0.0 {
+                results.len() as f64 / elapsed.as_secs_f64()
+            } else {
+                0.0
+            }
+        );
         TestRunSummary {
             total: results.len(),
             passed,
@@ -1151,14 +860,103 @@ impl TestRunner {
         }
     }
 
-    /// Run example tests on an XML file from disk
+    fn evaluate_example(
+        rule: &og_xml::compiler::CompiledRule,
+        example: &og_xml::types::XmlExample,
+        clean_text: &str,
+        marker_range: Option<(usize, usize)>,
+        matches: &[og_core::RuleMatch],
+    ) -> ExampleTestResult {
+        match example.example_type {
+            og_xml::types::XmlExampleType::Incorrect => {
+                if matches.is_empty() {
+                    ExampleTestResult {
+                        rule_id: rule.id.clone(),
+                        passed: false,
+                        message: format!(
+                            "Expected match on incorrect example but got none: '{}'",
+                            clean_text
+                        ),
+                        example_text: clean_text.to_string(),
+                        expected_type: "incorrect".to_string(),
+                    }
+                } else if let Some((m_start, m_end)) = marker_range {
+                    let first_match = &matches[0];
+                    let match_start = first_match.offset();
+                    let match_end = match_start + first_match.length();
+                    let marker_in_match = match_start <= m_start && match_end >= m_end;
+                    if marker_in_match {
+                        ExampleTestResult {
+                            rule_id: rule.id.clone(),
+                            passed: true,
+                            message: format!(
+                                "Match {}..{} contains marker {}..{}",
+                                match_start, match_end, m_start, m_end
+                            ),
+                            example_text: clean_text.to_string(),
+                            expected_type: "incorrect".to_string(),
+                        }
+                    } else {
+                        ExampleTestResult {
+                            rule_id: rule.id.clone(),
+                            passed: false,
+                            message: format!(
+                                "Match {}..{} does not contain marker {}..{}",
+                                match_start, match_end, m_start, m_end
+                            ),
+                            example_text: clean_text.to_string(),
+                            expected_type: "incorrect".to_string(),
+                        }
+                    }
+                } else {
+                    ExampleTestResult {
+                        rule_id: rule.id.clone(),
+                        passed: true,
+                        message: format!("Matched correctly: '{}'", clean_text),
+                        example_text: clean_text.to_string(),
+                        expected_type: "incorrect".to_string(),
+                    }
+                }
+            }
+            og_xml::types::XmlExampleType::Correct => {
+                if !matches.is_empty() {
+                    ExampleTestResult {
+                        rule_id: rule.id.clone(),
+                        passed: false,
+                        message: format!(
+                            "Expected no match on correct example but got {}: '{}'",
+                            matches.len(),
+                            clean_text
+                        ),
+                        example_text: clean_text.to_string(),
+                        expected_type: "correct".to_string(),
+                    }
+                } else {
+                    ExampleTestResult {
+                        rule_id: rule.id.clone(),
+                        passed: true,
+                        message: format!("No match on correct example: '{}'", clean_text),
+                        example_text: clean_text.to_string(),
+                        expected_type: "correct".to_string(),
+                    }
+                }
+            }
+            og_xml::types::XmlExampleType::TriggersError => ExampleTestResult {
+                rule_id: rule.id.clone(),
+                passed: true,
+                message: format!("Triggers error (known FP): '{}'", clean_text),
+                example_text: clean_text.to_string(),
+                expected_type: "triggers_error".to_string(),
+            },
+        }
+    }
+
     pub fn run_xml_file_tests(&self, path: &Path) -> Result<TestRunSummary, String> {
         let xml = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
         Ok(self.run_xml_example_tests(&xml))
     }
 
-    /// Run a single pattern test
     pub fn run_pattern_test(
         &self,
         rule_id: &str,
@@ -1222,6 +1020,194 @@ impl Default for TestRunner {
     }
 }
 
+pub mod test_support {
+    use super::*;
+
+    pub const GRAMMAR_PATH: &str = "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/grammar.xml";
+    const DE_GRAMMAR_PATH: &str = "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/rules/de/grammar.xml";
+
+    pub fn german_runner() -> Arc<TestRunner> {
+        static CELL: og_core::releasable::Releasable<TestRunner> =
+            og_core::releasable::Releasable::new();
+        og_core::releasable::shared_get_or_build(&CELL, || {
+            Some(Arc::new(TestRunner::for_language("de")))
+        })
+        .expect("german runner")
+    }
+
+    pub fn german_grammar_rules() -> Arc<CompiledRuleSet> {
+        static CELL: og_core::releasable::Releasable<CompiledRuleSet> =
+            og_core::releasable::Releasable::new();
+        og_core::releasable::shared_get_or_build(&CELL, || {
+            let path = std::path::Path::new(DE_GRAMMAR_PATH);
+            let xml = std::fs::read_to_string(path).expect("Failed to read de grammar.xml");
+            Some(Arc::new(
+                XmlCompiler::new()
+                    .compile_file_with_base(&xml, path.parent())
+                    .expect("Failed to compile de grammar.xml"),
+            ))
+        })
+        .expect("de grammar rules")
+    }
+
+    pub fn german_grammar_available() -> bool {
+        Path::new(DE_GRAMMAR_PATH).exists()
+    }
+
+    pub fn shared_runner() -> Arc<TestRunner> {
+        static CELL: og_core::releasable::Releasable<TestRunner> =
+            og_core::releasable::Releasable::new();
+        og_core::releasable::shared_get_or_build(&CELL, || Some(Arc::new(TestRunner::new())))
+            .expect("english runner")
+    }
+
+    pub fn shared_language_runner(code: &'static str) -> Arc<TestRunner> {
+        static CELLS: std::sync::OnceLock<
+            std::sync::Mutex<
+                std::collections::HashMap<
+                    &'static str,
+                    &'static og_core::releasable::Releasable<TestRunner>,
+                >,
+            >,
+        > = std::sync::OnceLock::new();
+        let cell = {
+            let cells = CELLS.get_or_init(Default::default);
+            let mut guard = cells.lock().unwrap();
+            *guard
+                .entry(code)
+                .or_insert_with(|| Box::leak(Box::new(og_core::releasable::Releasable::new())))
+        };
+        og_core::releasable::shared_get_or_build(cell, || {
+            Some(Arc::new(TestRunner::for_language(code)))
+        })
+        .unwrap_or_else(|| panic!("{code} runner"))
+    }
+
+    pub fn shared_grammar_rules() -> Arc<CompiledRuleSet> {
+        static CELL: og_core::releasable::Releasable<CompiledRuleSet> =
+            og_core::releasable::Releasable::new();
+        og_core::releasable::shared_get_or_build(&CELL, || {
+            let path = std::path::Path::new(GRAMMAR_PATH);
+            let xml = std::fs::read_to_string(path).expect("Failed to read grammar.xml");
+            Some(Arc::new(
+                XmlCompiler::new()
+                    .compile_file_with_base(&xml, path.parent())
+                    .expect("Failed to compile grammar.xml"),
+            ))
+        })
+        .expect("english grammar rules")
+    }
+
+    pub fn grammar_available() -> bool {
+        Path::new(GRAMMAR_PATH).exists()
+    }
+
+    pub fn generic_grammar_available(code: &str) -> bool {
+        Path::new(&format!(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/{code}/src/main/resources/org/languagetool/rules/{code}/grammar.xml"
+        ))
+        .exists()
+    }
+
+    pub fn generic_grammar_rules(code: &'static str) -> std::sync::Arc<CompiledRuleSet> {
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<
+                std::collections::HashMap<&'static str, std::sync::Weak<CompiledRuleSet>>,
+            >,
+        > = std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+        let mut guard = cache.lock().unwrap();
+        if let Some(hit) = guard.get(code).and_then(std::sync::Weak::upgrade) {
+            return hit;
+        }
+        let path = std::path::PathBuf::from(format!(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/{code}/src/main/resources/org/languagetool/rules/{code}/grammar.xml"
+        ));
+        let extra_files: &[&str] = match code {
+            "sr" => &og_langs::sr::SR_RULE_FILES,
+            "uk" => &og_langs::uk::UK_RULE_FILES,
+            _ => &[],
+        };
+        let normalize = |xml: String| -> String {
+            match code {
+                "fr" => og_langs::fr::normalize_fr_rules_xml(&xml).into_owned(),
+                "pl" => og_langs::pl::normalize_pl_rules_xml(&xml).into_owned(),
+                "br" => og_langs::br::normalize_br_rules_xml(&xml).into_owned(),
+                "uk" => og_langs::uk::normalize_uk_rules_xml(&xml).into_owned(),
+                "zh" => og_langs::zh::normalize_zh_rules_xml(&xml).into_owned(),
+                _ => xml,
+            }
+        };
+        let xml = std::fs::read_to_string(&path).expect("Failed to read grammar.xml");
+        let xml = normalize(xml);
+        let mut rules: Vec<og_xml::compiler::CompiledRule> = Vec::new();
+        let mut categories = Vec::new();
+        let mut unifications = Vec::new();
+        let main = XmlCompiler::new()
+            .compile_file_with_base(&xml, path.parent())
+            .expect("Failed to compile grammar.xml");
+        rules.extend(main.rules);
+        categories.extend(main.categories);
+        unifications.extend(main.unifications);
+        for file in extra_files {
+            let extra_path = path.with_file_name(file);
+            let extra_xml = std::fs::read_to_string(&extra_path)
+                .unwrap_or_else(|e| panic!("Failed to read {file}: {e}"));
+            let extra_xml = normalize(extra_xml);
+            let extra = XmlCompiler::new()
+                .compile_file_with_base(&extra_xml, extra_path.parent())
+                .unwrap_or_else(|e| panic!("Failed to compile {file}: {e}"));
+            rules.extend(extra.rules);
+            categories.extend(extra.categories);
+            unifications.extend(extra.unifications);
+        }
+        let compiled = std::sync::Arc::new(CompiledRuleSet {
+            rules,
+            categories,
+            unifications,
+        });
+        guard.insert(code, std::sync::Arc::downgrade(&compiled));
+        compiled
+    }
+}
+
+fn shared_german_speller_dictionary(
+    resource_dir: &Path,
+) -> Option<std::sync::Arc<og_spell::Dictionary>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<std::path::PathBuf, std::sync::Weak<og_spell::Dictionary>>,
+        >,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let key = resource_dir.to_path_buf();
+    let mut guard = cache.lock().unwrap();
+    if let Some(dict) = guard.get(&key).and_then(std::sync::Weak::upgrade) {
+        return Some(dict);
+    }
+    let dictionary = og_tagger::german_tagger::shared_german_dictionary(resource_dir).map(|dict| {
+        let mut d = og_spell::Dictionary::from_shared_words(std::sync::Arc::new(
+            og_spell::morfologik_view::MorfologikView::new(dict),
+        ));
+        if let Ok(words) = std::fs::read_to_string(resource_dir.join("hunspell/spelling.txt")) {
+            for line in words.lines() {
+                for word in og_rules::spelling_support::prepare_line_for_speller(
+                    og_rules::spelling_support::SpellerVariant::German,
+                    line,
+                ) {
+                    d.add_word(&word);
+                }
+            }
+        }
+        d
+    });
+    let dictionary = dictionary.map(std::sync::Arc::new);
+    if let Some(dict) = &dictionary {
+        guard.insert(key, std::sync::Arc::downgrade(dict));
+    }
+    dictionary
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1239,8 +1225,59 @@ mod tests {
     }
 
     #[test]
+    fn sentence_tokenizer_splits_on_srx_boundaries() {
+        let text = "One sentence. Another one? Yes!";
+        let ranges = TestSentenceTokenizer.split(text);
+        let texts: Vec<&str> = ranges.iter().map(|r| &text[r.start..r.end]).collect();
+        assert_eq!(texts, vec!["One sentence. ", "Another one? ", "Yes!"]);
+        assert!(TestSentenceTokenizer.split("").is_empty());
+    }
+
+    #[test]
+    fn german_grammar_rules_compile_and_share_the_cache() {
+        assert!(test_support::german_grammar_available());
+        let rules = test_support::german_grammar_rules();
+        assert!(
+            rules.rules.len() > 4000,
+            "de grammar rule count: {}",
+            rules.rules.len()
+        );
+        let again = test_support::german_grammar_rules();
+        assert!(std::sync::Arc::ptr_eq(&rules, &again));
+    }
+
+    #[test]
+    fn generic_grammar_rules_merge_the_ukrainian_extra_files() {
+        assert!(test_support::generic_grammar_available("uk"));
+        let rules = test_support::generic_grammar_rules("uk");
+        assert!(
+            rules
+                .rules
+                .iter()
+                .any(|r| r.id == "piv_with_proper_noun_1992"),
+            "rule from grammar-spelling.xml missing; {} rules total",
+            rules.rules.len()
+        );
+        let again = test_support::generic_grammar_rules("uk");
+        assert!(std::sync::Arc::ptr_eq(&rules, &again));
+    }
+
+    #[test]
+    fn shared_german_speller_dictionary_is_reused_while_alive() {
+        let dir = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/resource/de",
+        );
+        let first = shared_german_speller_dictionary(dir);
+        let second = shared_german_speller_dictionary(dir);
+        match (first, second) {
+            (Some(a), Some(b)) => assert!(std::sync::Arc::ptr_eq(&a, &b)),
+            _ => panic!("german speller dictionary should load from {dir:?}"),
+        }
+    }
+
+    #[test]
     fn test_runner_incorrect_example_passes() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="TEST1" name="Test">
@@ -1271,7 +1308,7 @@ mod tests {
 
     #[test]
     fn test_runner_correct_example_no_match() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="TEST2" name="Test">
@@ -1291,7 +1328,7 @@ mod tests {
 
     #[test]
     fn test_runner_regexp_rule() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="TEST3" name="Test">
@@ -1306,13 +1343,11 @@ mod tests {
         );
 
         let summary = runner.run_xml_example_tests(&xml);
-        // The regexp rule should match "Teh"
         for r in &summary.results {
             if !r.passed {
                 eprintln!("FAILED: {} - {}", r.rule_id, r.message);
             }
         }
-        // At minimum, the correct example should pass (no match)
         assert!(
             summary
                 .results
@@ -1323,7 +1358,7 @@ mod tests {
 
     #[test]
     fn test_runner_multiple_rules() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="RULE_A" name="Rule A">
@@ -1367,7 +1402,7 @@ mod tests {
 
     #[test]
     fn test_runner_single_pattern_test() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="SINGLE_TEST" name="Single">
@@ -1389,18 +1424,15 @@ mod tests {
 
     #[test]
     fn test_runner_xml_parse_error() {
-        let runner = TestRunner::new();
-        // Use XML that's structurally broken to trigger parse error
+        let runner = test_support::shared_runner();
         let xml = r#"<?xml version="1.0"?><rules><category id="X"><rule id="TEST"><pattern>"#;
-        // This should still parse (quick-xml is lenient) or produce empty rules
         let summary = runner.run_xml_example_tests(xml);
-        // Either we get a parse error or empty results - both are acceptable
         assert!(summary.total <= 1);
     }
 
     #[test]
     fn test_runner_rule_not_found() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="EXISTS" name="Exists">
@@ -1417,7 +1449,7 @@ mod tests {
 
     #[test]
     fn test_runner_negate_token() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let xml = simple_xml(
             r#"
             <rule id="NEG_TEST" name="Negate">
@@ -1426,7 +1458,7 @@ mod tests {
                     <token>morning</token>
                 </pattern>
                 <message>Not good morning.</message>
-                <example><marker>Bad morning</marker> today.</example>
+                <example type="incorrect"><marker>Bad morning</marker> today.</example>
                 <example>Good morning everyone.</example>
             </rule>
         "#,
@@ -1445,25 +1477,19 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_load_real_english_grammar_xml() {
-        let Some(xml) = english_grammar_xml() else {
-            eprintln!("Skipping: English grammar.xml not found (no LT resource root)");
+        if !test_support::grammar_available() {
+            eprintln!("Skipping: English grammar.xml not found");
             return;
-        };
+        }
 
-        let compiler = og_xml::compiler::XmlCompiler::new();
-        let rule_set = compiler
-            .compile_file(&xml)
-            .expect("Failed to compile grammar.xml");
+        let rule_set = test_support::shared_grammar_rules();
 
         let total = rule_set.rules.len();
         eprintln!("Loaded {} rules from English grammar.xml", total);
 
-        // We expect thousands of rules
         assert!(total > 4000, "Expected 4000+ rules, got {}", total);
 
-        // Count rules with various features
         let with_antipatterns = rule_set
             .rules
             .iter()
@@ -1507,7 +1533,6 @@ mod tests {
         eprintln!("Rules with min/max: {}", with_min_max);
         eprintln!("Rules with postag: {}", with_postag);
 
-        // Sanity checks on feature counts
         assert!(
             with_antipatterns > 1000,
             "Expected 1000+ rules with antipatterns, got {}",
@@ -1526,17 +1551,27 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // runs all grammar.xml example tests — run with `cargo test -- --ignored`
-    fn test_real_english_grammar_examples() {
-        let Some(xml) = english_grammar_xml() else {
-            eprintln!("Skipping: English grammar.xml not found (no LT resource root)");
+    fn test_real_german_grammar_examples() {
+        const PINNED_RESIDUE: &[(&str, &str)] = &[(
+            "ZUSAMMENSCHREIBUNG_HINTER",
+            "Expected match on incorrect example but got none: 'Er hat ihr hinterher spioniert.'",
+        )];
+
+        if !test_support::german_grammar_available() {
+            eprintln!("Skipping: German grammar.xml not found");
             return;
-        };
+        }
 
-        let runner = TestRunner::new();
-        let summary = runner.run_xml_example_tests(&xml);
+        let started = std::time::Instant::now();
+        let rules_handle = std::thread::spawn(test_support::german_grammar_rules);
+        let runner = test_support::german_runner();
+        let rules = rules_handle.join().expect("grammar compile thread");
+        let summary = runner.run_rule_set_example_tests(&rules);
+        drop(rules);
+        drop(runner);
+        trim_released_pages(og_core::releasable::release_unused_since(started));
 
-        eprintln!("Total examples tested: {}", summary.total);
+        eprintln!("Total German examples tested: {}", summary.total);
         eprintln!("Passed: {}", summary.passed);
         eprintln!("Failed: {}", summary.failed);
         eprintln!(
@@ -1548,7 +1583,117 @@ mod tests {
             }
         );
 
-        // Categorize failures
+        let mut correct_fp = 0;
+        let mut no_match = 0;
+        let mut marker = 0;
+        for r in &summary.results {
+            if r.passed {
+                continue;
+            }
+            if r.message.contains("correct -") || r.message.contains("Expected no match") {
+                correct_fp += 1;
+            } else if r.message.contains("marker") {
+                marker += 1;
+            } else {
+                no_match += 1;
+            }
+        }
+        eprintln!(
+            "  Incorrect (no match): {no_match}\n  Correct (unexpected match): {correct_fp}\n  Incorrect (marker mismatch): {marker}"
+        );
+
+        let mut fail_file = String::new();
+        let mut residue: Vec<(String, String)> = Vec::new();
+        for r in &summary.results {
+            if !r.passed {
+                fail_file.push_str(&format!("FAIL: [{}] {}\n", r.rule_id, r.message));
+                residue.push((r.rule_id.clone(), r.message.clone()));
+            }
+        }
+        let _ = std::fs::write("/tmp/test_failures_de.txt", fail_file);
+
+        let expected: Vec<(String, String)> = PINNED_RESIDUE
+            .iter()
+            .map(|(id, msg)| (id.to_string(), msg.to_string()))
+            .collect();
+        assert_eq!(
+            residue, expected,
+            "the German residue must stay pinned: the one ZUSAMMENSCHREIBUNG_HINTER example \
+             dies in RemoveUnknownCompoundsFilter exactly as it does in Java on this data — \
+             LT's own de_DE.dic carries 'hinterher' with no compound flags and only the bare \
+             lemma 'hinterherspionieren', so hunspell 1.7 (the libhunspell-1.7.so bundled by \
+             com.gitlab.dumonts:hunspell:2.1.2, verified: it flags 'hinterherspioniert' and \
+             even suggests splitting it) rejects the compound, it appears in no accept list \
+             (ignore.txt/spelling*.txt), so isMisspelled is true and the filter drops the \
+             match; making it pass would require engine behavior or data Java itself does \
+             not have; new or changed failures mean an engine regression"
+        );
+        eprintln!("Summary: {}/{} passed", summary.passed, summary.total);
+    }
+
+    #[test]
+    fn test_real_english_grammar_examples() {
+        const PINNED_EN_RESIDUE: &[(&str, &str)] = &[];
+
+        if !test_support::grammar_available() {
+            eprintln!("Skipping: English grammar.xml not found");
+            return;
+        }
+
+        let rules_handle = std::thread::spawn(test_support::shared_grammar_rules);
+        let runner = test_support::shared_runner();
+        let rules = rules_handle.join().expect("grammar compile thread");
+        let summary = runner.run_rule_set_example_tests(&rules);
+
+        eprintln!("Total examples tested: {}", summary.total);
+        {
+            let xml = std::fs::read_to_string(test_support::GRAMMAR_PATH).unwrap_or_default();
+            let mut without_comments = String::with_capacity(xml.len());
+            let mut rest = xml.as_str();
+            while let Some(start) = rest.find("<!--") {
+                without_comments.push_str(&rest[..start]);
+                rest = match rest[start..].find("-->") {
+                    Some(end) => &rest[start + end + 3..],
+                    None => "",
+                };
+            }
+            without_comments.push_str(rest);
+            let live = without_comments.matches("<example").count();
+            let raw = xml.matches("<example").count();
+            let mut in_antipattern_examples = 0usize;
+            let mut depth = 0usize;
+            let mut offset = 0usize;
+            while let Some(rel) = without_comments[offset..].find('<') {
+                let tag = &without_comments[offset + rel..];
+                if tag.starts_with("<antipattern") {
+                    depth += 1;
+                } else if tag.starts_with("</antipattern") && depth > 0 {
+                    depth -= 1;
+                } else if depth > 0 && tag.starts_with("<example") {
+                    in_antipattern_examples += 1;
+                }
+                offset += rel + 1;
+            }
+            eprintln!(
+                "Evaluated-vs-live accounting: {}/{} live <example> tags evaluated ({} raw, {} inside comments, {} live examples sit inside <antipattern> blocks)",
+                summary.total,
+                live,
+                raw,
+                raw - live,
+                in_antipattern_examples
+            );
+        }
+        eprintln!("Passed: {}", summary.passed);
+        eprintln!("Failed: {}", summary.failed);
+        eprintln!(
+            "Pass rate: {:.1}%",
+            if summary.total > 0 {
+                100.0 * summary.passed as f64 / summary.total as f64
+            } else {
+                0.0
+            }
+        );
+
         let mut fail_by_reason: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for r in &summary.results {
@@ -1570,7 +1715,6 @@ mod tests {
             eprintln!("  {}: {}", reason, count);
         }
 
-        // Print top failing rule IDs by count
         let mut rule_fail_counts: std::collections::HashMap<String, (usize, usize, usize)> =
             std::collections::HashMap::new();
         for r in &summary.results {
@@ -1589,7 +1733,7 @@ mod tests {
             }
         }
         let mut sorted_fails: Vec<_> = rule_fail_counts.iter().collect();
-        sorted_fails.sort_by(|a, b| (b.1.0 + b.1.1).cmp(&(a.1.0 + a.1.1)));
+        sorted_fails.sort_by_key(|(_, counts)| std::cmp::Reverse(counts.0 + counts.1));
         eprintln!("\nTop 30 failing rules:");
         for (rule_id, (incorrect, correct, marker)) in sorted_fails.iter().take(30) {
             eprintln!(
@@ -1598,7 +1742,6 @@ mod tests {
             );
         }
 
-        // Print some failing examples for debugging
         let failures: Vec<_> = summary
             .results
             .iter()
@@ -1609,7 +1752,6 @@ mod tests {
             eprintln!("FAIL: [{}] {} - {}", f.rule_id, f.expected_type, f.message);
         }
 
-        // Save all failures to file for analysis
         if let Ok(all_failures) = std::fs::File::create("/tmp/test_failures_all.txt") {
             use std::io::Write;
             let mut out = std::io::BufWriter::new(all_failures);
@@ -1625,7 +1767,6 @@ mod tests {
             }
         }
 
-        // Show breakdown of failures by expected type
         let incorrect_no_match = summary
             .results
             .iter()
@@ -1652,8 +1793,6 @@ mod tests {
         eprintln!("  Correct (unexpected match): {}", correct_unexpected);
         eprintln!("  Incorrect (marker mismatch): {}", incorrect_marker);
 
-        // We don't require 100% pass rate yet (many rules need POS tags, filters, etc.)
-        // But we should have a reasonable pass rate
         let pass_rate = if summary.total > 0 {
             summary.passed as f64 / summary.total as f64
         } else {
@@ -1664,10 +1803,58 @@ mod tests {
             "Expected at least 10% pass rate, got {:.1}%",
             pass_rate * 100.0
         );
+
+        let residue: Vec<(String, String)> = summary
+            .results
+            .iter()
+            .filter(|r| !r.passed)
+            .map(|r| (r.rule_id.clone(), r.message.clone()))
+            .collect();
+        let expected: Vec<(String, String)> = PINNED_EN_RESIDUE
+            .iter()
+            .map(|(id, msg)| (id.to_string(), msg.to_string()))
+            .collect();
+        assert_eq!(
+            residue, expected,
+            "the English residue must stay pinned byte-exact: the last entry (A_NNS on 'a \
+             feeling private minions') was fixed by teaching the disambiguation XML parser to \
+             ignore <!ENTITY> definitions inside comments, so en's live \
+             &abbreviated_negated_verbs; (wo|would|...) — not the commented-out fused forms \
+             (won|wouldn|...) — feeds DT_JJ_NNJJ_NN_VB_APOSTROPHE, which strips the JJ reading \
+             from 'private' exactly like Java; any new or changed failure is an engine regression"
+        );
     }
 
     #[test]
-    #[ignore] // loads grammar.xml — run with `cargo test -- --ignored`
+    fn test_no_break_space_example_not_flagged() {
+        if !test_support::grammar_available() {
+            return;
+        }
+        let rules = test_support::shared_grammar_rules();
+        let runner = test_support::shared_runner();
+        let rule = rules
+            .rules
+            .iter()
+            .find(|r| {
+                r.id == "SENT_START_CONJUNCTIVE_LINKING_ADVERB_COMMA"
+                    && r.examples.iter().any(|e| e.text.contains('\u{a0}'))
+            })
+            .expect("sub-rule with no-break-space example");
+        let example = rule
+            .examples
+            .iter()
+            .find(|e| e.text.contains('\u{a0}'))
+            .unwrap();
+        let (_clean, _marker, matches) = runner.match_rule_on_text(rule, &example.text);
+        assert!(
+            matches.is_empty(),
+            "no-break-space example flagged: '{}' got {} matches",
+            example.text,
+            matches.len()
+        );
+    }
+
+    #[test]
     fn test_it_is_rule_its_cool_man() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="en">
@@ -1690,10 +1877,9 @@ mod tests {
             </category>
         </rules>"#;
 
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let summary = runner.run_xml_example_tests(xml);
 
-        // Debug: print token POS tags
         let sentence = runner.tokenize_sentence("Its cool man!");
         let nwt: Vec<_> = sentence.non_whitespace_tokens();
         eprintln!("Non-whitespace tokens for 'Its cool man!':");
@@ -1707,7 +1893,6 @@ mod tests {
             );
         }
 
-        // Try matching manually
         let compiler = og_xml::compiler::XmlCompiler::new();
         let rule_set = compiler.compile_file(xml).unwrap();
         eprintln!("Compiled {} rules", rule_set.rules.len());
@@ -1739,9 +1924,178 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+    fn test_debug_pipeline_stages() {
+        let runner = test_support::shared_runner();
+        for text in [
+            "We want go to the cinema.",
+            "You will see what an American looks like.",
+        ] {
+            let tokenizer = TestWordTokenizer::Default(true);
+            let mut sentence = AnalyzedSentence::new(text, 0, text.len());
+            let mut tokens = tokenizer.tokenize(text, 0);
+            let start_token = AnalyzedTokenReadings::new(
+                AnalyzedToken::new("<S>", 0, 0).with_pos_tags(vec!["SENT_START".to_string()]),
+            );
+            tokens.insert(0, start_token);
+            let token_texts: Vec<String> = tokens
+                .iter()
+                .skip(1)
+                .map(|t| t.token().token().to_string())
+                .collect();
+            let text_refs: Vec<&str> = token_texts.iter().map(|s| s.as_str()).collect();
+            let tagged = runner.tagger.tag(&text_refs);
+            let tagged_tags = |word: &str| -> Vec<String> {
+                tagged
+                    .iter()
+                    .find(|atr| atr.token().token() == word)
+                    .map(|atr| {
+                        let mut tags: Vec<String> = atr
+                            .readings()
+                            .iter()
+                            .flat_map(|r| r.pos_tags().to_vec())
+                            .collect();
+                        tags.sort();
+                        tags.dedup();
+                        tags
+                    })
+                    .unwrap_or_default()
+            };
+            if text == "We want go to the cinema." {
+                for (word, expected) in [("want", "VB"), ("go", "VB"), ("to", "TO")] {
+                    assert!(
+                        tagged_tags(word).iter().any(|t| t == expected),
+                        "'{word}' must carry {expected} straight after tagging, got {:?}",
+                        tagged_tags(word)
+                    );
+                }
+            }
+            eprintln!("== '{}' AFTER TAG:", text);
+            for (i, atr) in tagged.iter().enumerate() {
+                eprintln!(
+                    "  [{}] {:?} readings={:?}",
+                    i,
+                    text_refs.get(i),
+                    atr.readings()
+                        .iter()
+                        .map(|r| r.pos_tags().to_vec())
+                        .collect::<Vec<_>>()
+                );
+            }
+            let merged: Vec<AnalyzedTokenReadings> = tagged
+                .iter()
+                .map(|atr| {
+                    let at = atr.token().clone();
+                    AnalyzedTokenReadings::new(at).with_readings(atr.readings().to_vec())
+                })
+                .collect();
+            sentence.set_tokens(merged);
+            if let Some(ref d) = runner.disambiguator {
+                d.disambiguate(&mut sentence);
+            }
+            let disambig_tags = |word: &str| -> Vec<String> {
+                sentence
+                    .tokens()
+                    .iter()
+                    .find(|t| t.token().token() == word)
+                    .map(|t| {
+                        let mut tags: Vec<String> = t
+                            .readings()
+                            .iter()
+                            .flat_map(|r| r.pos_tags().to_vec())
+                            .collect();
+                        tags.sort();
+                        tags.dedup();
+                        tags
+                    })
+                    .unwrap_or_default()
+            };
+            if text == "We want go to the cinema." {
+                for (word, expected) in [("want", "VB"), ("go", "VB"), ("to", "TO")] {
+                    assert!(
+                        disambig_tags(word).iter().any(|t| t == expected),
+                        "'{word}' must still carry {expected} after disambiguation, got {:?}",
+                        disambig_tags(word)
+                    );
+                }
+            } else {
+                assert_eq!(
+                    disambig_tags("will"),
+                    vec!["MD"],
+                    "the en disambiguator must reduce 'will' to MD"
+                );
+                assert_eq!(
+                    disambig_tags("what"),
+                    vec!["WP"],
+                    "the en disambiguator must reduce 'what' to WP"
+                );
+            }
+            eprintln!("== '{}' AFTER DISAMBIG:", text);
+            for t in sentence.tokens() {
+                if t.is_whitespace() {
+                    continue;
+                }
+                eprintln!(
+                    "  {:?} readings={:?} lemmas={:?}",
+                    t.token().token(),
+                    t.readings()
+                        .iter()
+                        .map(|r| r.pos_tags().to_vec())
+                        .collect::<Vec<_>>(),
+                    t.readings()
+                        .iter()
+                        .map(|r| r.lemma().map(|l| l.to_string()))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_debug_matching_subrules() {
+        let runner = test_support::shared_runner();
+        let sentences = [
+            "RWE said it has open positions",
+            "Do you have change?",
+            "we have open positions sometimes.",
+        ];
+        let rule_set = test_support::shared_grammar_rules();
+        for text in sentences {
+            let sentence = runner.tokenize_sentence(text);
+            let mut matched = 0;
+            for rule in &rule_set.rules {
+                if rule.id != "HAVE_PART_AGREEMENT" {
+                    continue;
+                }
+                let matches = runner.pattern_engine.match_rule(rule, &sentence);
+                if !matches.is_empty() {
+                    matched += 1;
+                    eprintln!(
+                        "MATCH [{}] sub={:?} on '{}' at {}..{}",
+                        rule.id,
+                        rule.sub_id,
+                        text,
+                        matches[0].offset(),
+                        matches[0].offset() + matches[0].length()
+                    );
+                    for (i, t) in rule.pattern.tokens.iter().enumerate() {
+                        eprintln!(
+                            "  token[{}]: text={:?} postag={:?} chunk={:?} chunk_re={:?}",
+                            i, t.text, t.postag, t.chunk, t.chunk_re
+                        );
+                    }
+                }
+            }
+            if matched == 0 {
+                eprintln!("no match on '{}'", text);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
     fn test_debug_a_nns_fps() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let sentences = vec![
             "I want spend time with my friends.",
             "I would like spend time with my friends.",
@@ -1765,10 +2119,20 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+    #[ignore]
     fn test_debug_pos_tags_for_failures() {
-        let runner = TestRunner::new();
+        let runner = test_support::shared_runner();
         let sentences = vec![
+            "Grammatical errors is bad.",
+            "Restart PHP and try replicate your issue.",
+            "I would like test the tool.",
+            "We want go to the cinema.",
+            "I love listen to music.",
+            "RWE said it has open positions",
+            "Do you have change?",
+            "We want test it.",
+            "Grammatical errors always makes your text look bad.",
+            "Heat rates has no impact on numbers.",
             "I want spend time with my friends.",
             "Can I tell if its using the repeater?",
             "He is friend.",
@@ -1789,6 +2153,11 @@ mod tests {
             "They don't want let me learn.",
             "I want spend time with my friends.",
             "Restart PHP and try replicate your issue.",
+            "I would like test the tool.",
+            "We want go to the cinema.",
+            "I love listen to music.",
+            "RWE said it has open positions",
+            "Do you have change?",
         ];
 
         for text in &sentences {
@@ -1808,26 +2177,15 @@ mod tests {
         }
     }
 
-    /// Diagnostic test that checks POS tags for specific words commonly needed by
     #[test]
-    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_been_part_agreement_debug() {
-        let runner = &TestRunner::new();
+        let runner = test_support::shared_runner();
 
-        // Test: "I'm been prepared." should trigger BEEN_PART_AGREEMENT
         let sentence = runner.tokenize_sentence("I'm been prepared.");
         let _nwt: Vec<_> = sentence.non_whitespace_tokens();
 
-        // Load grammar rules and try matching
-        let Some(xml) = english_grammar_xml() else {
-            eprintln!("Skipping: English grammar.xml not found (no LT resource root)");
-            return;
-        };
-        let compiled_rule_set = og_xml::compiler::XmlCompiler::new()
-            .compile_file(&xml)
-            .unwrap();
+        let compiled_rule_set = test_support::shared_grammar_rules();
 
-        // Debug TO_TOO matching
         let to_too_rules: Vec<_> = compiled_rule_set
             .rules
             .iter()
@@ -1864,19 +2222,10 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // loads full grammar.xml — run with `cargo test -- --ignored`
     fn test_to_too_inflected_matching() {
-        let runner = &TestRunner::new();
-        let Some(xml) = english_grammar_xml() else {
-            eprintln!("Skipping: English grammar.xml not found (no LT resource root)");
-            return;
-        };
-        let compiled = og_xml::compiler::XmlCompiler::new()
-            .compile_file(&xml)
-            .unwrap();
+        let runner = test_support::shared_runner();
+        let compiled = test_support::shared_grammar_rules();
 
-        // These sentences use "is/were/been" (inflected forms of "be") + "to" + adjective
-        // They should all match TO_TOO rules that use <token inflected="yes">be</token>
         let test_cases = vec![
             ("This is to funny.", true),
             ("It is to small", true),
@@ -1900,21 +2249,13 @@ mod tests {
         }
     }
 
-    /// failing grammar rules. Prints a comparison of actual vs expected tags so
-    /// you can quickly spot which words the tagger is missing or mis-tagging.
-    ///
-    /// Run with: cargo test -p og-test-runner test_common_pos_tag_coverage -- --nocapture
     #[test]
-    #[ignore] // diagnostic POS tag coverage — run with `cargo test -- --ignored`
     fn test_common_pos_tag_coverage() {
-        let runner = &TestRunner::new();
+        let runner = test_support::shared_runner();
 
-        /// Helper: tag a single isolated word and return the sorted list of POS
-        /// tags that the full pipeline assigns (including disambiguation).
         fn tags_for(runner: &TestRunner, word: &str) -> Vec<String> {
             let sentence = runner.tokenize_sentence(word);
             let nwt: Vec<_> = sentence.non_whitespace_tokens();
-            // Skip the synthetic <S> token and take the first real token's readings
             let token = nwt
                 .iter()
                 .find(|t| t.token().token() != "<S>")
@@ -1929,71 +2270,48 @@ mod tests {
             tags
         }
 
-        /// Helper: assert and print diagnostics for one word.
-        fn check(runner: &TestRunner, word: &str, expected_tags: &[&str]) -> Vec<String> {
+        fn check(runner: &TestRunner, word: &str, expected_tags: &[&str]) {
             let actual = tags_for(runner, word);
 
-            let mut missing: Vec<&str> = expected_tags
+            let missing: Vec<&str> = expected_tags
                 .iter()
                 .filter(|t| !actual.iter().any(|a| a == **t))
                 .copied()
                 .collect();
-            missing.sort();
 
-            let status = if missing.is_empty() { "OK" } else { "MISSING" };
-            eprintln!(
-                "  {:20} expected={:?}  actual={:?}  {}",
-                format!("'{}'", word),
-                expected_tags,
-                actual,
-                status,
+            assert!(
+                missing.is_empty(),
+                "'{word}' must carry the en dictionary tags {expected_tags:?}, missing {missing:?} (actual {actual:?})"
             );
-            if !missing.is_empty() {
-                eprintln!("                         missing tags: {:?}", missing);
-            }
-
-            actual
         }
 
-        // -----------------------------------------------------------------------
-        // 3rd person singular present verbs  (VBZ)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== VBZ (3rd person singular present) ===");
         for word in &["needs", "wants", "likes", "tries"] {
-            check(runner, word, &["VBZ"]);
+            check(&runner, word, &["VBZ"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Base form verbs  (VB)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== VB (base form verb) ===");
         for word in &["need", "want", "like", "try"] {
-            check(runner, word, &["VB"]);
+            check(&runner, word, &["VB"]);
         }
         for word in &["go", "make", "contact", "solve", "mount"] {
-            check(runner, word, &["VB"]);
+            check(&runner, word, &["VB"]);
         }
         for word in &["compete", "bring", "send", "extend"] {
-            check(runner, word, &["VB"]);
+            check(&runner, word, &["VB"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Verbs that are also nouns  (VB + NN)
-        // -----------------------------------------------------------------------
-        eprintln!("\n=== VB + NN (verb and noun) ===");
-        for word in &["open", "reopen", "close"] {
-            check(runner, word, &["VB", "NN"]);
+        eprintln!("\n=== VB + noun variants (verb and dictionary noun tag) ===");
+        check(&runner, "close", &["VB", "NN"]);
+        check(&runner, "reopen", &["VB", "VBP"]);
+        check(&runner, "open", &["VB", "JJ", "NN:U"]);
+        for word in &["help", "sleep"] {
+            check(&runner, word, &["NN:U", "VB"]);
         }
-        for word in &["help", "support", "sleep", "exercise"] {
-            check(runner, word, &["NN", "VB"]);
-        }
-        for word in &["love", "fear", "care"] {
-            check(runner, word, &["VB", "NN"]);
+        for word in &["support", "exercise", "love", "fear", "care"] {
+            check(&runner, word, &["NN:UN", "VB"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Adjectives  (JJ)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== JJ (adjective) ===");
         for word in &[
             "cool",
@@ -2004,56 +2322,777 @@ mod tests {
             "perfect",
             "recommendable",
         ] {
-            check(runner, word, &["JJ"]);
+            check(&runner, word, &["JJ"]);
         }
         for word in &["okay", "worth"] {
-            check(runner, word, &["JJ"]);
+            check(&runner, word, &["JJ"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Gerund / present participle  (VBG)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== VBG (gerund / present participle) ===");
         for word in &["happening", "going", "writing"] {
-            check(runner, word, &["VBG"]);
+            check(&runner, word, &["VBG"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Past participle  (VBN)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== VBN (past participle) ===");
         for word in &["done", "been", "given"] {
-            check(runner, word, &["VBN"]);
+            check(&runner, word, &["VBN"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Irregular plurals  (NNS)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== NNS (plural noun) ===");
         for word in &["phenomena", "criteria", "stimuli"] {
-            check(runner, word, &["NNS"]);
+            check(&runner, word, &["NNS"]);
         }
         for word in &["freshmen", "women", "gentlemen"] {
-            check(runner, word, &["NNS"]);
+            check(&runner, word, &["NNS"]);
         }
 
-        // -----------------------------------------------------------------------
-        // Comparative / base adjectives  (JJR / JJ)
-        // -----------------------------------------------------------------------
         eprintln!("\n=== JJR / JJ (comparative and base adjective) ===");
         for word in &["better", "easier"] {
-            check(runner, word, &["JJR"]);
+            check(&runner, word, &["JJR"]);
         }
-        for word in &["expensive"] {
-            check(runner, word, &["JJ"]);
+        {
+            let word = &"expensive";
+            check(&runner, word, &["JJ"]);
         }
+    }
+
+    #[test]
+    fn ukrainian_runner_tokenizes_and_checks_examples() {
+        let runner = TestRunner::for_language("uk");
+        let sentence = runner.debug_sentence("Це тестове речення.");
+        let words: Vec<&str> = sentence
+            .non_whitespace_tokens()
+            .iter()
+            .map(|t| t.token().token())
+            .collect();
+        assert!(words.len() >= 3, "tokens: {words:?}");
+
+        let xml = simple_xml(
+            r#"
+            <rule id="UK_TEST" name="Ukrainian test">
+                <pattern>
+                    <token>тестове</token>
+                </pattern>
+                <message>Test</message>
+                <example type="incorrect">Це <marker>тестове</marker> речення.</example>
+            </rule>
+        "#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 1);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn sentence_offsets_shift_matches_across_sentences() {
+        let runner = test_support::shared_runner();
+        let xml = simple_xml(
+            r#"
+            <rule id="TWO_SENT" name="Two sentences">
+                <pattern>
+                    <token>teh</token>
+                </pattern>
+                <message>Did you mean <suggestion>the</suggestion>?</message>
+                <example type="incorrect">First one. <marker>Teh</marker> second.</example>
+            </rule>
+        "#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 1);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+    fn lang_xml(lang: &str, rules_body: &str) -> String {
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="{lang}">
+            <category id="GRAMMAR" name="Grammar">
+                {}
+            </category>
+        </rules>"#,
+            rules_body
+        )
+    }
+
+    fn token_rule(id: &str, token: &str, incorrect: &str, correct: &str) -> String {
+        format!(
+            r#"<rule id="{id}" name="{id}">
+                <pattern>
+                    <token regexp="yes">{token}</token>
+                </pattern>
+                <message>Unexpected token.</message>
+                <example type="incorrect">{incorrect}</example>
+                <example type="correct">{correct}</example>
+            </rule>"#
+        )
+    }
+
+    #[test]
+    fn esperanto_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("eo");
+        let xml = lang_xml(
+            "eo",
+            &token_rule(
+                "EO_TOK",
+                "zqxjw",
+                "Teksto <marker>zqxjw</marker> plua frazo.",
+                "Neniu problemo cxi tie.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn danish_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("da");
+        let xml = lang_xml(
+            "da",
+            &token_rule(
+                "DA_TOK",
+                "zqxjw",
+                "En <marker>zqxjw</marker> mere s&aelig;tning.",
+                "Der er intet problem her.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn catalan_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ca");
+        let xml = lang_xml(
+            "ca",
+            &token_rule(
+                "CA_TOK",
+                "zqxjw",
+                "Una <marker>zqxjw</marker> m&eacute;s frase.",
+                "No hi ha cap problema.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn russian_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ru");
+        let xml = lang_xml(
+            "ru",
+            &token_rule(
+                "RU_TOK",
+                "эзюча",
+                "Одно <marker>эзюча</marker> ещё предложение.",
+                "Здесь нет никакой проблемы.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn run_xml_file_tests_read_rules_from_disk() {
+        let dir = std::env::temp_dir().join("og_test_runner_file_tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("example_rules.xml");
+        std::fs::write(
+            &path,
+            lang_xml(
+                "en",
+                &token_rule(
+                    "FILE_TOK",
+                    "teh",
+                    "A <marker>teh</marker> house.",
+                    "The house.",
+                ),
+            ),
+        )
+        .unwrap();
+        let runner = test_support::shared_runner();
+        let summary = runner.run_xml_file_tests(&path).unwrap();
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+
+        let missing = runner.run_xml_file_tests(&dir.join("does_not_exist.xml"));
+        assert!(missing.is_err());
+    }
+
+    #[test]
+    fn pattern_test_reports_unknown_rule_ids() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            &token_rule(
+                "PT_TOK",
+                "teh",
+                "A <marker>teh</marker> house.",
+                "The house.",
+            ),
+        );
+        let result = runner.run_pattern_test("NO_SUCH_RULE", &xml, "teh house", false);
+        assert!(!result.passed);
+        assert!(result.message.contains("not found"));
+
+        let hit = runner.run_pattern_test("PT_TOK", &xml, "teh house", true);
+        assert!(hit.passed, "{}", hit.message);
+        let miss = runner.run_pattern_test("PT_TOK", &xml, "clean house", false);
+        assert!(miss.passed, "{}", miss.message);
+    }
+
+    #[test]
+    fn pattern_test_reports_xml_parse_errors() {
+        let runner = test_support::shared_runner();
+        let result = runner.run_pattern_test(
+            "PT_TOK",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rules></wrong></rules>",
+            "teh house",
+            true,
+        );
+        assert!(!result.passed);
+        assert_eq!(result.rule_id, "PT_TOK");
+        assert_eq!(result.expected_type, "single");
+        assert_eq!(result.example_text, "teh house");
+        assert!(result.message.contains("Parse error"), "{}", result.message);
+    }
+
+    #[test]
+    fn generic_grammar_helpers_load_and_cache_danish_rules() {
+        assert!(test_support::generic_grammar_available("da"));
+        let first = test_support::generic_grammar_rules("da");
+        assert!(!first.rules.is_empty());
+        let second = test_support::generic_grammar_rules("da");
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(!test_support::generic_grammar_available("zz"));
+    }
+
+    #[test]
+    fn match_rule_on_text_reports_marker_and_matches() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            &token_rule(
+                "MR_TOK",
+                "teh",
+                "A <marker>teh</marker> house.",
+                "The house.",
+            ),
+        );
+        let rule_set = XmlCompiler::new().compile_file(&xml).unwrap();
+        let rule = &rule_set.rules[0];
+        let (clean, marker, matches) =
+            runner.match_rule_on_text(rule, "A <marker>teh</marker> house");
+        assert_eq!(clean, "A teh house");
+        assert_eq!(marker, Some((2, 5)));
+        assert!(!matches.is_empty());
+
+        let sentence = runner.debug_sentence("A teh house");
+        assert!(sentence.tokens().len() >= 3);
+    }
+
+    #[test]
+    fn spanish_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("es");
+        let xml = lang_xml(
+            "es",
+            &token_rule(
+                "ES_TOK",
+                "zqxjw",
+                "Una <marker>zqxjw</marker> frase más.",
+                "No hay ningún problema.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn portuguese_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("pt");
+        let xml = lang_xml(
+            "pt",
+            &token_rule(
+                "PT_TOK",
+                "zqxjw",
+                "Uma <marker>zqxjw</marker> frase maior.",
+                "Não há problema.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn french_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("fr");
+        let xml = lang_xml(
+            "fr",
+            &token_rule(
+                "FR_TOK",
+                "zqxjw",
+                "Une <marker>zqxjw</marker> phrase encore.",
+                "Il n'y a aucun problème.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn french_runner_splits_hyphenated_unknown_words() {
+        let runner = TestRunner::for_language("fr");
+        let sentence = runner.debug_sentence("Un mot-zqxjw supplémentaire.");
+        let tokens: Vec<&str> = sentence
+            .non_whitespace_tokens()
+            .iter()
+            .map(|t| t.token().token())
+            .collect();
+        assert!(tokens.contains(&"mot"), "tokens: {tokens:?}");
+        assert!(tokens.contains(&"-"), "tokens: {tokens:?}");
+        assert!(tokens.contains(&"zqxjw"), "tokens: {tokens:?}");
+    }
+
+    #[test]
+    fn polish_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("pl");
+        let xml = lang_xml(
+            "pl",
+            &token_rule(
+                "PL_TOK",
+                "zqxjw",
+                "Jeszcze <marker>zqxjw</marker> jedno zdanie.",
+                "Nie ma tutaj problemu.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn german_runner_matches_inline_examples() {
+        assert!(test_support::german_grammar_available());
+        let runner = test_support::german_runner();
+        let again = test_support::german_runner();
+        assert!(std::sync::Arc::ptr_eq(&runner, &again));
+        let xml = lang_xml(
+            "de",
+            &token_rule(
+                "DE_TOK",
+                "zqxjw",
+                "Ein <marker>zqxjw</marker> weiterer Satz.",
+                "Hier gibt es kein Problem.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn dutch_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("nl");
+        let xml = lang_xml(
+            "nl",
+            &token_rule(
+                "NL_TOK",
+                "zqxjw",
+                "Nog <marker>zqxjw</marker> een zin.",
+                "Er is hier geen probleem.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn breton_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("br");
+        let xml = lang_xml(
+            "br",
+            &token_rule(
+                "BR_TOK",
+                "zqxjw",
+                "Ur <marker>zqxjw</marker> frazenn all.",
+                "N'eus kudenn ebet.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn galician_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("gl");
+        let xml = lang_xml(
+            "gl",
+            &token_rule(
+                "GL_TOK",
+                "zqxjw",
+                "Unha <marker>zqxjw</marker> frase máis.",
+                "Non hai ningún problema.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn irish_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ga");
+        let xml = lang_xml(
+            "ga",
+            &token_rule(
+                "GA_TOK",
+                "zqxjw",
+                "Is <marker>zqxjw</marker> sampla eile.",
+                "Níl aon fhadhb ann.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn serbian_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("sr");
+        let xml = lang_xml(
+            "sr",
+            &token_rule(
+                "SR_TOK",
+                "zqxjw",
+                "Još <marker>zqxjw</marker> jedna rečenica.",
+                "Ovde nema nikakvog problema.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn arabic_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ar");
+        let xml = lang_xml(
+            "ar",
+            &token_rule(
+                "AR_TOK",
+                "zqxjw",
+                "هذا <marker>zqxjw</marker> اختبار آخر.",
+                "لا توجد مشكلة هنا.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn unmatched_incorrect_examples_fail_with_message() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            r#"<rule id="NO_HIT" name="No hit">
+                <pattern>
+                    <token>zqxjw</token>
+                    <token>wvv</token>
+                </pattern>
+                <message>Two tokens.</message>
+                <example type="incorrect">A <marker>zqxjw</marker> standalone token.</example>
+            </rule>"#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.failed, 1);
+        let result = &summary.results[0];
+        assert!(!result.passed);
+        assert_eq!(result.rule_id, "NO_HIT");
+        assert_eq!(result.expected_type, "incorrect");
+        assert!(
+            result
+                .message
+                .contains("Expected match on incorrect example but got none")
+        );
+    }
+
+    #[test]
+    fn matches_outside_the_marker_fail_the_example() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            r#"<rule id="OFF_MARK" name="Off marker">
+                <pattern>
+                    <token>here</token>
+                </pattern>
+                <message>Here.</message>
+                <example type="incorrect">A <marker>zqxjw</marker> thing here.</example>
+            </rule>"#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.failed, 1);
+        let result = &summary.results[0];
+        assert!(
+            result.message.contains("does not contain marker"),
+            "{}",
+            result.message
+        );
+    }
+
+    #[test]
+    fn incorrect_examples_without_markers_pass_on_any_match() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            r#"<rule id="NO_MARK" name="No marker">
+                <pattern>
+                    <token>zqxjw</token>
+                </pattern>
+                <message>Found.</message>
+                <example type="incorrect">It happens zqxjw today.</example>
+            </rule>"#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+        assert!(summary.results[0].message.contains("Matched correctly"));
+    }
+
+    #[test]
+    fn triggers_error_examples_pass_through() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            r#"<rule id="TRIG" name="Triggers">
+                <pattern>
+                    <token>zqxjw</token>
+                </pattern>
+                <message>Known FP.</message>
+                <example type="triggers_error">A zqxjw sentence.</example>
+            </rule>"#,
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+        assert_eq!(summary.results[0].expected_type, "triggers_error");
+        assert!(summary.results[0].message.contains("Triggers error"));
+    }
+
+    #[test]
+    fn malformed_xml_reports_a_parse_error_result() {
+        let runner = test_support::shared_runner();
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rules></wrong></rules>";
+        let summary = runner.run_xml_example_tests(xml);
+        assert_eq!(summary.total, 1);
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.results[0].rule_id, "PARSE_ERROR");
+        assert_eq!(summary.results[0].expected_type, "parse");
+        assert!(
+            summary.results[0].message.contains("Failed to parse XML"),
+            "{}",
+            summary.results[0].message
+        );
+    }
+
+    #[test]
+    fn rules_sharing_an_id_are_evaluated_as_one_group() {
+        let runner = test_support::shared_runner();
+        let base = lang_xml(
+            "en",
+            r#"<rule id="GROUPED" name="Grouped base">
+                <pattern>
+                    <token>zqxjw</token>
+                    <token>wvv</token>
+                </pattern>
+                <message>Two tokens.</message>
+                <example type="incorrect">A <marker>zqxjw</marker> single token.</example>
+            </rule>"#,
+        );
+        let extra = lang_xml(
+            "en",
+            r#"<rule id="GROUPED" name="Grouped extra">
+                <pattern>
+                    <token>zqxjw</token>
+                </pattern>
+                <message>One token.</message>
+            </rule>"#,
+        );
+        let mut rule_set = XmlCompiler::new().compile_file(&base).unwrap();
+        let alone = runner.run_rule_set_example_tests(&rule_set);
+        assert_eq!(alone.failed, 1, "{:?}", alone.results);
+
+        let extra_set = XmlCompiler::new().compile_file(&extra).unwrap();
+        rule_set.rules.push(extra_set.rules[0].clone());
+        let grouped = runner.run_rule_set_example_tests(&rule_set);
+        assert_eq!(grouped.total, 1);
+        assert!(grouped.is_all_passed(), "{:?}", grouped.results);
+    }
+
+    #[test]
+    fn pattern_test_reports_expectation_mismatches() {
+        let runner = test_support::shared_runner();
+        let xml = lang_xml(
+            "en",
+            &token_rule(
+                "MM_TOK",
+                "zqxjw",
+                "A <marker>zqxjw</marker> house.",
+                "The house.",
+            ),
+        );
+        let result = runner.run_pattern_test("MM_TOK", &xml, "a zqxjw house", false);
+        assert!(!result.passed);
+        assert!(result.message.contains("expected no match, got match"));
+    }
+
+    #[test]
+    fn default_runner_behaves_like_new() {
+        let runner = TestRunner::default();
+        let xml = lang_xml(
+            "en",
+            &token_rule(
+                "DF_TOK",
+                "zqxjw",
+                "A <marker>zqxjw</marker> house.",
+                "The house.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn shared_grammar_rules_cache_the_english_compilation() {
+        let first = test_support::shared_grammar_rules();
+        let second = test_support::shared_grammar_rules();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(!first.rules.is_empty());
+    }
+
+    fn assert_word_count(runner: &TestRunner, text: &str, min_words: usize) {
+        let sentence = runner.debug_sentence(text);
+        let words: Vec<&str> = sentence
+            .non_whitespace_tokens()
+            .iter()
+            .map(|t| t.token().token())
+            .collect();
+        assert!(words.len() >= min_words, "tokens: {words:?}");
+    }
+
+    #[test]
+    fn belarusian_runner_tokenizes_native_text() {
+        assert_word_count(&TestRunner::for_language("be"), "Гэта тэставае сказ.", 3);
+    }
+
+    #[test]
+    fn greek_runner_tokenizes_native_text() {
+        assert_word_count(&TestRunner::for_language("el"), "Αυτή είναι μια δοκιμή.", 3);
+    }
+
+    #[test]
+    fn persian_runner_tokenizes_native_text() {
+        assert_word_count(&TestRunner::for_language("fa"), "این یک آزمایش است.", 3);
+    }
+
+    #[test]
+    fn crimean_tatar_runner_splits_trailing_hyphen_tokens() {
+        let runner = TestRunner::for_language("crh");
+        let sentence = runner.debug_sentence("Bir kelime- sóz.");
+        let tokens: Vec<&str> = sentence
+            .non_whitespace_tokens()
+            .iter()
+            .map(|t| t.token().token())
+            .collect();
+        assert!(tokens.contains(&"kelime"), "tokens: {tokens:?}");
+        assert!(tokens.contains(&"-"), "tokens: {tokens:?}");
+    }
+
+    #[test]
+    fn japanese_runner_keeps_tokenizer_tags_without_tagger() {
+        let runner = TestRunner::for_language("ja");
+        let sentence = runner.debug_sentence("これはテストです。");
+        let tokens = sentence.non_whitespace_tokens();
+        assert!(tokens.len() >= 2);
+        assert!(
+            tokens.iter().any(|t| !t.token().pos_tags().is_empty()),
+            "ja tags come from the tokenizer dictionary"
+        );
+    }
+
+    #[test]
+    fn khmer_runner_tokenizes_native_text() {
+        assert_word_count(&TestRunner::for_language("km"), "នេះ ជា ការ សាកល្បង។", 3);
+    }
+
+    #[test]
+    fn malayalam_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ml");
+        let xml = lang_xml(
+            "ml",
+            &token_rule(
+                "ML_TOK",
+                "zqxjw",
+                "ഇത് <marker>zqxjw</marker> ഒരു പരീക്ഷണം.",
+                "ഇവിടെ പ്രശ്നമില്ല.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn tamil_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("ta");
+        let xml = lang_xml(
+            "ta",
+            &token_rule(
+                "TA_TOK",
+                "zqxjw",
+                "இது <marker>zqxjw</marker> ஒரு சோதனை.",
+                "இங்கே எந்த பிரச்சனையும் இல்லை.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn tagalog_runner_matches_inline_examples() {
+        let runner = TestRunner::for_language("tl");
+        let xml = lang_xml(
+            "tl",
+            &token_rule(
+                "TL_TOK",
+                "zqxjw",
+                "Ito ay <marker>zqxjw</marker> na pagsusulit.",
+                "Walang problema dito.",
+            ),
+        );
+        let summary = runner.run_xml_example_tests(&xml);
+        assert_eq!(summary.total, 2);
+        assert!(summary.is_all_passed(), "{:?}", summary.results);
+    }
+
+    #[test]
+    fn chinese_runner_tokenizes_the_whole_text_as_one_sentence() {
+        let runner = TestRunner::for_language("zh");
+        let sentence = runner.debug_sentence("这是一个测试句子。");
+        assert!(sentence.non_whitespace_tokens().len() >= 2);
     }
 }
 
 #[test]
-#[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+#[ignore]
 fn test_debug_have_part_agreement_fp() {
-    let runner = TestRunner::new();
+    let runner = test_support::shared_runner();
     let sentences = vec![
         "Do you have change?",
         "Like other insects, beetles have open circulatory systems, based on hemolymph rather than blood.",
@@ -2112,9 +3151,9 @@ fn test_debug_have_part_agreement_fp() {
 }
 
 #[test]
-#[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+#[ignore]
 fn test_debug_missing_to_before_verb() {
-    let runner = TestRunner::new();
+    let runner = test_support::shared_runner();
     let sentences = vec![
         "We need test it first.",
         "I would like see us make this work.",
@@ -2146,11 +3185,37 @@ fn test_debug_missing_to_before_verb() {
 }
 
 #[test]
-#[ignore] // debug diagnostic — run with `cargo test -- --ignored`
 fn test_debug_chunking_with_whitespace() {
-    let runner = TestRunner::new();
+    let runner = test_support::shared_runner();
     let sentence = runner.tokenize_sentence("The client is here.");
     let tokens = sentence.tokens();
+    assert_eq!(tokens.len(), 9, "expected <S> + 5 words + 3 spaces + .");
+    let expected = [
+        ("<S>", "-", false),
+        ("The", "B-NP-singular", false),
+        (" ", "-", true),
+        ("client", "E-NP-singular", false),
+        (" ", "-", true),
+        ("is", "B-VP", false),
+        (" ", "-", true),
+        ("here", "B-ADVP", false),
+        (".", "O", false),
+    ];
+    for (token, (text, chunk, ws)) in tokens.iter().zip(expected) {
+        assert_eq!(token.token().token(), text);
+        assert_eq!(token.is_whitespace(), ws, "'{text}' whitespace mismatch");
+        assert_eq!(
+            token.chunk().unwrap_or("-"),
+            chunk,
+            "'{text}' chunk mismatch"
+        );
+        if ws {
+            assert!(
+                token.token().pos_tags().is_empty(),
+                "whitespace tokens carry no POS tags"
+            );
+        }
+    }
     eprintln!(
         "ALL tokens for 'The client is here.' ({} total):",
         tokens.len()
@@ -2178,9 +3243,9 @@ fn test_debug_chunking_with_whitespace() {
 }
 
 #[test]
-#[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+#[ignore]
 fn test_it_is_2_debug() {
-    let runner = TestRunner::new();
+    let runner = test_support::shared_runner();
     let sentences = vec![
         "But its much better like this.",
         "I think its much better now.",
@@ -2202,13 +3267,7 @@ fn test_it_is_2_debug() {
         }
     }
 
-    // Try matching with IT_IS_2 rules
-    let Some(xml) = english_grammar_xml() else {
-        eprintln!("Skipping: English grammar.xml not found (no LT resource root)");
-        return;
-    };
-    let compiler = og_xml::compiler::XmlCompiler::new();
-    let rule_set = compiler.compile_file(&xml).unwrap();
+    let rule_set = test_support::shared_grammar_rules();
 
     let text = "But its much better like this.";
     let sentence = runner.tokenize_sentence(text);
@@ -2228,9 +3287,9 @@ fn test_it_is_2_debug() {
 }
 
 #[test]
-#[ignore] // debug diagnostic — run with `cargo test -- --ignored`
+#[ignore]
 fn test_debug_a_infinitive_fps() {
-    let runner = TestRunner::new();
+    let runner = test_support::shared_runner();
     let sentences = vec![
         "Checkout or add a subscribe box to the cart.",
         "If there is already a notify email...",
@@ -2261,7 +3320,7 @@ fn test_debug_a_infinitive_fps() {
     for text in &sentences {
         let sentence = runner.tokenize_sentence(text);
         let nwt: Vec<_> = sentence.non_whitespace_tokens();
-        eprintln!("\n'{}':", text);
+        eprintln!("\n'{text}':");
         for (i, token) in nwt.iter().enumerate() {
             let chunk = token.chunk().unwrap_or("-");
             eprintln!(
@@ -2273,4 +3332,290 @@ fn test_debug_a_infinitive_fps() {
             );
         }
     }
+}
+
+#[test]
+fn test_real_danish_grammar_examples() {
+    run_generic_example_suite("da");
+}
+
+#[test]
+fn test_real_de_ch_grammar_examples() {
+    run_german_variant_example_suite("de-CH");
+}
+
+#[test]
+fn test_real_de_at_grammar_examples() {
+    run_german_variant_example_suite("de-AT");
+}
+
+#[test]
+fn test_real_french_grammar_examples() {
+    run_generic_example_suite("fr");
+}
+
+#[test]
+fn test_real_spanish_grammar_examples() {
+    run_generic_example_suite("es");
+}
+
+#[test]
+fn test_real_portuguese_grammar_examples() {
+    run_generic_example_suite("pt");
+}
+
+#[test]
+fn test_real_dutch_grammar_examples() {
+    run_generic_example_suite("nl");
+}
+
+#[test]
+fn test_real_polish_grammar_examples() {
+    run_generic_example_suite("pl");
+}
+
+#[test]
+fn test_real_russian_grammar_examples() {
+    run_generic_example_suite("ru");
+}
+
+#[test]
+fn test_real_italian_grammar_examples() {
+    run_generic_example_suite("it");
+}
+
+#[test]
+fn test_real_arabic_grammar_examples() {
+    run_generic_example_suite("ar");
+}
+
+#[test]
+fn test_real_asturian_grammar_examples() {
+    run_generic_example_suite("ast");
+}
+
+#[test]
+fn test_real_catalan_grammar_examples() {
+    run_generic_example_suite("ca");
+}
+
+#[test]
+fn test_real_belarusian_grammar_examples() {
+    run_generic_example_suite("be");
+}
+
+#[test]
+fn test_real_crimean_tatar_grammar_examples() {
+    run_generic_example_suite("crh");
+}
+
+#[test]
+fn test_real_breton_grammar_examples() {
+    run_generic_example_suite("br");
+}
+
+#[test]
+fn test_real_greek_grammar_examples() {
+    run_generic_example_suite("el");
+}
+
+#[test]
+fn test_real_persian_grammar_examples() {
+    run_generic_example_suite("fa");
+}
+
+#[test]
+fn test_real_irish_grammar_examples() {
+    run_generic_example_suite("ga");
+}
+
+#[test]
+fn test_real_galician_grammar_examples() {
+    run_generic_example_suite("gl");
+}
+
+#[test]
+fn test_real_icelandic_grammar_examples() {
+    run_generic_example_suite("is");
+}
+
+#[test]
+fn test_real_japanese_grammar_examples() {
+    run_generic_example_suite("ja");
+}
+
+#[test]
+fn test_real_khmer_grammar_examples() {
+    run_generic_example_suite("km");
+}
+
+#[test]
+fn test_real_romanian_grammar_examples() {
+    run_generic_example_suite("ro");
+}
+
+#[test]
+fn test_real_swedish_grammar_examples() {
+    run_generic_example_suite("sv");
+}
+
+#[test]
+fn test_real_slovak_grammar_examples() {
+    run_generic_example_suite("sk");
+}
+
+#[test]
+fn test_real_slovenian_grammar_examples() {
+    run_generic_example_suite("sl");
+}
+
+#[test]
+fn test_real_lithuanian_grammar_examples() {
+    run_generic_example_suite("lt");
+}
+
+#[test]
+fn test_real_malayalam_grammar_examples() {
+    run_generic_example_suite("ml");
+}
+
+#[test]
+fn test_real_tamil_grammar_examples() {
+    run_generic_example_suite("ta");
+}
+
+#[test]
+fn test_real_tagalog_grammar_examples() {
+    run_generic_example_suite("tl");
+}
+
+#[test]
+fn test_real_serbian_grammar_examples() {
+    run_generic_example_suite("sr");
+}
+
+#[test]
+fn test_real_ukrainian_grammar_examples() {
+    run_generic_example_suite("uk");
+}
+
+#[test]
+fn test_real_chinese_grammar_examples() {
+    run_generic_example_suite("zh");
+}
+
+#[test]
+fn test_real_esperanto_grammar_examples() {
+    run_generic_example_suite("eo");
+}
+
+#[cfg(test)]
+fn trim_released_pages(freed: usize) {
+    const TRIM_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+    #[cfg(target_os = "linux")]
+    if freed > 0 && og_core::releasable::trim_due(TRIM_INTERVAL) {
+        unsafe {
+            libc::malloc_trim(0);
+        }
+    }
+}
+
+#[cfg(test)]
+fn run_german_variant_example_suite(code: &'static str) {
+    let started = std::time::Instant::now();
+    let variant_dir = if code == "de-CH" { "de-CH" } else { "de-DE-AT" };
+    let path = std::path::PathBuf::from(format!(
+        "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/rules/de/{variant_dir}/grammar.xml"
+    ));
+    if !path.exists() {
+        eprintln!("Skipping: {variant_dir} grammar.xml not found");
+        return;
+    }
+    let runner = test_support::german_runner();
+    let xml = std::fs::read_to_string(&path).expect("grammar.xml read");
+    let rules = XmlCompiler::new()
+        .compile_file_with_base(&xml, path.parent())
+        .expect("grammar compile");
+    let summary = runner.run_rule_set_example_tests(&rules);
+    drop(rules);
+    trim_released_pages(og_core::releasable::release_unused_since(started));
+
+    let mut no_match = 0;
+    let mut fp = 0;
+    let mut marker = 0;
+    for r in &summary.results {
+        if r.passed {
+            continue;
+        }
+        if r.message.contains("Expected no match") {
+            fp += 1;
+        } else if r.message.contains("marker") {
+            marker += 1;
+        } else {
+            no_match += 1;
+        }
+    }
+    eprintln!(
+        "{code}: {}/{} passed ({:.1}%) - no_match: {no_match}, fp: {fp}, marker: {marker}",
+        summary.passed,
+        summary.total,
+        100.0 * summary.passed as f64 / summary.total.max(1) as f64
+    );
+    let mut fail_file = String::new();
+    for r in &summary.results {
+        if !r.passed {
+            fail_file.push_str(&format!("FAIL: [{}] {}\n", r.rule_id, r.message));
+        }
+    }
+    let artifact_code = code.replace('-', "_");
+    let _ = std::fs::write(format!("/tmp/test_failures_{artifact_code}.txt"), fail_file);
+}
+
+#[cfg(test)]
+fn run_generic_example_suite(code: &'static str) {
+    if !test_support::generic_grammar_available(code) {
+        eprintln!("Skipping: {code} grammar.xml not found");
+        return;
+    }
+    let started = std::time::Instant::now();
+    let rules_handle = std::thread::spawn(move || test_support::generic_grammar_rules(code));
+    let runner = test_support::shared_language_runner(code);
+    let rules = rules_handle.join().expect("grammar compile thread");
+    let summary = runner.run_rule_set_example_tests(&rules);
+    drop(rules);
+    drop(runner);
+    trim_released_pages(og_core::releasable::release_unused_since(started));
+
+    let mut no_match = 0;
+    let mut fp = 0;
+    let mut marker = 0;
+    for r in &summary.results {
+        if r.passed {
+            continue;
+        }
+        if r.message.contains("Expected no match") {
+            fp += 1;
+        } else if r.message.contains("marker") {
+            marker += 1;
+        } else {
+            no_match += 1;
+        }
+    }
+    eprintln!(
+        "{code}: {}/{} passed ({:.1}%) - no_match: {no_match}, fp: {fp}, marker: {marker}",
+        summary.passed,
+        summary.total,
+        100.0 * summary.passed as f64 / summary.total.max(1) as f64
+    );
+    let mut fail_file = String::new();
+    for r in &summary.results {
+        if !r.passed {
+            fail_file.push_str(&format!("FAIL: [{}] {}\n", r.rule_id, r.message));
+        }
+    }
+    let _ = std::fs::write(format!("/tmp/test_failures_{code}.txt"), fail_file);
+    assert!(
+        summary.total > 0,
+        "{code} grammar.xml compiled but its example suite ran zero examples"
+    );
 }

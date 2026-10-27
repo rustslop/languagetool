@@ -1,11 +1,12 @@
 pub mod dictionary;
+pub mod german;
 pub mod hunspell;
-pub mod resource;
+pub mod morfologik_view;
 pub mod speller;
 pub mod suggestion;
 
 pub use dictionary::*;
+pub use german::*;
 pub use hunspell::*;
-pub use resource::*;
 pub use speller::*;
 pub use suggestion::*;

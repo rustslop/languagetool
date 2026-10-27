@@ -1,5 +1,0 @@
-# OpenGrammar-RS clippy configuration.
-# Matches the workspace MSRV declared in Cargo.toml ([workspace.package]
-# rust-version = "1.95"). CI runs `cargo clippy --workspace` at the default
-# warning level: pre-existing warnings are allowed and do not fail CI.
-msrv = "1.95"

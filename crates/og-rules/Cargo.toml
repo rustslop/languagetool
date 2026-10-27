@@ -6,14 +6,14 @@ edition.workspace = true
 [dependencies]
 og-core = { workspace = true }
 og-xml = { workspace = true }
-og-spell = { workspace = true }
 og-tokenizer = { workspace = true }
 og-tagger = { workspace = true }
+og-spell = { workspace = true }
 regex = { workspace = true }
+fancy-regex = "0.14"
 rayon = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 
-[[bench]]
-name = "rule_indexing"
-harness = false
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -4,9 +4,6 @@ use og_core::{
 };
 use std::collections::HashMap;
 
-/// Rust port of LanguageTool's EnglishSpecificCaseRule.
-/// Detects improper capitalization of known proper nouns and multi-word expressions.
-/// Uses a sliding window over tokens to match phrases against a lookup table.
 pub struct SpecificCaseRule {
     entries: HashMap<String, String>,
     max_words: usize,
@@ -18,12 +15,7 @@ impl SpecificCaseRule {
             entries: HashMap::new(),
             max_words: 0,
         };
-        rule.load_data(
-            &og_spell::read_lt_resource(
-                "en/src/main/resources/org/languagetool/resource/en/specific_case.txt",
-            )
-            .unwrap_or_default(),
-        );
+        rule.load_data(include_str!("../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/resource/en/specific_case.txt"));
         rule
     }
 
@@ -33,7 +25,6 @@ impl SpecificCaseRule {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            // Strip inline comments
             let phrase = if let Some(pos) = line.find('#') {
                 line[..pos].trim()
             } else {
@@ -124,31 +115,25 @@ impl Rule for SpecificCaseRule {
 
                 let lc_phrase = phrase.to_lowercase();
                 if let Some(proper) = self.entries.get(&lc_phrase) {
-                    // Skip if already correct
                     if &phrase == proper {
                         continue;
                     }
-                    // Skip ALL CAPS (stylistic choice)
                     if Self::is_all_uppercase(&phrase) {
                         continue;
                     }
-                    // Sentence-start guard: don't suggest lowercase-starting proper nouns
-                    // when the word is at sentence start (capitalization is mandatory there)
                     if i > 0 {
                         let prev = &tokens[i - 1];
-                        if prev.has_pos_tag("SENT_START")
+                        if (prev.has_pos_tag("SENT_START")
                             || prev.token().token() == "."
                             || prev.token().token() == "!"
-                            || prev.token().token() == "?"
-                        {
-                            if !proper
+                            || prev.token().token() == "?")
+                            && !proper
                                 .chars()
                                 .next()
                                 .map(|c| c.is_uppercase())
                                 .unwrap_or(false)
-                            {
-                                continue;
-                            }
+                        {
+                            continue;
                         }
                     }
 
@@ -164,16 +149,13 @@ impl Rule for SpecificCaseRule {
 
                     let rm_rule = RuleMatchRule::new(self.id(), self.description())
                         .with_category(self.category())
+                        .with_issue_type(self.issue_type().as_str())
                         .with_urls(vec![
                             "https://languagetool.org/insights/post/spelling-capital-letters/"
                                 .to_string(),
                         ]);
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_end + 40, sentence.text().len());
                     let context_text = sentence.text()[context_start..context_end].to_string();
 
@@ -192,7 +174,7 @@ impl Rule for SpecificCaseRule {
                         .with_replacements(vec![SuggestedReplacement::new(proper)])
                         .with_sentence(sentence.text().to_string()),
                     );
-                    break; // Don't report the same start position multiple times
+                    break;
                 }
             }
         }
@@ -257,7 +239,6 @@ mod tests {
         let rule = SpecificCaseRule::new();
         let sentence = make_sentence("Visit the statue of liberty");
         let matches = rule.match_sentence(&sentence);
-        // "statue of liberty" should match "Statue of Liberty"
         assert!(!matches.is_empty(), "Should detect multi-word phrase");
     }
 

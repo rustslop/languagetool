@@ -1,0 +1,2603 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="CAP_1">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">von</token>
+      <token regexp="yes" case_sensitive="yes">Gleich</token>
+      <token regexp="yes" case_sensitive="yes">zu</token>
+      <token regexp="yes" case_sensitive="yes">Gleich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_2">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[iI]n</token>
+      <token regexp="yes" case_sensitive="yes">-</token>
+      <token regexp="yes" case_sensitive="yes">und|oder</token>
+      <token regexp="yes" case_sensitive="yes">[Aa]us.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_3">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[1-9]{2,4}</token>
+      <token regexp="yes" case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÜÄÖ][a-züäö].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_4">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">In</token>
+      <token regexp="yes" case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÜÄÖ][a-züäö].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_5">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">China</token>
+      <token regexp="yes" case_sensitive="yes">National</token>
+      <token regexp="yes" case_sensitive="yes">Petroleum</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_6">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Republik</token>
+      <token regexp="yes" case_sensitive="yes">der</token>
+      <token regexp="yes" case_sensitive="yes">Sieben</token>
+      <token regexp="yes" case_sensitive="yes">Vereinigten</token>
+      <token regexp="yes" case_sensitive="yes">Provinzen|Niederlande</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_7">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Rat</token>
+      <token regexp="yes" case_sensitive="yes">für</token>
+      <token regexp="yes" case_sensitive="yes">das</token>
+      <token regexp="yes" case_sensitive="yes">Europäische</token>
+      <token regexp="yes" case_sensitive="yes">Hilfswerk</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_8">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Museum</token>
+      <token regexp="yes" case_sensitive="yes">der</token>
+      <token regexp="yes" case_sensitive="yes">Bayerischen</token>
+      <token regexp="yes" case_sensitive="yes">Geschichte</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_9">
+    <pattern>
+      <token>Planten</token>
+      <token>un</token>
+      <token regexp="yes">Blomens?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_10">
+    <pattern>
+      <token inflected="yes">sprechen</token>
+      <token regexp="yes" case_sensitive="yes">Angelsächsisch|Afrikanisch|Albanisch|Altarabisch|Altchinesisch|Altgriechisch|Althochdeutsch|Altpersisch|Amerikanisch|Arabisch|Armenisch|Bairisch|Baskisch|Bengalisch|Bulgarisch|Chinesisch|Dänisch|Deutsch|Englisch|Estnisch|Finnisch|Französisch|Frühneuhochdeutsch|Germanisch|Georgisch|Griechisch|Hebräisch|Hocharabisch|Hochchinesisch|Hochdeutsch|Holländisch|Indonesisch|Irisch|Isländisch|Italienisch|Japanisch|Jiddisch|Jugoslawisch|Kantonesisch|Katalanisch|Klingonisch|Koreanisch|Kroatisch|Kurdisch|Lateinisch|Lettisch|Litauisch|Luxemburgisch|Mittelhochdeutsch|Mongolisch|Neuhochdeutsch|Niederländisch|Norwegisch|Persisch|Plattdeutsch|Polnisch|Portugiesisch|Rätoromanisch|Rumänisch|Russisch|Sächsisch|Schwäbisch|Schwedisch|Schweizerisch|Serbisch|Serbokroatisch|Slawisch|Slowakisch|Slowenisch|Spanisch|Syrisch|Tamilisch|Tibetisch|Tschechisch|Tschetschenisch|Türkisch|Turkmenisch|Uigurisch|Ukrainisch|Ungarisch|Usbekisch|Vietnamesisch|Walisisch|Weißrussisch||</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_11">
+    <pattern>
+      <token regexp="yes">(inter)?national|regional</token>
+      <token regexp="yes" case_sensitive="yes">GmbH|gGmbH|AG|gAG|InvAG|OHG|KG|UG|eG|GbR</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_12">
+    <pattern>
+      <token regexp="yes">die|der</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].+</token>
+      <token regexp="yes" case_sensitive="yes">GmbH|gGmbH|AG|gAG|InvAG|OHG|KG|UG|eG|GbR</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_13">
+    <pattern>
+      <token postag="EIG:.+|SUB:.+" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-Z].+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].+</token>
+      <token regexp="yes" case_sensitive="yes">GmbH|gGmbH|AG|gAG|InvAG|OHG|KG|UG|eG|GbR</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_14">
+    <pattern>
+      <token postag="ADJ:.*" postag_regexp="yes"/>
+      <token regexp="yes">&amp;|and</token>
+      <token postag="ADJ:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_15">
+    <pattern>
+      <token regexp="yes">Deutschen?|Österreichischen?|Schweizerischen?</token>
+      <token regexp="yes">.*gesellschaft</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_16">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">im|ins|ans?</token>
+      <token regexp="yes" case_sensitive="yes">Gestern|Vorgestern</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_17">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">im|ins|ans?|das</token>
+      <token regexp="yes" case_sensitive="yes">Gestern|Vorgestern</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Gestern|Vorgestern</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_18">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[Ii]m|[Dd]as|[Dd]em|[Ii]ns|[Dd]es|[Aa]ufs</token>
+      <token regexp="yes" case_sensitive="yes">Hier|Vorher</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Jetzt|Nachher</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_19">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[Ii]m|[Dd]as|[Dd]em|[Ii]ns|[Dd]es|[Aa]ufs</token>
+      <token regexp="yes" case_sensitive="yes">Jetzt|Nachher</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Hier|Vorher</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_20">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">im|ins</token>
+      <token regexp="yes" case_sensitive="yes">Hier|Jetzt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_21">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[Dd]ieses|das|k?ein</token>
+      <token postag="ADJ.*NEU.*" postag_regexp="yes" min="0"></token>
+      <token regexp="yes" case_sensitive="yes">Rein</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Raus</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_22">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Private[snm]|Familiäre[snm]</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Berufliche[snm]|Geschäftliche[snm]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_23">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Hin</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Her</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_24">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">k?ein</token>
+      <token regexp="yes" case_sensitive="yes">Richtig|Falsch</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Richtig|Falsch</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_25">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Tax</token>
+      <token regexp="yes" case_sensitive="yes">[au]nd|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Legal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_26">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+es</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+es</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß\-,\.\!\?…;:–\)\(]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_27">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+isch</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+isch</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß\-,\.\!\?…;:–\)\(]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_28">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+em</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+em</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß\-,\.\!\?…;:–\)\(]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_29">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Bereich|Departement|Stabsstellen?|Dienststellen?|AG|Arbeitsgruppe|Edition</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+es</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_30">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Berufliche[snm]</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;</token>
+      <token regexp="yes" case_sensitive="yes">Private[snm]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_31">
+    <pattern>
+      <token>des</token>
+      <token case_sensitive="yes">Weiteren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_32">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">\.|Mo|Di|Mi|Do|Fr|Sa</token>
+      <token regexp="yes" case_sensitive="yes">-|–</token>
+      <token case_sensitive="yes">So</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_33">
+    <pattern>
+      <token postag="(ADJ:|PA[12]).*" postag_regexp="yes"/>
+      <token>,</token>
+      <token postag="(ADJ:|PA[12]).*" postag_regexp="yes"/>
+      <token regexp="yes">[A-ZÖÄÜ].+jährige[mnr]?</token>
+      <token postag="(?!SUB).*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_34">
+    <pattern>
+      <token postag="_english_ignore_" postag_regexp="yes"/>
+      <token postag="_english_ignore_" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_35">
+    <pattern>
+      <token>das</token>
+      <token regexp="yes">.+zu.+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_36">
+    <pattern>
+      <token>Rock</token>
+      <token regexp="yes">['’]</token>
+      <token>n</token>
+      <token regexp="yes">['’]</token>
+      <token>Roll</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_37">
+    <pattern>
+      <token regexp="yes">Vitamin-[A-Z][0-9]?-reich(e|e[nms])?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_38">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÖÄÜ][a-zöäüß]+</token>
+      <token>,</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÖÄÜ][a-zöäüß]+</token>
+      <token regexp="yes">,|etc</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_39">
+    <pattern>
+      <token regexp="yes">erste[nr]?</token>
+      <token case_sensitive="yes">Hilfe</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_40">
+    <pattern>
+      <token regexp="yes">Alfred|Emanuel|Günter|Immanuel|Johannes|Karl|Ludvig|Anton|Peter|Robert|Rolf</token>
+      <token case_sensitive="yes">Nobel</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_41">
+    <pattern>
+      <token>Großes</token>
+      <token regexp="yes" inflected="yes">leisten|erreichen|schaffen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_42">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[:;]</token>
+      <token>)</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_43">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[;:]</token>
+      <token>-</token>
+      <token>)</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_44">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[A-Z]</token>
+      <token>)</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_45">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>,</token>
+      <token>,</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_46">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">^[^A-Za-z0-9ÄÖÜäöüàÀß]{1,2}$</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÖÜÄ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_47">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>*</token>
+      <token>*</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_48">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>’</token>
+      <token>’</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_49">
+    <pattern>
+      <token>“</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÖÜÄ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_50">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">=|-</token>
+      <token>&gt;</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_51">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>#</token>
+      <token regexp="yes">\d+</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_52">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\*|\-</token>
+      <token>[</token>
+      <token regexp="yes">]</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_53">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\*|\-</token>
+      <token>[</token>
+      <token>x</token>
+      <token regexp="yes">]</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_54">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">^[^a-zA-ZäöüÄÖÜ\d\s:]+$</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_55">
+    <pattern>
+      <token regexp="yes">Roten?</token>
+      <token regexp="yes">Bete</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_56">
+    <pattern>
+      <token regexp="yes">[A-Z]-förmig(e[mnrs]?)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_57">
+    <pattern>
+      <token>Geboten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_58">
+    <pattern>
+      <token regexp="yes">vor|den</token>
+      <token>Gefahren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_59">
+    <pattern>
+      <token regexp="yes">Digital|Global|Smart|International|Trade|Private|Live|Urban|Man|Total|Native|Imperial|Modern|Responsive|Simple|Legend|Human|Light|Ministerial|National</token>
+      <token postag="UNKNOWN"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_60">
+    <pattern>
+      <token>International</token>
+      <token regexp="yes">Managements?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_61">
+    <pattern>
+      <token>National</token>
+      <token regexp="yes">Boards?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_62">
+    <pattern>
+      <token regexp="yes">[kK]nock</token>
+      <token regexp="yes">[oO]ut</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_63">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF:.+" postag_regexp="yes"/>
+      <token postag="KON:NEB|PKT" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_64">
+    <pattern>
+      <token regexp="yes">wenn|falls|sobald</token>
+      <token postag="PRO.*|EIG.*" postag_regexp="yes"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF:.+" postag_regexp="yes"/>
+      <token regexp="yes">dann|,|und|oder|\.|\!|\:</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_65">
+    <pattern>
+      <token regexp="yes">wenn|falls|sobald</token>
+      <token postag="PRO.*|EIG.*" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">mir|uns|ih[rm]</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF:.+" postag_regexp="yes"/>
+      <token regexp="yes">dann|,|und|oder|\.|\!|\:</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_66">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="ADV.*" postag_regexp="yes"/>
+      <token postag="VER:INF:.+" postag_regexp="yes"/>
+      <token postag="KON:NEB|PKT" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_67">
+    <pattern>
+      <token postag="UNKNOWN"/>
+      <token regexp="yes">Digital|Global|Smart|International|Trade|Private|Live|Urban|Man|Total|Native|Imperial|Modern|Responsive|Simple|Legend|Human|Light|Ministerial</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_68">
+    <pattern>
+      <token>Smart</token>
+      <token postag="SUB.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_69">
+    <pattern>
+      <token>National</token>
+      <token regexp="yes">Sales|University</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_70">
+    <pattern>
+      <token regexp="yes">Goldenen?</token>
+      <token regexp="yes">Hochzeit(en)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_71">
+    <pattern>
+      <token regexp="yes">Graue[nr]?</token>
+      <token regexp="yes">Stars?|Eminenz</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_72">
+    <pattern>
+      <token regexp="yes">Große[nr]?</token>
+      <token regexp="yes">Strafkammer|Latinums?|Rats?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_73">
+    <pattern>
+      <token case_sensitive="yes">Guten</token>
+      <token case_sensitive="yes">Tag</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_74">
+    <pattern>
+      <token regexp="yes">Höheren?</token>
+      <token regexp="yes">Schule|Mathematik</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_75">
+    <pattern>
+      <token regexp="yes">Künstliche[nr]?</token>
+      <token>Intelligenz</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_76">
+    <pattern>
+      <token regexp="yes">Neue[ns]?</token>
+      <token regexp="yes">Jahr(s|es)?|Linken?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_77">
+    <pattern>
+      <token>Neues</token>
+      <token>\?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_78">
+    <pattern>
+      <token>Zahl</token>
+      <token postag="UNKNOWN"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_79">
+    <pattern>
+      <token regexp="yes">[A-Z].+</token>
+      <token>*</token>
+      <token>innen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_80">
+    <pattern>
+      <token postag="EIG:.+|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÄÖÜ].+</token>
+      <token regexp="yes" case_sensitive="yes">Schulte|Junge?|Lange?|Braun|Groß|Gross|K(ü|ue)hne?|Schier|Becker|Schön|Sauer|Ernst|Fr(ö|oe)hlich|Kurz|Klein|Schick|Frisch|Kluge|Weigert|D(ü|ue)rr|Nagele|Hoppe|D(ö|oe)rre|G(ö|oe)ttlich|Stark|Fahle|Fromm(er)?|Reichert|Wiest|Klug|Greiser|Nasser</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_81">
+    <pattern>
+      <token>,</token>
+      <token postag=".*ADJ.*|UNKNOWN" postag_regexp="yes"/>
+      <token regexp="yes">[\.?!)]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_82">
+    <pattern>
+      <token case_sensitive="yes">,</token>
+      <token regexp="yes">[md]eine?|du</token>
+      <token postag=".*ADJ.*|UNKNOWN" postag_regexp="yes"/>
+      <token regexp="yes">[\.?!]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_83">
+    <pattern>
+      <token postag=".*ADJ.*|UNKNOWN" postag_regexp="yes"/>
+      <token regexp="yes">Konstanten?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_84">
+    <pattern>
+      <token>das</token>
+      <token postag="PA2:.+" postag_regexp="yes"/>
+      <token postag="VER:AUX:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_85">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:.+" postag_regexp="yes"/>
+      <token postag="VER:AUX:.+" postag_regexp="yes"/>
+      <token postag="PKT|KON:NEB" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_86">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:.+" postag_regexp="yes"/>
+      <token postag="KON:NEB" skip="5"></token>
+      <token postag="VER:(AUX|MOD):.*" postag_regexp="yes"/>
+      <token postag="PKT|KON:NEB" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_87">
+    <pattern>
+      <token>das</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token>,</token>
+      <token regexp="yes">[A-ZÄÖÜ][a-zäöü]+</token>
+      <token regexp="yes">und|oder</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_88">
+    <pattern>
+      <token postag="VER:INF:NON"/>
+      <token postag="VER:MOD:2:PLU:PRÄ"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_89">
+    <pattern>
+      <token postag="UNKNOWN"/>
+      <token>und</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_90">
+    <pattern>
+      <token postag="UNKNOWN"/>
+      <token>,</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_91">
+    <pattern>
+      <token postag="VER:INF.+" postag_regexp="yes"/>
+      <token postag="VER:MOD:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_92">
+    <pattern>
+      <token postag="VER:INF.+" postag_regexp="yes"/>
+      <token postag="VER:AUX:.:(SIN|PLU)(:KJ2)?" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_93">
+    <pattern>
+      <token regexp="yes">etwas|nichts|viel|wenig|allerlei|was</token>
+      <token regexp="yes">[A-ZÄÖÜ].*es</token>
+      <token regexp="yes">und|oder|,</token>
+      <token regexp="yes">[A-ZÄÖÜ].*es</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_94">
+    <pattern>
+      <token postag="VER:.*[1-3]:.*" postag_regexp="yes"/>
+      <token postag="SUB:AKK:.+:ADJ" postag_regexp="yes"/>
+      <token regexp="yes">und|oder|,</token>
+      <token postag="SUB:AKK:.+:(NEU|FEM|MAS)|ART:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_95">
+    <pattern>
+      <token regexp="yes">(süd|nord|ost|west).*lich</token>
+      <token>von</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_96">
+    <pattern>
+      <token regexp="yes">Million(en)?</token>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_97">
+    <pattern>
+      <token postag="PRP:.+|ADV:MOD" postag_regexp="yes"/>
+      <token postag="VER:PA2:NON"/>
+      <token postag="(ART|PRO):(IND|DE[FM]|POS):GEN:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_98">
+    <pattern>
+      <token regexp="yes">[A-ZÄÖÜ0-9]+[a-zäöüß0-9]-[a-zäöüß]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_99">
+    <pattern>
+      <token regexp="yes">auf|das|vor|a[mn]|vorzeitige[mns]?|frühe[mns]?|späte[mns]?</token>
+      <token case_sensitive="yes">Aus</token>
+      <token postag="^PRP:.+|VER:[1-3]:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_100">
+    <pattern>
+      <token regexp="yes">das</token>
+      <token case_sensitive="yes">Aus</token>
+      <token regexp="yes">des|eines</token>
+      <token postag="EIG:.+|SUB:.*|UNKNOWN" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_101">
+    <pattern>
+      <token case_sensitive="yes">90</token>
+      <token case_sensitive="yes">/</token>
+      <token case_sensitive="yes">Die</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_102">
+    <pattern>
+      <token regexp="yes">Neue[nrs]?</token>
+      <token regexp="yes" inflected="yes">Mitte(lschule)?|Rathaus|Testament|Welt|Markt|Rundschau</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_103">
+    <pattern>
+      <token>das</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+      <token postag="SUB:NOM:PLU:.+|ADV:MOD" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_104">
+    <pattern>
+      <token>das</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+      <token postag="ADJ:.+" postag_regexp="yes"/>
+      <token postag="SUB:NOM:PLU:.+|ADV:MOD" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_105">
+    <pattern>
+      <token>das</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+      <token postag="ADJ:.+" postag_regexp="yes"/>
+      <token postag="KON:.+" postag_regexp="yes"/>
+      <token postag="ADJ:.+" postag_regexp="yes"/>
+      <token postag="SUB:NOM:PLU:.+|ADV:MOD" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_106">
+    <pattern>
+      <token regexp="yes">[tT]ausende?</token>
+      <token postag="SUB:NOM:.+" postag_regexp="yes"/>
+      <token postag="SENT_END|VER:[1-3]:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_107">
+    <pattern>
+      <token postag="VER:MOD.*" postag_regexp="yes"/>
+      <token>das</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_108">
+    <pattern>
+      <token postag="VER:MOD.*" postag_regexp="yes"/>
+      <token postag="PRO:.+" postag_regexp="yes"/>
+      <token>das</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_109">
+    <pattern>
+      <token regexp="yes">Schlimm(er)?es</token>
+      <token postag="SENT_END"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_110">
+    <pattern>
+      <token regexp="yes">Angehörige[nr]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_111">
+    <pattern>
+      <token case_sensitive="yes">Alt</token>
+      <token regexp="yes">mach|w[iu]rde?</token>
+      <token case_sensitive="yes">Neu</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_112">
+    <pattern>
+      <token postag="SUB:NOM:SIN:MAS:ADJ"/>
+      <token postag="PRP:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_113">
+    <pattern>
+      <token postag="ZUS"/>
+      <token case_sensitive="yes">Bekanntwerden</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_114">
+    <pattern>
+      <token postag=".+:(POS|GEN):.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">Zuhause</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_115">
+    <pattern>
+      <token regexp="yes">altes|anderes|k?ein|neues</token>
+      <token case_sensitive="yes">Zuhause</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_116">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">kommen</token>
+      <token case_sensitive="yes" inflected="yes">sehen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_117">
+    <pattern>
+      <token>auf</token>
+      <token case_sensitive="yes">die</token>
+      <token case_sensitive="yes">Schnelle</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_118">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes" skip="3">fehlen</token>
+      <token case_sensitive="yes">am</token>
+      <token case_sensitive="yes">Nötigsten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_119">
+    <pattern>
+      <token case_sensitive="yes">am</token>
+      <token case_sensitive="yes">Nötigsten</token>
+      <token case_sensitive="yes" inflected="yes">fehlen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_120">
+    <pattern>
+      <token regexp="yes">im|ins</token>
+      <token case_sensitive="yes">Aus</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_121">
+    <pattern>
+      <token>im</token>
+      <token case_sensitive="yes">Ganzen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_122">
+    <pattern>
+      <token case_sensitive="yes">Top</token>
+      <token postag="ZAL"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_123">
+    <pattern>
+      <token case_sensitive="yes">Top</token>
+      <token case_sensitive="yes">Ten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_124">
+    <pattern>
+      <token case_sensitive="yes">Van</token>
+      <token case_sensitive="yes">Den</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_125">
+    <pattern>
+      <token case_sensitive="yes">Lasse</token>
+      <token postag="EIG:.*|UNKNOWN" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_126">
+    <pattern>
+      <token case_sensitive="yes">Las</token>
+      <token postag="UNKNOWN" case_sensitive="yes" regexp="yes">[A-Z].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_127">
+    <pattern>
+      <token case_sensitive="yes">Just</token>
+      <token>in</token>
+      <token case_sensitive="yes">Time</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_128">
+    <pattern>
+      <token regexp="yes">Hey|Hi|Hallo|Na|Moin|Servus</token>
+      <token regexp="yes">Süßer?|Hübscher?|Liebster?|Liebes</token>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_129">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Guten?</token>
+      <token regexp="yes" case_sensitive="yes">Morgen|Abend|Mittag|Nacht</token>
+      <token regexp="yes">Süßer?|Hübscher?|Liebster?|Liebes</token>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_130">
+    <pattern>
+      <token regexp="yes">Hey|Hi|Hallo|Na|Moin|Servus</token>
+      <token regexp="yes">Matt|Will|Per</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_131">
+    <pattern>
+      <token regexp="yes">Hey|Hi|Hallo|Na|Moin|Servus</token>
+      <token regexp="yes">du|meine?</token>
+      <token regexp="yes">Süßer?|Hübscher?</token>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_132">
+    <pattern>
+      <token regexp="yes">aus|in</token>
+      <token regexp="yes">Höchst|Wohlen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_133">
+    <pattern>
+      <token regexp="yes">,|;|/|-|am|bis|vor|\(</token>
+      <token case_sensitive="yes">So</token>
+      <token>.</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_134">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[a-z]</token>
+      <token>.</token>
+      <token>)</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_135">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[-]{1,}</token>
+      <token>&gt;</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_136">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[#]{1,}</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_137">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>#</token>
+      <token>#</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_138">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>#</token>
+      <token>#</token>
+      <token>#</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_139">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>=</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_140">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>=</token>
+      <token>=</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_141">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_142">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_143">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token>=</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_144">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>§</token>
+      <token regexp="yes">\d+</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_145">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">§\d+</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_146">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[a-z0-9]{1,3}</token>
+      <token>)</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_147">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">@.+</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_148">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">@.+</token>
+      <token>_</token>
+      <token regexp="yes">[a-z].*</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_149">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[A-Z]\d+</token>
+      <token>.</token>
+      <token regexp="yes">\d+</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_150">
+    <pattern>
+      <token case_sensitive="yes">Gefahren</token>
+      <token case_sensitive="yes">lauern</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_151">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].+</token>
+      <token regexp="yes" spacebefore="no">\*|:</token>
+      <token regexp="yes" case_sensitive="yes">innen|en?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_152">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">am|jeden</token>
+      <token case_sensitive="yes">So</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_153">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">M[io]|D[io]||Fr|Sa</token>
+      <token>.</token>
+      <token regexp="yes" case_sensitive="yes">&amp;|und|oder|-|,</token>
+      <token case_sensitive="yes">So</token>
+      <token>.</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_154">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">M[io]|D[io]||Fr|Sa</token>
+      <token>.</token>
+      <token case_sensitive="yes">So</token>
+      <token>.</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_155">
+    <pattern>
+      <token case_sensitive="yes">Sa</token>
+      <token regexp="yes" case_sensitive="yes">&amp;|und|oder|-|,</token>
+      <token case_sensitive="yes">So</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_156">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token case_sensitive="yes">Ah</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_157">
+    <pattern>
+      <token case_sensitive="yes">Via</token>
+      <token postag="UNKNOWN" case_sensitive="yes" regexp="yes">[A-Z].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_158">
+    <pattern>
+      <token postag="UNKNOWN" case_sensitive="yes" regexp="yes">[A-Z].+</token>
+      <token case_sensitive="yes">Hart</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_159">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Matt|Will|Dick</token>
+      <token postag="EIG:.+|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-Z].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_160">
+    <pattern>
+      <token case_sensitive="yes">&gt;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].+</token>
+      <token case_sensitive="yes">&gt;</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_161">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[:;]</token>
+      <token regexp="yes">[DPO]</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_162">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[:;]</token>
+      <token>-</token>
+      <token regexp="yes">[DPO]</token>
+      <token regexp="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_163">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[IA]m</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+n</token>
+      <token postag="(EIG|SUB|UNKNOWN).*" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">\d{1,3}[a-hA-H]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_164">
+    <pattern>
+      <token case_sensitive="yes">Am</token>
+      <token postag="ADJ:.+" postag_regexp="yes" case_sensitive="yes" regexp="yes">[a-zäöü].+n</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+      <token regexp="yes" case_sensitive="yes">\d{1,3}[a-hA-H]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_165">
+    <pattern>
+      <token case_sensitive="yes">Im</token>
+      <token postag="ADJ:.+" postag_regexp="yes" case_sensitive="yes" regexp="yes">[a-zäöü].+n</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+      <token regexp="yes" case_sensitive="yes">\d{1,3}[a-hA-H]|\d</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_166">
+    <pattern>
+      <token case_sensitive="yes">Am</token>
+      <token postag="(EIG|SUB|UNKNOWN).*" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">\d+[a-hA-H]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_167">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[IA]m</token>
+      <token regexp="yes" case_sensitive="yes">[A-Z].*(pfad|weg|kamp|platz|tor|gasse|feld|berg|park)</token>
+      <token regexp="yes" case_sensitive="yes">\d+[a-hA-H]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_168">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Neuen?|Gro(ß|ss)e[rn]?|Alte[rn]?|Obere[rn]?|Untere[rn]?|Kleine[rn]?|Breite[rn]?</token>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+stra(ss|ß)e|.*[kK]amps?|.*[Tt]ors?|.*[Hh]ofs?|.*[Gg]asse|.*[Gg]rabens?|.*[Ff]elds?|.*[Pp]latz(es)?|.*[Bb]ergs?|.*[Pp]arks?|.*[Ww]egs?|.*[Aa]llee|.*[wW]eide?|.*[mM]auer|.*[rR]eihe</token>
+      <token regexp="yes" case_sensitive="yes">\d{1,3}[a-hA-H]?|in</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_169">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Neuen?|Gro(ß|ss)en?|Alten?|Oberen?|Unteren?|Breiten?</token>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+str</token>
+      <token>.</token>
+      <token regexp="yes" case_sensitive="yes">\d{1,3}[a-hA-H]?|in</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_170">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\*|-|/|_|%|o</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_171">
+    <pattern>
+      <token regexp="yes">▶︎|▶|▶️|►|⇒|→|•|★|⧪|⮞|✔︎|✓|✔️|✅|0️⃣|1️⃣|2️⃣|3️⃣|4️⃣|5️⃣|6️⃣|7️⃣|8️⃣|9️⃣|❤️|➡️|➔|⇨|☛|◼|▲|◆|▪|■|☞|❤|♥︎|✒︎|☑️|✗|✘|✖|➢|↑|=|&gt;|\}|❏|›|❖|·|▲|◄|⬢|\||!|‼️|⚠️|√</token>
+      <token regexp="yes">.*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_172">
+    <pattern>
+      <token regexp="yes">[=\-–]</token>
+      <token>&gt;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_173">
+    <pattern>
+      <token>,</token>
+      <token spacebefore="no">,</token>
+      <token case_sensitive="yes" regexp="yes" spacebefore="no">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_174">
+    <pattern>
+      <token regexp="yes">[a-z0-9\-äöüß]+</token>
+      <token>]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_175">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Schritt|Punkt|Absatz</token>
+      <token regexp="yes">\d+</token>
+      <token>:</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_176">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">H[1-6]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_177">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[a-z]</token>
+      <token>.</token>
+      <token regexp="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_178">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\d+-</token>
+      <token regexp="yes">[\)\]\}]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_179">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[a-z0-9]</token>
+      <token>,</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_180">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[A-Z0-9]+</token>
+      <token>=</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_181">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[\[\(\{]</token>
+      <token regexp="yes">[a-z0-9]{1,5}</token>
+      <token regexp="yes">[\]\)\}]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_182">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[\[\(\{]</token>
+      <token regexp="yes">[a-z0-9]{1,5}</token>
+      <token>.</token>
+      <token regexp="yes">[a-z0-9]{1,5}</token>
+      <token regexp="yes">[\]\)\}]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_183">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+      <token>/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_184">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+      <token>/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+      <token>/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_185">
+    <pattern>
+      <token regexp="yes">paar|einige|zwei|drei|vier|\d+</token>
+      <token>Halbe</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_186">
+    <pattern>
+      <token case_sensitive="yes">Sa</token>
+      <token case_sensitive="yes">So</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_187">
+    <pattern>
+      <token case_sensitive="yes">Sa</token>
+      <token regexp="yes">&amp;|und|oder|-</token>
+      <token case_sensitive="yes">So</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_188">
+    <pattern>
+      <token>ein</token>
+      <token>paar</token>
+      <token postag=".*SUB.*" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes" regexp="yes">[a-zäöüß.,!?:;\-–].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_189">
+    <pattern>
+      <token case_sensitive="yes" skip="1">Neues</token>
+      <token inflected="yes">wagen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_190">
+    <pattern>
+      <token inflected="yes">wagen</token>
+      <token>Neues</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_191">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes" skip="5">birgen</token>
+      <token>Gefahren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_192">
+    <pattern>
+      <token>du</token>
+      <token regexp="yes" case_sensitive="yes">Ärmster?</token>
+      <token regexp="yes" case_sensitive="yes">[^A-ZÖÄÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_193">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Hand</token>
+      <token case_sensitive="yes">in</token>
+      <token case_sensitive="yes">Hand</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_194">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Kopf</token>
+      <token case_sensitive="yes">an</token>
+      <token case_sensitive="yes">Kopf</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_195">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Schulter</token>
+      <token case_sensitive="yes">an</token>
+      <token case_sensitive="yes">Schulter</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_196">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Stück</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">Stück</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_197">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Schritt</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">Schritt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_198">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="SUB:.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token case_sensitive="yes">Arm</token>
+      <token case_sensitive="yes">in</token>
+      <token case_sensitive="yes">Arm</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_199">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>`</token>
+      <token>`</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_200">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\d{1,2}[a-z]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_201">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\d{1,3}[a-z]?</token>
+      <token case_sensitive="yes">.</token>
+      <token regexp="yes">[\]\)\}]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÜÖ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_202">
+    <pattern>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">,</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token postag="SUB:.+:(MAS|FEM|NEU)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_203">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token case_sensitive="yes">Das</token>
+      <token case_sensitive="yes">denken</token>
+      <token postag="ADV:.+" postag_regexp="yes" min="0"></token>
+      <token regexp="yes" case_sensitive="yes">viele|manche|die|[dms]eine|ihre|eure|diese|jene|wenige</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_204">
+    <pattern>
+      <token case_sensitive="yes">Menge</token>
+      <token regexp="yes" case_sensitive="yes">Gutes|Schlechtes|Tolles|Böses|Schlimmes</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß].*|\.|\,|\!|:|;</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_205">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">\d+%?|%|Prozent|meisten|wenige|einige|viele|Gro(ß|ss)teil</token>
+      <token case_sensitive="yes">der</token>
+      <token regexp="yes" case_sensitive="yes">Befragten|Teilnehmenden</token>
+      <token postag="SUB:.*" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_206">
+    <pattern>
+      <token case_sensitive="yes">die</token>
+      <token postag="SUB:NOM:PLU.*:ADJ" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+      <token postag="SUB:.*:SIN" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÖÜÄ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_207">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">vorm|ins|im</token>
+      <token case_sensitive="yes">Nichts</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_208">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü].+en?</token>
+      <token postag="SUB:NOM:PLU.*" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÄÖÜ].+</token>
+      <token regexp="yes" case_sensitive="yes">,|und|oder|aber|\.|!|\?|…</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_209">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_210">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_211">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_212">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes">\u2063</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_213">
+    <pattern>
+      <token regexp="yes">.*(\u2753|\u2757)</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_214">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes">[\\/`´*„&quot;']</token>
+      <token regexp="yes">[\\/`´*„&quot;']</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_215">
+    <pattern>
+      <token regexp="yes">nur</token>
+      <token regexp="yes" case_sensitive="yes">Positives|Schlechtes|Gutes|Böses|Negatives|Folgendes|Neues|Altes|Schlimmes|Letzteres|Ersteres|Blödes|Schreckliches|Wesentliches|Falsches|Richtiges|Hässliches</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.!\?…].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_216">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Wesentlichen|Vorab|Geringsten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_217">
+    <pattern>
+      <token>ans</token>
+      <token regexp="yes" case_sensitive="yes">Wesentliche</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_218">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Allgemeinen</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.!\?…].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_219">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Allgemeinen</token>
+      <token postag="SUB.*FEM.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_220">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Allgemeinen</token>
+      <token postag="SUB.*PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_221">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Stillen|Dunkeln|Dunklen|Trocke?nen|Hellen|Trüben|Kalten|Warmen|Geringsten|Entferntesten|Verborgenen</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.!\?…\)\(;].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_222">
+    <pattern>
+      <token regexp="yes">[\ud83c\udc00-\ud83c\udfff]+|[\ud83d\udc00-\ud83d\udfff]+|[\u2600-\u27ff]+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_223">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ]-[A-ZÄÖÜ].*-.*</token>
+      <token postag="PKT|KON:NEB|ADJ.*" postag_regexp="yes" min="0" max="2"></token>
+      <token postag="SUB.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_224">
+    <pattern>
+      <token case_sensitive="yes">Aus</token>
+      <token case_sensitive="yes">für</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_225">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[Ff]rohes|[Gg]esundes</token>
+      <token case_sensitive="yes">Neues</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_226">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">mal</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß].+n</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_227">
+    <pattern>
+      <token regexp="yes">[^a-zäöüß\-0-9]+</token>
+      <token case_sensitive="yes">[</token>
+      <token case_sensitive="yes">…</token>
+      <token case_sensitive="yes">]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_228">
+    <pattern>
+      <token regexp="yes">[^a-zäöüß\-0-9]+</token>
+      <token case_sensitive="yes">[</token>
+      <token case_sensitive="yes">.</token>
+      <token case_sensitive="yes">.</token>
+      <token case_sensitive="yes">.</token>
+      <token case_sensitive="yes">]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_229">
+    <pattern>
+      <token case_sensitive="yes">Kund</token>
+      <token regexp="yes" case_sensitive="yes">[:_*\/]</token>
+      <token regexp="yes">(in|innen|en?).*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_230">
+    <pattern>
+      <token postag="ART:.*|PRO:POS:.*" postag_regexp="yes"/>
+      <token postag="PA[12].*" postag_regexp="yes"/>
+      <token postag="SUB.*ADJ" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß\-,\.\!\?…;:–\)\(]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_231">
+    <pattern>
+      <token postag="das" postag_regexp="yes"/>
+      <token postag="SUB.*NEU:ADJ" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">[a-zäöüß\-,\.\!\?…;:–\)\(]+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_232">
+    <pattern>
+      <token>/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+      <token>/</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_233">
+    <pattern>
+      <token>_</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_234">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">anderes</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+es</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.!:;,\?…\)].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_235">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Dringende[ms]|Bare[ms]|Vertraute[ms]|Positive[sm]|Negative[sm]|Gelernte[ms]|Neue[ms]|Alte[ms]|Bessere[ms]|Störende[ms]|Schlechteres|Schlechte[ms]|Schöne[ms]|Schönere[ms]|Schlimmere[ms]|Zutreffendes|Unzutreffende[ms]|Gesehene[ms]|Ungesehene[ms]|Abgerissene[ms]|Versoffenes|Empfehlenswerte[ms]|Entnommene[ms]|Sü(ß|ss)e[ms]|Saure[ms]|Wesentliche[ms]|Gegenteilige[ms]|Wegweisende[ms]|Hochprozentige[ms]|Erlernte[ms]|Vergangene[ms]|Unglaubliche[ms]|Schlimme[ms]|Eingemachte[ms]|Rare[ms]|Brauchbare[ms]|Unbrauchbare[ms]|Gesehene[ms]|Erlebte[ms]|Private[ms]|Berufliche[ms]|Ungeheuerliche[ms]|Vegane[ms]|Vegetarische[ms]|Eingemachte[ms]|Erwünschte[ms]|Äu(ß|ss)erste[ms]|Äu(ß|ss)ere[ms]|Inhaltliche[ms]|Vernichtende[ms]|Salzige[ms]|Sü(ß|ss)e[ms]|Selbstgemachte[ms]|Inhaltliche[ms]|Au(ß|ss)erordentliche[ms]|Säuerliche[ms]|Göttliche[ms]||Hochprozentige[sm]|Erbrochene[ms]|Innere[mns]|Vorhandene[ms]|Relevante[ms]|Geübte[ms]|Unmögliche[ms]|Mögliche[ms]|Näheres|Wissenswerte[ms]|Fundamentale[ms]|Interessante[ms]|Uninteressante[ms]|Entsetzliche[ms]|Hartnäckige[ms]|Ersparte[ms]|Halbgare[ms]|Universale[ms]|Finanzielle[ms]|Überraschendes|Grundlegendes|Gesunde[ms]|Ungesunde[ms]|Tagesaktuelle[ms]|Aktuelle[ms]|Geschehene[ms]|Ungeschehene[ms]|Böse[ms]|Gesagte[ms]|Aufregende[sm]|Ausgestelltes|Verschiedenes|Verborgenes|Soziale[ms]|Erfundenes|Gro(ß|ss)es|Neueres|Au(ß|ss)ergewöhnliche[ms]|Zukunftsfähige[sm]|Administrative[ms]|Beunruhigendes|Naturverträgliches|Nachhaltiges|Verderbliche[ms]|Sinnstiftendes|Unüberlegtes|Alltägliche[sm]|Geartetes?|Allgemeines?|Übernatürliches?|Juristisches?|Rechtliches?|Vielfältiges?|Kommunales|Wundervolles?|Abgelaufenes|Erstere[ms]|Zweitere[ms]|Letztere[ms]|Unvermeidliches?|Fressbares?|Essbares?|Erbrochene[sm]|Politische[sm]|Regionale[sm]|Recherchiertes|Höheres|Kleineres|Deftiges|Liebes|Grünes|Diverses|Machbare[ms]|Nachweisbare[ms]|Zerstörtes|Öffentliches|Produktives|Entbehrliches|Notwendiges|Sinnvolle[ms]|Bewährte[ms]|Nötiges|Erfreuliches|Frustrierendes|Vorübergehendes|Untaugliches|Rohes|Nettes|Blödes|Unerwartetes|Lesenswerte[ms]|Geplantes|Ungeplantes|Redaktionelles|Spezielle[ms]|Spezifische[ms]|Staatstragendes|Organisatorisches|Übersehenes|Altbewährte[ms]|Erstaunliches|Verdächtiges|Au(ß|ss)ergewöhnliches|Ungewöhnliches|Unerreichbare[ms]|Bezahltes|Unbezahltes|Beschämendes|Grundsätzliche[sm]|Freiheitliches|Übrige[ms]|Ähnliche[ms]|Letztgenannte[ms]|Echtes|Unechtes|Gro(ß|ss)artige[ms]|Esoterisches|Qualifizierte[ms]|Unqualifizierte[ms]|Grö(ß|ss)eres|Postmodernes|Unklares|Bezahlbares|Unbezahlbares|Gemischte[ms]|Gebündelte[ms]|Lebendige[ms]|Angenommenes|Zeitgenössisches|Geistliches|Elementare[ms]|Bitteres|Äu(ß|ss)erliches|Spannendes|Kurioses|Digitale[ms]|Hervorgebrachte[ms]|Gewirktes|Altbekannte[ms]|Gehackte[sm]|Gewordenes|Erkennbares|Verstörende[sm]|Versaute[ms]|Nachdenkliches|Bestehendes|Beobachtetes|Originelle[ms]|Derartige[sm]|Schriftliches|Mündliches|Verblühte[ms]|Faszinierende[ms]|Christliches|Gute[ms]|Böse[ms]||Folgende[ms]|Letztere[ms]|Erstere[ms]|Schreckliche[ms]|Falsche[sm]|Richtige[ms]|Hässliche[sm]|Auswärtige[ms]|Nervige[ms]|Ätzende[ms]|Kleine[ms]|Gro(ß|ss)e[ms]|Riskante[ms]|Li?ebenswerte[ms]|Materielle[ms]|Geglaubte[sm]|Ausgedachte[sm]|Unsagbare[sm]?|Unverwechselbare[sm]?|[A-Z].{1,20}rechtliche[ms]?|Umfassendere[ms]|[A-ZÄÖÜ].{1,20}(liche|bare|werte)[ms]|Signifikante[ms]|Bestialische[ms]|Delikate[sm]|Nennenswerte[ms]|Verunglimpfende[ms]|Wichtigere[ms]|Liberale[ms]|Heilsame[ms]|Geschriebene[sm]|Besondere[sm]|Bemerkenswerte[ms]|Ernsthafte[ms]|Unvollendete[ms]|Vollendete[ms]</token>
+      <token regexp="yes" case_sensitive="yes">(?!(und|oder))[a-zäöü…\.!,\?…\)“„&quot;»«–\-:;\[\]].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_236">
+    <pattern>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Dieses|Alles|Eines|Jenes|[DMSK]eines|Anderes|Eures|Unse?res|Sonstiges|Einiges|Manches|Welches|Vieles|Solches|Studies|Eyes))[A-ZÄÖÜ].+es</token>
+      <token regexp="yes" case_sensitive="yes">und|oder</token>
+      <token regexp="yes" case_sensitive="yes">(?!([a-zäöüA-ZÄÖÜ].+es)).+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_237">
+    <pattern>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Diesem|Allem|Einem|Jenem|[DMSK]einem|Anderem|Eurem|Unse?rem|Sonstigem|Einigem|Manchem|Welchem|Vielem|Solchem))[A-ZÄÖÜ].+em</token>
+      <token regexp="yes" case_sensitive="yes">und|oder</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Diesem|Allem|Einem|Jenem|[DMSK]einem|Anderem|Eurem|Unse?rem|Sonstigem|Einigem|Manchem|Welchem|Vielem|Solchem))[A-ZÄÖÜ].+em</token>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.!,\?…\)“„&quot;»«–\-:;].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_238">
+    <pattern>
+      <token>seit</token>
+      <token>Längeren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_239">
+    <pattern>
+      <token>von</token>
+      <token case_sensitive="yes">Nichts</token>
+      <token case_sensitive="yes">zu</token>
+      <token case_sensitive="yes">Nichts</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_240">
+    <pattern>
+      <token>aus</token>
+      <token case_sensitive="yes">dem</token>
+      <token case_sensitive="yes">Nichts</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_241">
+    <pattern>
+      <token>das</token>
+      <token case_sensitive="yes">meinen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_242">
+    <pattern>
+      <token>Vors</token>
+      <token>.</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_243">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Ältere[rn]?|Jüngere[rn]?|Zuschauende[rn]?|Angeklagte[rn]?|Referierende[rn]?|Schlafenden?|Moderierende[rn]?|Dunkelhäutige[rn]?|Verantwortliche[rn]?|Alleinlebende[rn]?|Verdammten?|Alleinstehende[rn]?|Ungeübte[rn]?|Au(ß|ss)erirdische[rn]?|Berittene[rn]?|Heranwachsende[rn]?|Ganze[sn]?|Gefangene[rn]?|Steuerpflichtige[rn]?|Geschädigte[rn]?|Heimatvertriebenen?|Schwerverletzte[rn]?|Werbenden?|Au(ß|ss)enstehenden?|Forschenden?|Prominenten?|Pflegenden?|Beklagten?|Geistlichen?|Pflegebedürftigen?|(Teil|Voll)zeitbeschäftigten?|Fortgeschrittenen?|Promovierenden?|Schreibenden?|Ungeimpfte[nr]?|Geimpfte[nr]?|Tatverdächtige[nr]?|Pubertären?|Flüchtende[nr]?|Vortragende[nr]?|Besuchenden?|Vortragenden?|Verantwortliche[rn]?|Geflohene[rn]?|Sterbende[nr]?|Werbende[nr]?|Vortragende[nr]?|Alliierte[nr]?|Bedürftige[rn]?|Praktizierenden?|Geisteskranke[nr]?|Religiöse[rn]?|Kleinsten?|Kleinen|Dauerarbeitslose[rn]|Angesteckten?|Ortskundigen?|Steuerpflichtige[rn]?|Vorbehandelnden?|Gefährdeten?|Eingemachte|Geübten?|Schwimmenden?|Tauchenden?|Anständigen?|Liebenden?|Volljährigen?|Minderjährigen?|Zeichnungsberechtigte[rn]?|Zeichnungsbefugte[rn]?|Altbekannte[nmr]?|Hartnäckigen?|Unerfahrenen?|Arbeitenden?|Vortragende[nr]?|Dummen?|Fragenden?|Antwortenden?|Kriegs[gb]eschädigten?|Begünstigten?|Verfolgten?|Verwitweten?|Geschiedenen?|Asexuellen?|Liebsten?|(Rechts|Links)extremen?|(Aus|Ein)geschlossenen?|Betuchten?|Anteilnehmende[rn]?|Anbietenden?|Hochbetagten?|Seelenverwandte[nr]?|Gleichgestellten?|Gottlosen?|Inhaftierten?|Protestierenden?|Wohnungssuchenden?|Lesenden?|Schreibenden?|Beitragenden?|Superreichen?|Au(ß|ss)enstehenden?|Juryvorsitzende[rn]?|Introvertierten?|Extrovertierten?|.+begeisterten?|(Schwer|Seh)behinderten?|Unbekannten?|Anwesenden?|Personalverantwortlichen?|[NF]rühgeborenen?|Hörgeschädigten?|Gehorsamen?|Ungehorsamen?|Suchtkranken?|Bildbetrachtenden?|Uniformierten?|Bediensteten?|Gesetzlosen?|Vermummten?|(Schwer|Leicht)verletzten?|Untoten?|Hübschen?|Reisende[rn]?|Abtrünnigen?|Liebende[nr]?|Befehlenden?|Pubertierende[rn]?|Lebenden?|Geistliche[rn]?|Klassenbeste[rn]?|Totgesagte[rn]?|Zivildienstleistende[rn]?|Nutzenden?|Kunstinteressierte[rn]?|Nachtaktive[nr]?|Bewerbenden?|Geliebter?|Unsterblichen?|Sterblichen?|Evangelikalen?|Gewaltbereiten?|Dozierenden?|Autofahenden?|Impfgeschädigten?|[A-ZÄÖÜ].+stämmigen?|Auszubildende[rn]?|Unnahbaren?|Arbeitgebenden?|Nutzungsberechtigte[nr]?|Interviewte[rn]?|Bewohnenden?|Zugewanderte[rn]?|Eingeweihte[rn]?|Heimatvertriebene[nr]?|Asylberechtigte[rn]?|Erwachte[rn]?|Kulturschaffende[rn]?|Gebärenden?|Beschenkte[rn]?|Ungelernten?|Verbrauchende[rn]?|Schwule[rn]?|Partywütige[rn]?|(Homo|Hetero|Metro|Trans)sexuelle[rn]?|Geduldige[rn]?|Ungeduldige[rn]?|Schneebegeisterte[rn]?|Befindlichen?|Gebietsansässigen?|Erneuerbaren?|Militärinternierte[rn]?|Steuerpflichtige[nr]?|Ungläubige[rn]?|Geduldigen?|Ungeduldigen?|Unerreichbaren?|Schuldige[rn]?|Alleinschuldige[rn]?|Getreuen?|Mitschuldige[rn]?|Auswärtige[rn]?|[A-ZÄÖÜ].+schaffende[rn]|Übergewichtige[rn]?|Schichtarbeitende[rn]?|Unbefugte[rn]?|Nominierte[rn]?|Erholungsuchende[rn]?|Getriebene[rn]?|Vertriebene[rn]?|Unverwechselbaren?|Anständigen?|Zeitreisende[rn]?|Gefallene[rn]?|Angereiste[rn]?|Liberale[rn]?|Geflüchtete[rn]?|Beratende[rn]?|Geborene[rn]?|Gerettete[rn]?|Wahlberechtigte[rn]?|Unbeteiligte[rn]?|Bevorteilte[rn]?|Begeisterte[rn]?|Benachteiligte[rn]?</token>
+      <token regexp="yes" case_sensitive="yes">(?!(und|oder))[a-zäöü…\.!:;,\?…\)\*\(“„&quot;»«–\-\[\]].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_244">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[a-zäöü…\.,:;0-9\/$%].*</token>
+      <token regexp="yes" case_sensitive="yes">Vertraute[nr]?|Verwirrte[rn]?|Befragte[rn]?|Beschuldigte[rn]?|Interviewten?|Engagierten?|Beteiligte[nr]?|Verurteilte[rn]?</token>
+      <token regexp="yes" case_sensitive="yes">(?!(und|oder))[a-zäöü…\.!:;,\?…\)\*\(“„&quot;»«–\-].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_245">
+    <pattern>
+      <token>im</token>
+      <token regexp="yes" case_sensitive="yes">Folgenden|Nachfolgenden</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_246">
+    <pattern>
+      <token case_sensitive="yes">§</token>
+      <token regexp="yes" case_sensitive="yes">\d+[a-z]{0,2}</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_247">
+    <pattern>
+      <token case_sensitive="yes">§</token>
+      <token regexp="yes">\d+</token>
+      <token>.</token>
+      <token regexp="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_248">
+    <pattern>
+      <token case_sensitive="yes">zu</token>
+      <token regexp="yes" case_sensitive="yes">Angeboten|Gefahren|Kosten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_249">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Gemeinden?</token>
+      <token case_sensitive="yes">Nahe</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_250">
+    <pattern>
+      <token case_sensitive="yes">Für</token>
+      <token case_sensitive="yes">und</token>
+      <token case_sensitive="yes">Wider</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_251">
+    <pattern>
+      <token>/</token>
+      <token>/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_252">
+    <pattern>
+      <token>&lt;</token>
+      <token>&lt;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_253">
+    <pattern>
+      <token>(</token>
+      <token regexp="yes" case_sensitive="yes">[!?]</token>
+      <token>)</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_254">
+    <pattern>
+      <token>&gt;</token>
+      <token>&gt;</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_255">
+    <pattern>
+      <token>[</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_256">
+    <pattern>
+      <token regexp="yes">beim|zum|im|am</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+-</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;|/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+n</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_257">
+    <pattern>
+      <token regexp="yes">für</token>
+      <token case_sensitive="yes">Klein</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;|/</token>
+      <token case_sensitive="yes">Groß</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_258">
+    <pattern>
+      <token case_sensitive="yes">/</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_259">
+    <pattern>
+      <token regexp="yes">für</token>
+      <token case_sensitive="yes">Groß</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;|/</token>
+      <token case_sensitive="yes">Klein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_260">
+    <pattern>
+      <token postag="SENT_START|PKT" postag_regexp="yes"/>
+      <token>das</token>
+      <token regexp="yes" case_sensitive="yes">sagen|beweisen|zeigen|schaffen|machen|halten|verstehen|versuchen</token>
+      <token postag="ADV.*" postag_regexp="yes" min="0"></token>
+      <token regexp="yes" case_sensitive="yes">[dms]eine?|eure|die|unse?re|mehrere|einige|viele|manche|sonstige|diese|solche|andere|alle|wenige|jene|nicht|koennt?en|zwar|wird</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_261">
+    <pattern>
+      <token postag="SENT_START|PKT" postag_regexp="yes"/>
+      <token>das</token>
+      <token regexp="yes" case_sensitive="yes">sagen|beweisen|zeigen|schaffen|machen|halten|verstehen|versuchen</token>
+      <token postag="SUB.+ADJ" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_262">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token regexp="yes" case_sensitive="yes">sieben</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_263">
+    <pattern>
+      <token>das</token>
+      <token regexp="yes" case_sensitive="yes">belegen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_264">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">\(|\{</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+      <token regexp="yes" case_sensitive="yes">\)|\}</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_265">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>,</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_266">
+    <pattern>
+      <token>:</token>
+      <token>,</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_267">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token>\</token>
+      <token regexp="yes" case_sensitive="yes">(no)?indent|item</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_268">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token case_sensitive="yes">[</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+      <token case_sensitive="yes">]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_269">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_270">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">[\-–]</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_271">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token regexp="yes" case_sensitive="yes">\(|\[</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">\d+</token>
+      <token regexp="yes" case_sensitive="yes">\)|\]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_272">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token case_sensitive="yes">Teil</token>
+      <token regexp="yes" case_sensitive="yes">\d+|I{1,3}|V|IV|VI{1,3}|IX|XI{1,3}</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_273">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">neue</token>
+      <token case_sensitive="yes">Normal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_274">
+    <pattern>
+      <token case_sensitive="yes">siehe</token>
+      <token case_sensitive="yes">hierzu</token>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_275">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">de[mrs]</token>
+      <token regexp="yes" case_sensitive="yes">vierten?</token>
+      <token regexp="yes" case_sensitive="yes">Offiziellen?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_276">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[\{\[#]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_277">
+    <pattern>
+      <token>,</token>
+      <token postag="SUB.*SIN.*NEU.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">[A-ZÄÖÜ].+es?</token>
+      <token>,</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_278">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">mehr|weniger|viel|nur</token>
+      <token postag="SUB.*SIN.*NEU.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Eines|Keines|Sonstiges|Anderes|Einiges))[A-ZÄÖÜ].+es</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_279">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token regexp="yes" case_sensitive="yes">halt|schnell|gar|sicher|bitte|gleich</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_280">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+      <token inflected="yes">tun</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_281">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">das|dieses|[dmsk]ein</token>
+      <token postag="SUB.*SIN.*NEU.*ADJ|(ADJ|PA[12]).*SIN.*NEU.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Die|Diese|Alle|Eine|Jene|[DMSK]eine|Andere|Eure|Unse?re|Sonstige|Einige|Manche|Ohne|Welche|Viele|Solche))[A-ZÄÖÜ].+e</token>
+      <token postag="SUB.*PLU.*(FEM|NEU|MAS|NOG)|SUB.*NOM.*SIN.*FEM" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_282">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">der|dieser|[msdk]ein|euer|unser|ihr</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Die|Diese|Alle|Eine|Jene|[DMSK]eine|Andere|Eure|Unse?re|Sonstige|Einige|Manche|Ohne|Welche|Viele|Solche))[A-ZÄÖÜ].+e</token>
+      <token postag="SUB.*PLU.*(FEM|NEU|MAS|NOG)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_283">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">den|diesen|[msdk]einen|unse?ren|euren|ihren</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Den|Diesen|Allen|Einen|Jenen|[DMSK]einen|Anderen|Euren|Unse?ren|Sonstigen|Einigen|Manchen|Welchen|Vielen|Solchen))[A-ZÄÖÜ].+en</token>
+      <token postag="SUB.*NOM.*SIN.*(FEM|NEU)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_284">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">dem|diesem|[msdk]einem|unse?rem|eurem|ihrem</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Den|Diesen|Allen|Einen|Jenen|[DMSK]einen|Anderen|Euren|Unse?ren|Sonstigen|Einigen|Manchen|Welchen|Vielen|Solchen))[A-ZÄÖÜ].+en</token>
+      <token postag="SUB.*PLU.*(FEM|NEU|MAS|NOG)" postag_regexp="yes"><exception regexp="yes">Band|Kapitel|Maß|.*[Vv]erbrechen|Orchester|Gestalten|Gebirge|.*[vV]orkommen|.*[Vv]erfahren|.*[gG]utachten|Schreiben|Bayern|Theater|Verlangen|.*[sS]chlüssel|.*[mM]eister|.*[vV]erhalten|.*[Aa]benteuer|.*[wW]asser|Leben|Bauen|.*[gG]ewerbe|.*[Zz]immer|.*[Ee]ssen|.*[rR]asen|.*[hH]ebel|.*[oO]pfer|.*[cC]hirurgen|.*[Pp]räsidenten|.*[kK]reuzer|.*[wW]appen|Morgen</exception></token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_285">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">die|diese|alle|solche|einige|sonstige|viele|[msdk]eine|unse?re|eure|ihre</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Den|Diesen|Allen|Einen|Jenen|[DMSK]einen|Anderen|Euren|Unse?ren|Sonstigen|Einigen|Manchen|Welchen|Vielen|Solchen))[A-ZÄÖÜ].+en</token>
+      <token postag="SUB.*SIN.*FEM" postag_regexp="yes"></token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_286">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[msdk]?ein</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Der|Dieser|Aller|Einer|Jener|[DMSK]einer|Anderer|Eurer|Unse?rer|Sonstiger|Einiger|Mancher|Welcher|Vieler|Solcher))[A-ZÄÖÜ].+er</token>
+      <token postag="SUB.*PLU.*(FEM|NEU|MAS|NOG)|SUB.*SIN.*(NEU|FEM)" postag_regexp="yes"><exception regexp="yes">Tag|Kalkül</exception></token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_287">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">die|diese|[msdk]eine</token>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Die|Diese|Alle|Eine|Jene|[DMSK]eine|Andere|Eure|Unse?re|Sonstige|Einige|Manche|Ohne|Welche|Viele|Solche))[A-ZÄÖÜ].+e</token>
+      <token postag="SUB.*NOM.*SIN.*(MAS|NEU)|SUB.*NOM.*PLU.*(FEM|NEU|MAS|NOG)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_288">
+    <pattern>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Diesem|Allem|Einem|Jenem|[DMSK]einem|Anderem|Eurem|Unse?rem|Sonstigem|Einigem|Manchem|Welchem|Vielem|Solchem))[A-ZÄÖÜ].+em</token>
+      <token postag="SUB.*SIN.*FEM|SUB.*PLU.*(FEM|NEU|MAS|NOG)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_289">
+    <pattern>
+      <token postag="SUB.*SIN.*ADJ|(ADJ|PA[12]).*SIN.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Dieses|Alles|Eines|Jenes|[DMSK]eines|Anderes|Eures|Unse?res|Sonstiges|Einiges|Manches|Welches|Vieles|Solches))[A-ZÄÖÜ].+es</token>
+      <token postag="SUB.*SIN.*(FEM|MAS)|SUB.*PLU.*(FEM|NEU|MAS|NOG)" postag_regexp="yes"><exception regexp="yes">Band|Kapitel|Maß|.*[Vv]erbrechen|Orchester|Gestalten|Gebirge|.*[vV]orkommen|.*[Vv]erfahren|.*[gG]utachten|Schreiben|Bayern|Theater|Verlangen|.*[sS]chlüssel|.*[mM]eister|.*[vV]erhalten|.*[Aa]benteuer|.*[wW]asser|Leben|Bauen|.*[gG]ewerbe|.*[Zz]immer|.*[Ee]ssen|.*[rR]asen|.*[hH]ebel|.*[oO]pfer|.*[cC]hirurgen|.*[Pp]räsidenten|.*[kK]reuzer|.*[wW]appen|Morgen</exception></token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_290">
+    <pattern>
+      <token>#</token>
+      <token regexp="yes" spacebefore="no">[A-Z].*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_291">
+    <pattern>
+      <token postag="SUB.*SIN.*NEU.*ADJ|(ADJ|PA[12]).*SIN.*NEU.*|UNKNOWN" postag_regexp="yes" case_sensitive="yes" regexp="yes">(?!(Die|Diese|Alle|Eine|Jene|[DMSK]eine|Andere|Eure|Unse?re|Sonstige|Einige|Manche|Ohne|Welche|Viele|Solche))[A-ZÄÖÜ].+e</token>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token postag="SUB.*NOM.*PLU.*(MAS|FEM|NEU|NOG)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_292">
+    <pattern>
+      <token case_sensitive="yes">.</token>
+      <token case_sensitive="yes">)</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_293">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Strg|STRG|Alt|ALT</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;|oder|\+</token>
+      <token case_sensitive="yes">Umschalt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_294">
+    <pattern>
+      <token case_sensitive="yes">Umschalt</token>
+      <token regexp="yes" case_sensitive="yes">und|&amp;|oder|\+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_295">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[Ii]m</token>
+      <token regexp="yes" case_sensitive="yes">Inneren|Äu(ss|ß)eren</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_296">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">ob|dass|weswegen|damit|sofern|wie|wann|wo|wozu|warum</token>
+      <token regexp="yes" case_sensitive="yes">wir|[Ss]ie|ich|er|die|der|es|du|ihr</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_297">
+    <pattern>
+      <token postag="KON.*" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">wir|[Ss]ie|ich|er|die|der|es|du|ihr</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_298">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">ob|dass|weswegen|damit|sofern|wie|wann|wo|wozu|warum</token>
+      <token postag="EIG.*|UNKNOWN" postag_regexp="yes"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_299">
+    <pattern>
+      <token postag="KON.*" postag_regexp="yes"/>
+      <token postag="EIG.*|UNKNOWN" postag_regexp="yes"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_300">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+      <token postag="SUB.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_301">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+      <token regexp="yes" case_sensitive="yes">und|oder|&amp;|beziehungsweise|/|\+</token>
+      <token postag="VER:INF.*|UNKNOWN" postag_regexp="yes"/>
+      <token postag="VER:(MOD|AUX).*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_302">
+    <pattern>
+      <token case_sensitive="yes">:</token>
+      <token regexp="yes" case_sensitive="yes">[&quot;”„»«]</token>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_303">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">die|welche</token>
+      <token case_sensitive="yes">sich</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="VER:INF.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_304">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Bolivarische[mnrs]?</token>
+      <token regexp="yes" case_sensitive="yes">Republik(en)?|Verfassung(en)?|Revolution(en)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_305">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Harmonisierte[mnr]?</token>
+      <token regexp="yes" case_sensitive="yes">Verbraucherpreisindex(e[sn]?)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_306">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Gro(ss|ß)e[n]?</token>
+      <token regexp="yes" case_sensitive="yes">Koalition(en?)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_307">
+    <pattern>
+      <token case_sensitive="yes">Oval</token>
+      <token regexp="yes" case_sensitive="yes">Offices?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_308">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Hebräischen?</token>
+      <token regexp="yes" case_sensitive="yes">Universität|Bibel</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_309">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Allgemeine[ns]?</token>
+      <token regexp="yes" case_sensitive="yes">Kranken(spitale?s?|haus(es)?)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_310">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-ZÄÖÜ].+stereotypen?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_311">
+    <pattern>
+      <token case_sensitive="yes">im</token>
+      <token regexp="yes" case_sensitive="yes">(Afrikanisch|Alt(arabisch|chinesisch|griechisch|persisch)|Amerikanisch|Arabisch|Chinesisch|Dänisch|Deutsch|Plattdeutsch|Englisch|Finnisch|Französisch|Frühneuhochdeutsch|Germanisch|Griechisch|Hocharabisch|Hochchinesisch|Hochdeutsch|Holländisch|Italienisch|Japanisch|Jiddisch|Jugoslawisch|Koreanisch|Kroatisch|Lateinisch|Luxemburgisch|Mittelhochdeutsch|Neuhochdeutsch|Niederländisch|Norwegisch|Persisch|Polnisch|Portugiesisch|Russisch|Schwedisch|Schweizerisch|Semitisch|Serbisch|Serbokroatisch|Slawisch|Spanisch|Tschechisch|Türkisch|Ukrainisch|Ungarisch|Wei[sß]russisch|Hebräisch|Katalanisch)en</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_312">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Pazifischen?|Chinesischen?|Europäischen?|Kanadischen?</token>
+      <token regexp="yes" case_sensitive="yes">Eiben?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_313">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">sein(e[nrs]?)?|ihr(e[nrs]?)?|das|des|die|den|der</token>
+      <token regexp="yes" case_sensitive="yes">.*werks?|.*werke[sn]?|.*films?|.*filme[sn]?</token>
+      <token regexp="yes" case_sensitive="yes">Der|Die|Das</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_314">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">einigen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_315">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">das|Das</token>
+      <token case_sensitive="yes">finden</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_316">
+    <pattern>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">machen</token>
+      <token regexp="yes" case_sensitive="yes">sehen|gesehen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="CAP_317">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Das|das</token>
+      <token postag="VER:[13]:PLU.*" postag_regexp="yes"/>
+      <token postag="(PRO|SUB).*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

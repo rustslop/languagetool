@@ -1,7 +1,7 @@
 pub mod compare;
-pub mod harness;
 pub mod report;
+pub mod runner;
 
 pub use compare::*;
-pub use harness::*;
 pub use report::*;
+pub use runner::*;

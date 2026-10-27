@@ -1,6 +1,5 @@
 /target
 **/*.rs.bk
 Cargo.lock
-.z-workflow/
-languagetool/
-.DS_Store
+/languagetool
+/ngram-data

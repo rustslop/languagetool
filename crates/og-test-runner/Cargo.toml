@@ -4,19 +4,21 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+rayon = { workspace = true }
+fancy-regex = "0.14"
 og-core = { workspace = true }
 og-xml = { workspace = true }
 og-rules = { workspace = true }
+og-spell = { workspace = true }
 og-tokenizer = { workspace = true }
 og-tagger = { workspace = true }
 og-langs = { workspace = true }
-og-spell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 regex = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 og-langs = { workspace = true }
-og-spell = { workspace = true }

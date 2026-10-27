@@ -4,8 +4,6 @@ use og_core::{
 };
 use std::collections::HashMap;
 
-/// Rust port of LanguageTool's EnglishDiacriticsRule.
-/// Detects missing diacritical marks in loanwords (e.g., "cafe" → "café").
 pub struct DiacriticsRule {
     entries: HashMap<String, String>,
     max_words: usize,
@@ -17,12 +15,7 @@ impl DiacriticsRule {
             entries: HashMap::new(),
             max_words: 0,
         };
-        rule.load_data(
-            &og_spell::read_lt_resource(
-                "en/src/main/resources/org/languagetool/rules/en/diacritics.txt",
-            )
-            .unwrap_or_default(),
-        );
+        rule.load_data(include_str!("../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/diacritics.txt"));
         rule
     }
 
@@ -92,7 +85,6 @@ impl Rule for DiacriticsRule {
                 let phrase_lower = phrase.to_lowercase();
 
                 if let Some(correct) = self.entries.get(&phrase_lower) {
-                    // Skip if already correct (case-sensitive exact match)
                     if &phrase == correct {
                         continue;
                     }
@@ -103,13 +95,10 @@ impl Rule for DiacriticsRule {
 
                     let message = format!("Did you mean '{}'?", correct);
                     let rm_rule = RuleMatchRule::new(self.id(), self.description())
-                        .with_category(self.category());
+                        .with_category(self.category())
+                        .with_issue_type(self.issue_type().as_str());
 
-                    let context_start = if match_start >= 40 {
-                        match_start - 40
-                    } else {
-                        0
-                    };
+                    let context_start = match_start.saturating_sub(40);
                     let context_end = std::cmp::min(match_end + 40, sentence.text().len());
                     let context_text = sentence.text()[context_start..context_end].to_string();
 

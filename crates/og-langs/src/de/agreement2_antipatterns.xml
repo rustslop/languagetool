@@ -1,0 +1,627 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="AP2_1">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Willkommen|Link|Aktuell|Diverse|Flächendeckend|Entsprechende|Angeblich|Gelegentlich|Antizyklisch|Unbedingt|Zusätzlich|Natürlich|Äußerlich|Erfolgreich|Spät|Länger|Vorrangig|Rechtzeitig|Typisch|Allwöchentlich|Wöchentlich|Inhaltlich|Tagtäglich|Täglich|Komplett|Genau|Gerade|Bewusst|Vereinzelt|Gänzlich|Ständig|Okay|Meist|Generell|Ausreichend|Genügend|Reichlich|Regelmäßig(e|es)?|Unregelmäßig|Hauptsächlich</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_2">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Allgemein|Ausgiebig|Stilvoll|Link|Direkt|Gegenseitig|Offensichtlich|Weitgehend|Frei|Prinzipiell|Regelrecht|Kostenlos|Gleichzeitig|Ganzjährig|Überraschend|Entsprechend|Ordentlich|Gelangweilt</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+      <token postag="VER:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_3">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Allgemein|Ausgiebig|Stilvoll|Link|Direkt|Gegenseitig|Offensichtlich|Weitgehend|Frei|Prinzipiell|Regelrecht|Kostenlos|Gleichzeitig|Ganzjährig|Überraschend|Entsprechend|Ordentlich|Gelangweilt</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+      <token postag="PRP.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_4">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Allgemein|Ausgiebig|Stilvoll|Link|Direkt|Gegenseitig|Offensichtlich|Weitgehend|Frei|Prinzipiell|Regelrecht|Kostenlos|Gleichzeitig|Ganzjährig|Überraschend|Entsprechend|Ordentlich|Gelangweilt</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+      <token>,</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_5">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">Gut|Schlecht|Existenziell|Ganz|Gering|Viel|Wenig</token>
+      <token postag="SUB:.*ADJ" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_6">
+    <pattern>
+      <token regexp="yes">Nachhaltig|Direkt</token>
+      <token postag="SUB:NOM:.*" postag_regexp="yes"/>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_7">
+    <pattern>
+      <token regexp="yes">\d0er</token>
+      <token regexp="yes">Jahren?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_8">
+    <pattern>
+      <token>Liebe</token>
+      <token>Mai</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_9">
+    <pattern>
+      <token>Ganz</token>
+      <token>Ohr</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_10">
+    <pattern>
+      <token>Klar</token>
+      <token>Schiff</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_11">
+    <pattern>
+      <token>Echt</token>
+      <token regexp="yes">Scheiße|Mist</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_12">
+    <pattern>
+      <token>Dickes</token>
+      <token>Danke</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_13">
+    <pattern>
+      <token>Personal</token>
+      <token>Shopper</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_14">
+    <pattern>
+      <token>Schwäbisch</token>
+      <token>Hall</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_15">
+    <pattern>
+      <token>Herzlich</token>
+      <token>Willkommen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_16">
+    <pattern>
+      <token>Gut</token>
+      <token regexp="yes">Ding|Holz</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_17">
+    <pattern>
+      <token>Urban</token>
+      <token>Mining</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_18">
+    <pattern>
+      <token>Responsive</token>
+      <token>Design</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_19">
+    <pattern>
+      <token>Dual</token>
+      <token>Studierende</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_20">
+    <pattern>
+      <token>Deutsche</token>
+      <token regexp="yes" case_sensitive="yes">Grammophon|Wohnen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_21">
+    <pattern>
+      <token postag="ADJ.*" postag_regexp="yes"/>
+      <token regexp="yes">.+beamte</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_22">
+    <pattern>
+      <token skip="5">Anderen</token>
+      <token postag="VER:INF:(SFT|NON)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_23">
+    <pattern>
+      <token regexp="yes">echt|absolut|voll|total</token>
+      <token regexp="yes">Wahnsinn|Klasse</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_24">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token postag="ADJ:PRD:GRU"/>
+      <token postag="SUB:NOM:SIN:NEU:INF" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_25">
+    <pattern>
+      <token regexp="yes">voll|voller</token>
+      <token postag="SUB:NOM:SIN:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_26">
+    <pattern>
+      <token>einzig</token>
+      <token postag="SUB:NOM:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_27">
+    <pattern>
+      <token regexp="yes">Intelligent|Urban</token>
+      <token>Design</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_28">
+    <pattern>
+      <token>Alternativ</token>
+      <token>Berufserfahrung</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_29">
+    <pattern>
+      <token>Maritim</token>
+      <token>Hotel</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_30">
+    <pattern>
+      <token case_sensitive="yes">Russisch</token>
+      <token case_sensitive="yes">Brot</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_31">
+    <pattern>
+      <token>ruhig</token>
+      <token case_sensitive="yes">Blut</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_32">
+    <pattern>
+      <token>Blind</token>
+      <token regexp="yes">Dates?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_33">
+    <pattern>
+      <token>Fair</token>
+      <token>Trade</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_34">
+    <pattern>
+      <token>Frei</token>
+      <token>Haus</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_35">
+    <pattern>
+      <token>Global</token>
+      <token>Player</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_36">
+    <pattern>
+      <token>psychisch</token>
+      <token regexp="yes">Kranken?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_37">
+    <pattern>
+      <token>sportlich</token>
+      <token regexp="yes">Aktiven?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_38">
+    <pattern>
+      <token>politisch</token>
+      <token regexp="yes">Interessierten?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_39">
+    <pattern>
+      <token>voraussichtlich</token>
+      <token regexp="yes">Ende|Anfang</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_40">
+    <pattern>
+      <token regexp="yes">gesetzlich|privat|freiwillig</token>
+      <token regexp="yes">(Kranken)?Versicherten?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_41">
+    <pattern>
+      <token>typisch</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+      <token regexp="yes">[!?.]</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_42">
+    <pattern>
+      <token>lecker</token>
+      <token>Essen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_43">
+    <pattern>
+      <token>erneut</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_44">
+    <pattern>
+      <token>Gesetzlich</token>
+      <token regexp="yes">Krankenversicherten?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_45">
+    <pattern>
+      <token>weitgehend</token>
+      <token>Einigkeit</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_46">
+    <pattern>
+      <token>Ernst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_47">
+    <pattern>
+      <token>Anders</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_48">
+    <pattern>
+      <token>wirklich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_49">
+    <pattern>
+      <token>gemeinsam</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_50">
+    <pattern>
+      <token>wenig</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_51">
+    <pattern>
+      <token>weniger</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_52">
+    <pattern>
+      <token>unaufgefordert</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_53">
+    <pattern>
+      <token>richtig</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_54">
+    <pattern>
+      <token>weiß</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_55">
+    <pattern>
+      <token>speziell</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_56">
+    <pattern>
+      <token>proaktiv</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_57">
+    <pattern>
+      <token>halb</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_58">
+    <pattern>
+      <token>hinter</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_59">
+    <pattern>
+      <token>vermutlich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_60">
+    <pattern>
+      <token>eventuell</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_61">
+    <pattern>
+      <token>ausschließlich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_62">
+    <pattern>
+      <token>ausschliesslich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_63">
+    <pattern>
+      <token>bloß</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_64">
+    <pattern>
+      <token>einfach</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_65">
+    <pattern>
+      <token>egal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_66">
+    <pattern>
+      <token>endlich</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_67">
+    <pattern>
+      <token>unbemerkt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_68">
+    <pattern>
+      <token>Typisch</token>
+      <token regexp="yes">Mann|Frau</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_69">
+    <pattern>
+      <token>Ausreichend</token>
+      <token regexp="yes">Bewegung</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_70">
+    <pattern>
+      <token>Genau</token>
+      <token>Null</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_71">
+    <pattern>
+      <token>wohl</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_72">
+    <pattern>
+      <token>erst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_73">
+    <pattern>
+      <token>lieber</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_74">
+    <pattern>
+      <token>besser</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_75">
+    <pattern>
+      <token>laut</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_76">
+    <pattern>
+      <token>research</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_77">
+    <pattern>
+      <token>researchs</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_78">
+    <pattern>
+      <token>security</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_79">
+    <pattern>
+      <token>business</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_80">
+    <pattern>
+      <token>Universal</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_81">
+    <pattern>
+      <token>voll</token>
+      <token>Sorge</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_82">
+    <pattern>
+      <token>Total</token>
+      <token regexp="yes">Tankstellen?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_83">
+    <pattern>
+      <token>Ganz</token>
+      <token>Gentleman</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_84">
+    <pattern>
+      <token>Kurz</token>
+      <token>Zeit</token>
+      <token regexp="yes">für|um</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_85">
+    <pattern>
+      <token>Golden</token>
+      <token>Gate</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_86">
+    <pattern>
+      <token>Wirtschaftlich</token>
+      <token regexp="yes">Berechtigte[rn]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_87">
+    <pattern>
+      <token>Russisch</token>
+      <token>Roulette</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_88">
+    <pattern>
+      <token>Clever</token>
+      <token regexp="yes">Shuttles?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_89">
+    <pattern>
+      <token>Personal</token>
+      <token regexp="yes">(Computer|Coach|Trainer|Brand).*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_90">
+    <pattern>
+      <token regexp="yes">Digital|Fair|Regional|Global|Bilingual|International|National|Visual|Final|Rapid|Dual|Golden|Human</token>
+      <token regexp="yes">(Initiative|Office|Connection|Bootcamp|Leadership|Sales|Community|Service|Management|Board|Identity|City|Paper|Transfer|Transformation|Power|Shopping|Brand|Master|Gate|Drive|Learning|Publishing|Signage|Value|Entertainment|Museum|Register|Society|Union|Institute|Symposium|Style|Design|Edition).*</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_91">
+    <pattern>
+      <token>Smart</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_92">
+    <pattern>
+      <token>International</token>
+      <token regexp="yes">Society|Olympic|Space</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP2_93">
+    <pattern>
+      <token>GmbH</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

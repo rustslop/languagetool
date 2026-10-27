@@ -1,4 +1,4 @@
-use crate::{AnalyzedDocument, AnalyzedSentence, Category, IssueType, RuleContext, RuleMatch};
+use crate::{AnalyzedSentence, Category, IssueType, RuleMatch};
 
 pub trait Rule: Send + Sync {
     fn id(&self) -> &str;
@@ -8,6 +8,9 @@ pub trait Rule: Send + Sync {
     fn is_default_on(&self) -> bool {
         true
     }
+    fn is_picky(&self) -> bool {
+        false
+    }
     fn category(&self) -> Category {
         Category::new("MISC", "Miscellaneous")
     }
@@ -15,27 +18,6 @@ pub trait Rule: Send + Sync {
         IssueType::Grammar
     }
     fn match_sentence(&self, sentence: &AnalyzedSentence) -> Vec<RuleMatch>;
-
-    /// Context-aware variant of [`Rule::match_sentence`].
-    ///
-    /// The [`Checker`](crate::Checker) pipeline calls this. The default
-    /// implementation ignores the context and delegates to
-    /// `match_sentence`, so rules that don't need language/picky state
-    /// only implement `match_sentence`; rules that do should override
-    /// this (and may leave `match_sentence` returning an empty vec).
-    fn match_sentence_with_context(
-        &self,
-        sentence: &AnalyzedSentence,
-        _ctx: &RuleContext,
-    ) -> Vec<RuleMatch> {
-        self.match_sentence(sentence)
-    }
-
-    /// Reset per-check mutable state (Java `Rule.reset()`).
-    ///
-    /// Called by the pipeline before each check when rule instances are
-    /// reused across requests. Default: no-op.
-    fn reset(&self) {}
 }
 
 pub trait TextLevelRule: Send + Sync {
@@ -46,6 +28,9 @@ pub trait TextLevelRule: Send + Sync {
     fn is_default_on(&self) -> bool {
         true
     }
+    fn is_picky(&self) -> bool {
+        false
+    }
     fn category(&self) -> Category {
         Category::new("MISC", "Miscellaneous")
     }
@@ -53,19 +38,6 @@ pub trait TextLevelRule: Send + Sync {
         IssueType::Grammar
     }
     fn match_text(&self, text: &str, sentences: &[AnalyzedSentence]) -> Vec<RuleMatch>;
-
-    /// Document-level variant of [`TextLevelRule::match_text`].
-    ///
-    /// The pipeline calls this with the assembled [`AnalyzedDocument`] and
-    /// per-check [`RuleContext`]. Default: delegate to `match_text` with the
-    /// document's text and sentences, so existing text-level rules keep
-    /// working unchanged.
-    fn match_document(&self, doc: &AnalyzedDocument, _ctx: &RuleContext) -> Vec<RuleMatch> {
-        self.match_text(doc.text(), doc.sentences())
-    }
-
-    /// Reset per-check mutable state. Default: no-op.
-    fn reset(&self) {}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,5 +56,67 @@ impl RuleId {
 impl std::fmt::Display for RuleId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MinimalRule;
+    impl Rule for MinimalRule {
+        fn id(&self) -> &str {
+            "MINIMAL"
+        }
+        fn match_sentence(&self, _sentence: &AnalyzedSentence) -> Vec<RuleMatch> {
+            Vec::new()
+        }
+    }
+
+    struct MinimalTextRule;
+    impl TextLevelRule for MinimalTextRule {
+        fn id(&self) -> &str {
+            "MINIMAL_TEXT"
+        }
+        fn match_text(&self, _text: &str, _sentences: &[AnalyzedSentence]) -> Vec<RuleMatch> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn rule_id_displays_and_compares_by_value() {
+        let id = RuleId::new("EN_A_VS_AN");
+        assert_eq!(id.as_str(), "EN_A_VS_AN");
+        assert_eq!(id.to_string(), "EN_A_VS_AN");
+        assert_eq!(RuleId::new("X"), RuleId::new("X"));
+        assert_ne!(RuleId::new("X"), RuleId::new("Y"));
+    }
+
+    #[test]
+    fn rule_defaults_match_java_abstract_rule_defaults() {
+        let rule = MinimalRule;
+        assert_eq!(rule.id(), "MINIMAL");
+        assert_eq!(rule.description(), "");
+        assert!(rule.is_default_on());
+        assert!(!rule.is_picky());
+        assert_eq!(rule.category().id().as_str(), "MISC");
+        assert_eq!(rule.category().name(), "Miscellaneous");
+        assert_eq!(rule.issue_type(), IssueType::Grammar);
+        assert!(
+            rule.match_sentence(&AnalyzedSentence::new("", 0, 0))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn text_level_rule_defaults_match_rule_defaults() {
+        let rule = MinimalTextRule;
+        assert_eq!(rule.id(), "MINIMAL_TEXT");
+        assert_eq!(rule.description(), "");
+        assert!(rule.is_default_on());
+        assert!(!rule.is_picky());
+        assert_eq!(rule.category().id().as_str(), "MISC");
+        assert_eq!(rule.issue_type(), IssueType::Grammar);
+        assert!(rule.match_text("", &[]).is_empty());
     }
 }

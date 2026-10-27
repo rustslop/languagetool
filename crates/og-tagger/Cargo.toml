@@ -4,10 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+encoding_rs = "0.8"
 og-core = { workspace = true }
-og-spell = { workspace = true }
 og-xml = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
+fancy-regex = "0.14"
 phf = { version = "0.11", features = ["macros"] }

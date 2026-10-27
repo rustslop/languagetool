@@ -12,11 +12,3 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-
-[dev-dependencies]
-og-spell = { workspace = true }
-axum = { workspace = true }
-tower = { workspace = true }
-http = { workspace = true }
-http-body-util = { workspace = true }
-tokio = { workspace = true }

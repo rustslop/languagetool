@@ -1,0 +1,1083 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rules lang="de">
+  <rule id="AP_1">
+    <pattern>
+      <token>Eurovision</token>
+      <token>Song</token>
+      <token>Contest</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_2">
+    <pattern>
+      <token>Account</token>
+      <token regexp="yes">Managers?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_3">
+    <pattern>
+      <token>Wohnungsbau</token>
+      <token>Aalen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_4">
+    <pattern>
+      <token>Display</token>
+      <token regexp="yes">Ads?|Advertising</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_5">
+    <pattern>
+      <token>Private</token>
+      <token regexp="yes">Equitys?|Clouds?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_6">
+    <pattern>
+      <token>Personal</token>
+      <token regexp="yes">Agents?|Computers?|Data|Firewalls?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_7">
+    <pattern>
+      <token>Junge</token>
+      <token regexp="yes">Union|Freiheit|Welt|Europäische|Alternative|Volkspartei|Akademie</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_8">
+    <pattern>
+      <token postag="ART:.+" postag_regexp="yes"/>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token postag="UNKNOWN"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_9">
+    <pattern>
+      <token case_sensitive="yes">,</token>
+      <token postag="KON:UNT|ADV:INR" postag_regexp="yes"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token postag="VER:3:SIN.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_10">
+    <pattern>
+      <token regexp="yes">viele|etliche|wenige|einige|mehrere</token>
+      <token case_sensitive="yes">solcher</token>
+      <token postag="SUB:GEN:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_11">
+    <pattern>
+      <token regexp="yes">[dD](ie|er)</token>
+      <token case_sensitive="yes">First</token>
+      <token case_sensitive="yes">Lady</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_12">
+    <pattern>
+      <token regexp="yes">[dD](ie|er)</token>
+      <token postag="ADJ:.*" postag_regexp="yes"/>
+      <token case_sensitive="yes">First</token>
+      <token case_sensitive="yes">Lady</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_13">
+    <pattern>
+      <token regexp="yes">[dD](ie|er)</token>
+      <token case_sensitive="yes">Super</token>
+      <token case_sensitive="yes">Nintendo</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_14">
+    <pattern>
+      <token case_sensitive="yes">Pizza</token>
+      <token case_sensitive="yes">Hut</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_15">
+    <pattern>
+      <token case_sensitive="yes">,</token>
+      <token case_sensitive="yes">beides</token>
+      <token postag="ADJ:NOM:PLU.+" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:PLU.+" postag_regexp="yes"/>
+      <token postag="PKT"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_16">
+    <pattern>
+      <token postag="SENT_START"/>
+      <token case_sensitive="yes">Beides</token>
+      <token postag="SUB:NOM:PLU.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_17">
+    <pattern>
+      <token regexp="yes">[dD]e[rn]</token>
+      <token case_sensitive="yes">Gold</token>
+      <token case_sensitive="yes">Cup</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_18">
+    <pattern>
+      <token>das</token>
+      <token regexp="yes">viele|wenige</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_19">
+    <pattern>
+      <token>das</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes" inflected="yes">dauern</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_20">
+    <pattern>
+      <token regexp="yes">allen|(nieman|je(man)?)dem</token>
+      <token postag="ADJ:AKK:PLU:.*" postag_regexp="yes"/>
+      <token postag="SUB:AKK:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_21">
+    <pattern>
+      <token regexp="yes">allen|(nieman|je(man)?)dem</token>
+      <token postag="SUB:AKK:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_22">
+    <pattern>
+      <token postag="PRP:.+|ADV:MOD" postag_regexp="yes" skip="2"></token>
+      <token inflected="yes">sein</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="SUB:NOM:.*" postag_regexp="yes"/>
+      <token postag="PKT|SENT_END|KON.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_23">
+    <pattern>
+      <token regexp="yes">sind|waren|wären</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="ADJ:NOM:PLU.*" postag_regexp="yes"/>
+      <token postag="SUB:NOM:PLU.*" postag_regexp="yes"/>
+      <token postag="PKT|KON.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_24">
+    <pattern>
+      <token regexp="yes">ist|war|wär</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="ADJ:NOM:SIN.*" postag_regexp="yes"/>
+      <token postag="SUB:NOM:SIN.*" postag_regexp="yes"/>
+      <token postag="PKT|KON.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_25">
+    <pattern>
+      <token inflected="yes">sein</token>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">erste</token>
+      <token case_sensitive="yes">Sahne</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_26">
+    <pattern>
+      <token postag="KON:UNT"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="ADJ:.*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token regexp="yes" inflected="yes">bedeuten|sein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_27">
+    <pattern>
+      <token postag="KON:UNT"/>
+      <token case_sensitive="yes">das</token>
+      <token postag="ADV:MOD"/>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+      <token regexp="yes" inflected="yes">bedeuten|sein</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_28">
+    <pattern>
+      <token inflected="yes">niemand</token>
+      <token postag="SUB:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_29">
+    <pattern>
+      <token>alles</token>
+      <token case_sensitive="yes">Walzer</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_30">
+    <pattern>
+      <token case_sensitive="yes">der</token>
+      <token case_sensitive="yes">Daus</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_31">
+    <pattern>
+      <token postag="PRO:...:...:SIN:NEU.*" postag_regexp="yes"/>
+      <token case_sensitive="yes">Orange</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_32">
+    <pattern>
+      <token postag="PRO:...:...:SIN:NEU.*" postag_regexp="yes"/>
+      <token postag="ADJ:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">Orange</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_33">
+    <pattern>
+      <token case_sensitive="yes">dem</token>
+      <token case_sensitive="yes" skip="1">Achtung</token>
+      <token case_sensitive="yes" inflected="yes">schenken</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_34">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes">schenken</token>
+      <token case_sensitive="yes">dem</token>
+      <token case_sensitive="yes">Achtung</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_35">
+    <pattern>
+      <token case_sensitive="yes">dem</token>
+      <token case_sensitive="yes" skip="1">Rechnung</token>
+      <token case_sensitive="yes" inflected="yes">tragen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_36">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes">tragen</token>
+      <token case_sensitive="yes">dem</token>
+      <token case_sensitive="yes">Rechnung</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_37">
+    <pattern>
+      <token case_sensitive="yes">zum</token>
+      <token case_sensitive="yes">einen</token>
+      <token postag="(ADJ|PA[12]):.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_38">
+    <pattern>
+      <token>auf</token>
+      <token case_sensitive="yes">die</token>
+      <token case_sensitive="yes">Lauer</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_39">
+    <pattern>
+      <token regexp="yes">(eben)?dieser</token>
+      <token case_sensitive="yes">eine</token>
+      <token postag="SUB:NOM:SIN:MAS"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_40">
+    <pattern>
+      <token>das</token>
+      <token postag="SUB:DAT:.+" postag_regexp="yes"/>
+      <token>vorbehalten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_41">
+    <pattern>
+      <token skip="1">wenn</token>
+      <token case_sensitive="yes">einer</token>
+      <token postag="SUB:AKK:.+" postag_regexp="yes"/>
+      <token postag="VER:(MOD:)?3:SIN:.+" postag_regexp="yes"/>
+      <token case_sensitive="yes">,</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_42">
+    <pattern>
+      <token regexp="yes">eine[rs]</token>
+      <token regexp="yes">jed(wed)?en</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_43">
+    <pattern>
+      <token>die</token>
+      <token regexp="yes">[MDS]einen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_44">
+    <pattern>
+      <token case_sensitive="yes">über</token>
+      <token case_sensitive="yes">die</token>
+      <token regexp="yes">Ma(ß|ss)en</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_45">
+    <pattern>
+      <token>was</token>
+      <token case_sensitive="yes" inflected="yes">nützen</token>
+      <token case_sensitive="yes">einem</token>
+      <token postag="SUB:NOM:.+" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_46">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes">haben</token>
+      <token case_sensitive="yes">sein</token>
+      <token case_sensitive="yes">Gutes</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_47">
+    <pattern>
+      <token case_sensitive="yes">Gutes</token>
+      <token regexp="yes" inflected="yes">haben|tun</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_48">
+    <pattern>
+      <token regexp="yes">(eben)?dieser</token>
+      <token case_sensitive="yes">einen</token>
+      <token postag="SUB:DAT:SIN:FEM"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_49">
+    <pattern>
+      <token case_sensitive="yes">Rede</token>
+      <token case_sensitive="yes">und</token>
+      <token case_sensitive="yes">Antwort</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_50">
+    <pattern>
+      <token postag="ABK:.+:SUB" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_51">
+    <pattern>
+      <token regexp="yes">(all|je(d|glich))en</token>
+      <token case_sensitive="yes">Reiz</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_52">
+    <pattern>
+      <token regexp="yes">wieso|ob|warum|w[ae]nn</token>
+      <token>das</token>
+      <token regexp="yes">sinn|mehrwert</token>
+      <token regexp="yes">macht|ergibt|stiftet|bringt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_53">
+    <pattern>
+      <token regexp="yes">hat|hätte|kann|wird|dürfte|muss|soll(te)?|könnte|müsste|würde</token>
+      <token>das</token>
+      <token>Konsequenzen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_54">
+    <pattern>
+      <token postag="VER:.*[1-3]:.+" postag_regexp="yes" skip="1"></token>
+      <token case_sensitive="yes">vermehrt</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_55">
+    <pattern>
+      <token case_sensitive="yes">Ruhr</token>
+      <token case_sensitive="yes">Nachrichten</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_56">
+    <pattern>
+      <token case_sensitive="yes">Joint</token>
+      <token regexp="yes">Ventures?|Cares?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_57">
+    <pattern>
+      <token case_sensitive="yes">Premier</token>
+      <token case_sensitive="yes">League</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_58">
+    <pattern>
+      <token case_sensitive="yes">Software</token>
+      <token regexp="yes">Engineers?|Developer[sn]?|(Back|Front)end</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_59">
+    <pattern>
+      <token case_sensitive="yes">Mark</token>
+      <token postag="EIG:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_60">
+    <pattern>
+      <token case_sensitive="yes">Sales</token>
+      <token regexp="yes">Agent</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_61">
+    <pattern>
+      <token case_sensitive="yes">Total</token>
+      <token regexp="yes">Tankstellen?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_62">
+    <pattern>
+      <token postag="ART:.*" postag_regexp="yes"/>
+      <token case_sensitive="yes">Bund</token>
+      <token case_sensitive="yes">Naturschutz</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_63">
+    <pattern>
+      <token case_sensitive="yes">Real</token>
+      <token regexp="yes">Madrid|Valladolid|Mallorca</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_64">
+    <pattern>
+      <token case_sensitive="yes">Real</token>
+      <token postag="UNKNOWN"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_65">
+    <pattern>
+      <token case_sensitive="yes">Hammer</token>
+      <token regexp="yes">Stra(ß|ss)e</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_66">
+    <pattern>
+      <token case_sensitive="yes">Personal</token>
+      <token regexp="yes">Trainers?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_67">
+    <pattern>
+      <token>Hallo</token>
+      <token case_sensitive="yes" inflected="yes">sagen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_68">
+    <pattern>
+      <token>die</token>
+      <token regexp="yes">Deutsch|Englisch|Spanisch|Französisch|Russisch|Polnisch|Holländisch|Niederländisch|Portugiesisch</token>
+      <token case_sensitive="yes" inflected="yes">sprechen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_69">
+    <pattern>
+      <token>zum</token>
+      <token>einen</token>
+      <token postag="SUB:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_70">
+    <pattern>
+      <token case_sensitive="yes">Fake</token>
+      <token postag="News" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_71">
+    <pattern>
+      <token regexp="yes">Steinberg|Park</token>
+      <token case_sensitive="yes">Apotheke</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_72">
+    <pattern>
+      <token case_sensitive="yes">IT</token>
+      <token case_sensitive="yes">Finanzmagazin</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_73">
+    <pattern>
+      <token case_sensitive="yes">Golden</token>
+      <token case_sensitive="yes">Gate</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_74">
+    <pattern>
+      <token>fürs</token>
+      <token>Bescheid</token>
+      <token regexp="yes">geben|sagen</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_75">
+    <pattern>
+      <token>Los</token>
+      <token regexp="yes">Angeles|Zetas</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_76">
+    <pattern>
+      <token case_sensitive="yes">Auto</token>
+      <token case_sensitive="yes">Zeitung</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_77">
+    <pattern>
+      <token case_sensitive="yes">Mal</token>
+      <token inflected="yes">sein</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="SUB:NOM:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_78">
+    <pattern>
+      <token case_sensitive="yes">FC</token>
+      <token case_sensitive="yes">Bayern</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_79">
+    <pattern>
+      <token case_sensitive="yes">Super</token>
+      <token case_sensitive="yes">Mario</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_80">
+    <pattern>
+      <token regexp="yes">.+</token>
+      <token regexp="yes">.+</token>
+      <token case_sensitive="yes">Toyota</token>
+      <token case_sensitive="yes">Motor</token>
+      <token regexp="yes">Corp(oration)?|Company</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_81">
+    <pattern>
+      <token regexp="yes">.+</token>
+      <token regexp="yes">.+</token>
+      <token case_sensitive="yes">Metropolitan</token>
+      <token regexp="yes">Police|Community|City|Books</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_82">
+    <pattern>
+      <token regexp="yes">Office|Microsoft</token>
+      <token case_sensitive="yes">365</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_83">
+    <pattern>
+      <token case_sensitive="yes">Prinz</token>
+      <token regexp="yes">Charles|William</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_84">
+    <pattern>
+      <token>:</token>
+      <token case_sensitive="yes">D</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_85">
+    <pattern>
+      <token regexp="yes">ist|war(en)?|sind|wird|werden</token>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">reine</token>
+      <token postag="SUB:NOM:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_86">
+    <pattern>
+      <token case_sensitive="yes">Android</token>
+      <token regexp="yes">Wear|Watch(es)?|Smartwatch(es)?|OS</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_87">
+    <pattern>
+      <token regexp="yes">\w+</token>
+      <token spacebefore="no">.</token>
+      <token regexp="yes" spacebefore="no">pdf|zip|jpe?g|gif|png|rar|mp[34]|mpe?g|avi|docx?|xlsx?|pptx?|html?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_88">
+    <pattern>
+      <token regexp="yes" skip="3">Junior|Senior|Account</token>
+      <token regexp="yes">Manager[ns]?|Managerin(nen)?|Developer(in)?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_89">
+    <pattern>
+      <token regexp="yes">Junior|Senior</token>
+      <token>Software</token>
+      <token regexp="yes">Engineers?|Architects?|Managers?|Directors?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_90">
+    <pattern>
+      <token regexp="yes">Junior|Senior</token>
+      <token>Engineering</token>
+      <token regexp="yes">Manager[ns]?|Directors?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_91">
+    <pattern>
+      <token case_sensitive="yes">Business</token>
+      <token regexp="yes">Angel[ns]?|Cases?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_92">
+    <pattern>
+      <token case_sensitive="yes">Manager</token>
+      <token regexp="yes">Magazins?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_93">
+    <pattern>
+      <token case_sensitive="yes">Junior</token>
+      <token regexp="yes">Suite[sn]?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_94">
+    <pattern>
+      <token regexp="yes">die|eine|unsere|meine|ihre|eure|(eben)?diese|seine|deine</token>
+      <token case_sensitive="yes">Abt</token>
+      <token>.</token>
+      <token regexp="yes">.+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_95">
+    <pattern>
+      <token regexp="yes">.+</token>
+      <token regexp="yes">.+</token>
+      <token regexp="yes">Customer|User</token>
+      <token regexp="yes">Journeys?|Service</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_96">
+    <pattern>
+      <token regexp="yes">.+</token>
+      <token regexp="yes">.+</token>
+      <token>Hall</token>
+      <token>of</token>
+      <token>Fame</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_97">
+    <pattern>
+      <token>kühles</token>
+      <token>Blondes</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_98">
+    <pattern>
+      <token regexp="yes">Vitamin|Buchstabe</token>
+      <token regexp="yes">D|B[1-9]?|B12</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_99">
+    <pattern>
+      <token inflected="yes">betreffen</token>
+      <token case_sensitive="yes">das</token>
+      <token postag="SUB:AKK:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_100">
+    <pattern>
+      <token>was</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">ein</token>
+      <token postag="ADJ:NOM:SIN:(MAS|NEU).*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:SIN:(MAS|NEU)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_101">
+    <pattern>
+      <token>was</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">eine</token>
+      <token postag="ADJ:NOM:SIN:FEM.*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:SIN:FEM"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_102">
+    <pattern>
+      <token>was</token>
+      <token inflected="yes" skip="2">sein</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">ein</token>
+      <token postag="ADJ:NOM:SIN:(MAS|NEU).*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:SIN:(MAS|NEU)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_103">
+    <pattern>
+      <token>was</token>
+      <token inflected="yes" skip="2">sein</token>
+      <token case_sensitive="yes">für</token>
+      <token case_sensitive="yes">eine</token>
+      <token postag="ADJ:NOM:SIN:FEM.*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:SIN:FEM"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_104">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">vielen?|etliche|wenigen?|einigen?</token>
+      <token case_sensitive="yes">Paar</token>
+      <token postag="SUB:NOM:PLU:..." postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_105">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">machte?|ergibt|ergab|stiftete?</token>
+      <token case_sensitive="yes">das</token>
+      <token case_sensitive="yes">Sinn</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_106">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">machte?</token>
+      <token case_sensitive="yes">das</token>
+      <token regexp="yes" case_sensitive="yes">Spa(ß|ss)|Freude</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_107">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">sind|waren</token>
+      <token case_sensitive="yes">beides</token>
+      <token postag="ADJ:.*" postag_regexp="yes" min="0"></token>
+      <token postag="SUB:NOM:PLU:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_108">
+    <pattern>
+      <token>Heinrich</token>
+      <token>von</token>
+      <token>der</token>
+      <token regexp="yes" case_sensitive="yes">Haars?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_109">
+    <pattern>
+      <token>Präsident</token>
+      <token>Xi</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_110">
+    <pattern>
+      <token>Porsche</token>
+      <token>Museum</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_111">
+    <pattern>
+      <token>Auto</token>
+      <token>Club</token>
+      <token>Europa</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_112">
+    <pattern>
+      <token>Queen</token>
+      <token postag="EIG:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_113">
+    <pattern>
+      <token>King</token>
+      <token postag="EIG:.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_114">
+    <pattern>
+      <token>des</token>
+      <token>Sturm</token>
+      <token>und</token>
+      <token regexp="yes" case_sensitive="yes">Drangs?</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_115">
+    <pattern>
+      <token>die</token>
+      <token>Funke</token>
+      <token>Mediengruppe</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_116">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes" skip="3">meinen</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies(es)?</token>
+      <token min="0">wirklich</token>
+      <token>Ernst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_117">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes" skip="3">nehmen</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies(es)?</token>
+      <token min="0">wirklich</token>
+      <token>Ernst</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_118">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes" skip="3">sparen</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies(es)?</token>
+      <token>Zeit</token>
+      <token>und</token>
+      <token regexp="yes" case_sensitive="yes">Geld|Nerven</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_119">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">das|es|(eben)?dies</token>
+      <token regexp="yes" case_sensitive="yes">bedeutete?</token>
+      <token regexp="yes" case_sensitive="yes">Krieg|Ärger</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_120">
+    <pattern>
+      <token regexp="yes">bedeutete?</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_121">
+    <pattern>
+      <token regexp="yes">bietete?</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies</token>
+      <token postag="SUB.*PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_122">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">bietete?</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies</token>
+      <token postag="ADJ.*PLU.*" postag_regexp="yes"/>
+      <token postag="SUB.*PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_123">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">bietete?</token>
+      <token regexp="yes" case_sensitive="yes">das|(eben)?dies</token>
+      <token postag="ADV.*" postag_regexp="yes"/>
+      <token postag="ADJ.*PLU.*" postag_regexp="yes"/>
+      <token postag="SUB.*PLU.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_124">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">das|es|(eben)?dies</token>
+      <token regexp="yes" case_sensitive="yes">weite</token>
+      <token>Teile</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_125">
+    <pattern>
+      <token>hat</token>
+      <token>das</token>
+      <token regexp="yes" case_sensitive="yes">Einfluss|Auswirkungen</token>
+      <token regexp="yes" case_sensitive="yes">auf|darauf</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_126">
+    <pattern>
+      <token postag="VER.*[123].*" postag_regexp="yes"/>
+      <token regexp="yes">und|oder|aber</token>
+      <token postag="PRP.*" postag_regexp="yes" min="0"></token>
+      <token regexp="yes">der|die|das|dem|den</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_127">
+    <pattern>
+      <token regexp="yes">bei|zum</token>
+      <token>anderen</token>
+      <token postag="ADJ.*" postag_regexp="yes"/>
+      <token postag="SUB.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_128">
+    <pattern>
+      <token>jeder</token>
+      <token postag="SUB:(AKK|DAT).*" postag_regexp="yes"/>
+      <token postag="VER.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_129">
+    <pattern>
+      <token postag="(ART|PRO:DEM).*" postag_regexp="yes"/>
+      <token postag="ADV.*" postag_regexp="yes"/>
+      <token postag="SUB.*" postag_regexp="yes"/>
+      <token postag="PA[12].*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_130">
+    <pattern>
+      <token postag="VER.*[123].*" postag_regexp="yes"/>
+      <token postag="(ART|PRO:DEM).*" postag_regexp="yes"/>
+      <token postag="ADV.*" postag_regexp="yes"/>
+      <token postag="SUB.*" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_131">
+    <pattern>
+      <token>Deutsch</token>
+      <token>Langhaar</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_132">
+    <pattern>
+      <token case_sensitive="yes" inflected="yes">nennen</token>
+      <token>das</token>
+      <token postag="SUB:NOM:SIN:(FEM|MAS)" postag_regexp="yes"/>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_133">
+    <pattern>
+      <token case_sensitive="yes">Made</token>
+      <token case_sensitive="yes">in</token>
+      <token case_sensitive="yes">Germany</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_134">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+</token>
+      <token regexp="yes" case_sensitive="yes">del?</token>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+  <rule id="AP_135">
+    <pattern>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+</token>
+      <token case_sensitive="yes">de</token>
+      <token regexp="yes">l[ao]s?</token>
+      <token regexp="yes" case_sensitive="yes">[A-Z].+</token>
+    </pattern>
+    <message>internal antipattern</message>
+  </rule>
+</rules>

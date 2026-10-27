@@ -33,54 +33,67 @@ pub struct MaxTextLengthResponse {
     pub max_text_length: usize,
 }
 
-/// Response of `GET /v2/configinfo`: server-level configuration, LT-shaped
-/// field names. Only settings the server actually honors are reported.
-#[derive(Debug, Serialize)]
-pub struct ConfigInfoResponse {
-    #[serde(rename = "maxTextLength")]
-    pub max_text_length: usize,
-    #[serde(rename = "maxTextHardLength")]
-    pub max_text_hard_length: usize,
-    #[serde(rename = "disabledRules")]
-    pub disabled_rules: Vec<String>,
-    #[serde(rename = "disabledCategories")]
-    pub disabled_categories: Vec<String>,
-    #[serde(rename = "supportedLanguages")]
-    pub supported_languages: Vec<String>,
-    #[serde(rename = "pipelineCaching")]
-    pub pipeline_caching: bool,
-    #[serde(rename = "cacheSize")]
-    pub cache_size: usize,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::MAX_TEXT_LENGTH;
 
-/// Response of `GET /v2/words`: the user dictionary, sorted.
-#[derive(Debug, Serialize)]
-pub struct WordsResponse {
-    pub words: Vec<String>,
-    pub offset: usize,
-    pub limit: Option<usize>,
-}
+    #[test]
+    fn languages_response_renames_long_code() {
+        let json = serde_json::to_value(LanguagesResponse {
+            name: "English (US)".to_string(),
+            code: "en".to_string(),
+            long_code: "en-US".to_string(),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"name": "English (US)", "code": "en", "longCode": "en-US"})
+        );
+    }
 
-/// Response of `POST`/`DELETE /v2/words`: outcome of one mutation.
-#[derive(Debug, Serialize)]
-pub struct WordMutationResponse {
-    pub status: String,
-    pub word: String,
-}
+    #[test]
+    fn version_response_renames_api_version() {
+        let json = serde_json::to_value(VersionResponse {
+            name: "OpenGrammar".to_string(),
+            version: "0.1.0".to_string(),
+            api_version: 2,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"name": "OpenGrammar", "version": "0.1.0", "apiVersion": 2})
+        );
+    }
 
-/// Response of `GET /v2/users/me`. The local server has no accounts, so it
-/// reports a single anonymous non-premium user (LT cloud requires auth here;
-/// this server intentionally does not).
-#[derive(Debug, Serialize)]
-pub struct UserInfoResponse {
-    pub id: u64,
-    #[serde(rename = "firstName")]
-    pub first_name: String,
-    #[serde(rename = "lastName")]
-    pub last_name: String,
-    pub email: Option<String>,
-    #[serde(rename = "isPremium")]
-    pub is_premium: bool,
-    #[serde(rename = "isAnonymous")]
-    pub is_anonymous: bool,
+    #[test]
+    fn info_response_renames_api_version_and_max_text_length() {
+        let json = serde_json::to_value(InfoResponse {
+            name: "OpenGrammar".to_string(),
+            version: "0.1.0".to_string(),
+            api_version: 2,
+            max_text_length: MAX_TEXT_LENGTH,
+            premium: false,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "name": "OpenGrammar",
+                "version": "0.1.0",
+                "apiVersion": 2,
+                "maxTextLength": MAX_TEXT_LENGTH,
+                "premium": false,
+            })
+        );
+    }
+
+    #[test]
+    fn max_text_length_response_renames_its_field() {
+        let json = serde_json::to_value(MaxTextLengthResponse {
+            max_text_length: MAX_TEXT_LENGTH,
+        })
+        .unwrap();
+        assert_eq!(json, serde_json::json!({"maxTextLength": MAX_TEXT_LENGTH}));
+    }
 }

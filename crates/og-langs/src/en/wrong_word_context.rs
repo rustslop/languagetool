@@ -17,21 +17,61 @@ struct ContextWordEntry {
     name2: String,
 }
 
-/// Rust port of LanguageTool's EnglishWrongWordInContextRule.
-/// Detects commonly confused words using context clues.
 pub struct WrongWordInContextRule {
     entries: Vec<ContextWordEntry>,
+    id: String,
+    description: String,
+    short_message: String,
+    long_message: String,
 }
 
 impl WrongWordInContextRule {
     pub fn new() -> Self {
-        let entries = Self::load_data(
-            &og_spell::read_lt_resource(
-                "en/src/main/resources/org/languagetool/rules/en/wrongWordInContext.txt",
-            )
-            .unwrap_or_default(),
-        );
-        Self { entries }
+        Self::for_language(
+            "ENGLISH_WRONG_WORD_IN_CONTEXT",
+            "Commonly confused words",
+            include_str!(
+                "../../../../languagetool/languagetool-language-modules/en/src/main/resources/org/languagetool/rules/en/wrongWordInContext.txt"
+            ),
+            "Possibly confused word: Did you mean '$SUGGESTION'?",
+            "Possibly confused word: Did you mean '$SUGGESTION' (= $EXPLANATION_SUGGESTION) instead of '$WRONGWORD' (= $EXPLANATION_WRONGWORD)?",
+        )
+    }
+
+    pub fn for_language(
+        id: &str,
+        description: &str,
+        data: &str,
+        short_message: &str,
+        long_message: &str,
+    ) -> Self {
+        let entries = Self::load_data(data);
+        Self {
+            entries,
+            id: id.to_string(),
+            description: description.to_string(),
+            short_message: short_message.to_string(),
+            long_message: long_message.to_string(),
+        }
+    }
+
+    fn render_message(
+        &self,
+        suggestion: &str,
+        wrong_word: &str,
+        explanation_suggestion: &str,
+        explanation_wrong_word: &str,
+    ) -> String {
+        let template = if explanation_suggestion.is_empty() || explanation_wrong_word.is_empty() {
+            &self.short_message
+        } else {
+            &self.long_message
+        };
+        template
+            .replace("$EXPLANATION_SUGGESTION", explanation_suggestion)
+            .replace("$EXPLANATION_WRONGWORD", explanation_wrong_word)
+            .replace("$SUGGESTION", suggestion)
+            .replace("$WRONGWORD", wrong_word)
     }
 
     fn load_data(data: &str) -> Vec<ContextWordEntry> {
@@ -111,11 +151,11 @@ impl Default for WrongWordInContextRule {
 
 impl Rule for WrongWordInContextRule {
     fn id(&self) -> &str {
-        "ENGLISH_WRONG_WORD_IN_CONTEXT"
+        &self.id
     }
 
     fn description(&self) -> &str {
-        "Commonly confused words"
+        &self.description
     }
 
     fn is_default_on(&self) -> bool {
@@ -137,7 +177,6 @@ impl Rule for WrongWordInContextRule {
         let mut matches = Vec::new();
 
         for entry in &self.entries {
-            // Quick pre-filter: check if either word's prefix is in the text
             if !text_lower.contains(&entry.match1.to_lowercase())
                 && !text_lower.contains(&entry.match2.to_lowercase())
             {
@@ -147,7 +186,6 @@ impl Rule for WrongWordInContextRule {
             let w1_match = word_match_positions(&entry.word1_re, &tokens);
             let w2_match = word_match_positions(&entry.word2_re, &tokens);
 
-            // Need exactly one word present
             if w1_match.is_empty() && w2_match.is_empty() {
                 continue;
             }
@@ -193,16 +231,13 @@ impl Rule for WrongWordInContextRule {
                 )
             };
 
-            // Check context: not_found's context should be present, found's context should NOT
             let sentence_text = text.to_string();
             let has_not_found_context = not_found_context.is_match(&sentence_text);
             let has_found_context = found_context.is_match(&sentence_text);
 
             if has_not_found_context && !has_found_context {
-                // Create suggestion by replacing the wrong part
                 let replacement = found_word.replace(&entry.match1[..], not_found_match);
                 let replacement = if replacement == found_word {
-                    // Try the other match string
                     let lowered = found_word.to_lowercase();
                     lowered.replace(
                         &entry.match2.to_lowercase()[..],
@@ -220,19 +255,14 @@ impl Rule for WrongWordInContextRule {
                 let start = tokens[found_idx].token().start();
                 let end = tokens[found_idx].token().end();
 
-                let message = if found_expl.is_empty() {
-                    format!("Possibly confused word: Did you mean '{}'?", replacement)
-                } else {
-                    format!(
-                        "Possibly confused word: Did you mean '{}' (= {}) instead of '{}' (= {})?",
-                        replacement, not_found_expl, found_word, found_expl
-                    )
-                };
+                let message =
+                    self.render_message(&replacement, found_word, not_found_expl, found_expl);
 
                 let rm_rule = RuleMatchRule::new(self.id(), self.description())
-                    .with_category(self.category());
+                    .with_category(self.category())
+                    .with_issue_type(self.issue_type().as_str());
 
-                let ctx_start = if start >= 40 { start - 40 } else { 0 };
+                let ctx_start = start.saturating_sub(40);
                 let ctx_end = std::cmp::min(end + 40, text.len());
                 let context_text = text[ctx_start..ctx_end].to_string();
 
@@ -254,9 +284,9 @@ impl Rule for WrongWordInContextRule {
     }
 }
 
-fn word_match_positions<'a>(
+fn word_match_positions(
     re: &Regex,
-    tokens: &[&'a og_core::AnalyzedTokenReadings],
+    tokens: &[&og_core::AnalyzedTokenReadings],
 ) -> Vec<(usize, usize)> {
     let mut result = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
@@ -317,7 +347,6 @@ mod tests {
         let rule = WrongWordInContextRule::new();
         let sentence = make_sentence("The beautiful statue is made of marble");
         let matches = rule.match_sentence(&sentence);
-        // "statue" with "marble" context is correct, should not trigger
         assert!(matches.is_empty() || !matches.iter().any(|m| m.message().contains("statue")));
     }
 }
