@@ -152,7 +152,7 @@ fn leerzeichen_job_ad_brackets_flag_on_the_second_sub_rule() {
 }
 
 #[test]
-fn leerzeichen_job_ad_divergences_pin_the_current_residue() {
+fn leerzeichen_job_ad_four_segment_markers_stay_silent_like_java() {
     let engine = shared_engine();
     for text in [
         "Wir suchen Lehrer(m/w/d/x) für eine Schule.",
@@ -160,13 +160,17 @@ fn leerzeichen_job_ad_divergences_pin_the_current_residue() {
     ] {
         assert!(
             leerzeichen_matches(&engine, text).is_empty(),
-            "{text}: Java's rule names '(m/w/d/x) in job ads' and its pattern carries four \
-             consecutive min=\"0\" tokens, so Java flags these; the Rust matcher's min=0 \
-             fast path skips an optional token whenever any later element matches at the \
-             position (pattern_rule.rs later_element_matches_at + the exclusive skip branch \
-             in match_token_element), so consuming BOTH optional slash/letter pairs never \
-             backtracks and the match dies — a shared-engine divergence to fix, then this \
-             pin must flip"
+            "{text}: Java does not flag 4-segment gender markers either, despite the rule \
+             name '(m/w), (m/w/d), (m/w/d/x) in job ads'. For a minOccurrence==0 element \
+             Java scans the later elements at the same position and skips exclusively — \
+             minOccurSkip++ then break, never exploring the consume branch even when the \
+             optional token itself matches (AbstractPatternRulePerformer.java:125-143); \
+             the element loop breaks on the first non-match with no backtracking and only \
+             reports at matchingTokens == patternSize (:167-171). The skip cascade drops \
+             both trailing optional '/[mwdfx]' pairs onto the second slash, so the ')' \
+             element dies at the third slash. pattern_rule.rs's min=0 fast path plus \
+             later_element_matches_at reproduces this exactly; adding consume-branch \
+             exploration here would diverge from Java, not fix a divergence"
         );
     }
 }
