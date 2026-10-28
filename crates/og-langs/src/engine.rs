@@ -65,6 +65,66 @@ impl XmlPatternRule {
         }
         self
     }
+
+    pub fn with_rule_recheck(
+        mut self,
+        support: Option<Arc<RecheckSupport>>,
+        tagger: Option<Arc<dyn og_tagger::Tagger>>,
+    ) -> Self {
+        if let Some(support) = support {
+            self.engine = self.engine.with_suppress_if_any_support(support, tagger);
+        }
+        self
+    }
+}
+
+struct RecheckState {
+    analyzer: Option<Checker>,
+    rules: Vec<Arc<dyn Rule>>,
+}
+
+pub struct RecheckSupport {
+    state: std::sync::Mutex<RecheckState>,
+}
+
+impl RecheckSupport {
+    fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new(RecheckState {
+                analyzer: None,
+                rules: Vec::new(),
+            }),
+        }
+    }
+
+    fn update(&self, analyzer: Checker, rules: Vec<Arc<dyn Rule>>) {
+        let mut state = self.state.lock().unwrap();
+        state.analyzer = Some(analyzer);
+        state.rules = rules;
+    }
+}
+
+impl og_rules::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
+    fn analyze_text(&self, text: &str) -> Vec<AnalyzedSentence> {
+        self.state
+            .lock()
+            .unwrap()
+            .analyzer
+            .as_ref()
+            .map(|checker| checker.analyze(text))
+            .unwrap_or_default()
+    }
+
+    fn rules_for_ids(&self, rule_ids: &[&str]) -> Vec<Arc<dyn Rule>> {
+        self.state
+            .lock()
+            .unwrap()
+            .rules
+            .iter()
+            .filter(|rule| rule_ids.contains(&rule.id()))
+            .cloned()
+            .collect()
+    }
 }
 
 impl Rule for XmlPatternRule {
@@ -110,6 +170,8 @@ pub struct LanguageEngine {
     synthesizer: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
     language_filters: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
+    recheck_support: Arc<RecheckSupport>,
+    recheck_tagger: Option<Arc<dyn og_tagger::Tagger>>,
     checker: Checker,
     language_filter: Arc<dyn og_core::match_filters::LanguageMatchFilter>,
     l2_rules: std::sync::Mutex<HashMap<String, Vec<Arc<dyn Rule>>>>,
@@ -139,6 +201,8 @@ impl LanguageEngine {
             synthesizer: None,
             suggestion_synth: None,
             language_filters: None,
+            recheck_support: Arc::new(RecheckSupport::new()),
+            recheck_tagger: None,
             checker,
             language_filter,
             l2_rules: std::sync::Mutex::new(HashMap::new()),
@@ -202,6 +266,8 @@ impl LanguageEngine {
             synthesizer: None,
             suggestion_synth: None,
             language_filters: None,
+            recheck_support: Arc::new(RecheckSupport::new()),
+            recheck_tagger: None,
             checker: Checker::new()
                 .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
                 .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
@@ -1022,6 +1088,13 @@ impl LanguageEngine {
                     engine.synthesizer.clone(),
                 ),
             ));
+            engine.recheck_tagger = crate::ca::tagger::CatalanTagger::shared_arc()
+                .map(|tagger| tagger as Arc<dyn og_tagger::Tagger>);
+        }
+        if short == "fr"
+            && let Some(tagger) = crate::fr::tagger::FrenchTagger::shared_arc()
+        {
+            engine.recheck_tagger = Some(tagger);
         }
 
         let rules_dir = lt_root.join(format!(
@@ -1644,7 +1717,11 @@ impl LanguageEngine {
                     self.synthesizer.clone(),
                     self.suggestion_synth.clone(),
                 )
-                .with_language_filter_hook(self.language_filters.clone()),
+                .with_language_filter_hook(self.language_filters.clone())
+                .with_rule_recheck(
+                    Some(self.recheck_support.clone()),
+                    self.recheck_tagger.clone(),
+                ),
             );
             self.rules.push(rule);
         }
@@ -1701,6 +1778,9 @@ impl LanguageEngine {
         if let Some(ref chunker) = self.post_chunker {
             checker = checker.with_post_chunker(chunker.clone());
         }
+
+        self.recheck_support
+            .update(checker.clone(), self.rules.clone());
         self.checker = checker;
     }
 

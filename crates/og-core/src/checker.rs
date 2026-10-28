@@ -130,6 +130,7 @@ pub trait Chunker: Send + Sync {
     fn add_chunk_tags(&self, sentence: &mut AnalyzedSentence);
 }
 
+#[derive(Clone)]
 pub struct Checker {
     sentence_tokenizer: Option<Arc<dyn SentenceTokenizer>>,
     word_tokenizer: Option<Arc<dyn WordTokenizer>>,
@@ -230,14 +231,7 @@ impl Checker {
     pub fn check(&self, request: &CheckRequest) -> CheckResult {
         let text = &request.text;
 
-        let sentence_ranges = if let Some(ref tokenizer) = self.sentence_tokenizer {
-            tokenizer.split(text)
-        } else {
-            vec![SentenceRange {
-                start: 0,
-                end: text.len(),
-            }]
-        };
+        let sentence_ranges = self.split_sentences(text);
 
         let mut all_matches: Vec<RuleMatch> = Vec::new();
         let mut analyzed_sentences = Vec::new();
@@ -245,51 +239,7 @@ impl Checker {
             std::collections::HashSet::new();
 
         for range in &sentence_ranges {
-            let sentence_text = text[range.start..range.end].to_string();
-            let mut sentence = AnalyzedSentence::new(&sentence_text, range.start, range.end);
-
-            if let Some(ref tokenizer) = self.word_tokenizer {
-                let mut tokens = tokenizer.tokenize(&sentence_text, range.start);
-                let start_token = AnalyzedTokenReadings::new(
-                    AnalyzedToken::new("<S>", range.start, range.start)
-                        .with_pos_tags(vec!["SENT_START".to_string()]),
-                );
-                tokens.insert(0, start_token);
-                sentence.set_tokens(tokens);
-            }
-
-            if let Some(ref tagger) = self.tagger {
-                let tokens = &mut sentence.tokens_mut();
-                tagger.tag(tokens);
-            }
-
-            if let Some(ref chunker) = self.chunker {
-                chunker.add_chunk_tags(&mut sentence);
-            }
-
-            {
-                let tokens = sentence.tokens_mut();
-                for i in (0..tokens.len()).rev() {
-                    if !tokens[i].is_whitespace() && !tokens[i].has_pos_tag("SENT_START") {
-                        if !tokens[i].has_pos_tag("SENT_END") {
-                            tokens[i].add_sent_end();
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if self.disambiguator.is_some() {
-                sentence.set_pre_disambiguation_tokens(sentence.tokens().to_vec());
-            }
-
-            if let Some(ref disambiguator) = self.disambiguator {
-                disambiguator.disambiguate(&mut sentence);
-            }
-
-            if let Some(ref chunker) = self.post_chunker {
-                chunker.add_chunk_tags(&mut sentence);
-            }
+            let sentence = self.analyze_range(text, range);
 
             let has_cat_filters = request.has_category_filters();
             for rule in &self.rules {
@@ -398,6 +348,75 @@ impl Checker {
             sentence_ranges: sentence_ranges_json,
             extended_sentence_ranges,
         }
+    }
+
+    pub fn analyze(&self, text: &str) -> Vec<AnalyzedSentence> {
+        let sentence_ranges = self.split_sentences(text);
+        sentence_ranges
+            .iter()
+            .map(|range| self.analyze_range(text, range))
+            .collect()
+    }
+
+    fn split_sentences(&self, text: &str) -> Vec<SentenceRange> {
+        if let Some(ref tokenizer) = self.sentence_tokenizer {
+            tokenizer.split(text)
+        } else {
+            vec![SentenceRange {
+                start: 0,
+                end: text.len(),
+            }]
+        }
+    }
+
+    fn analyze_range(&self, text: &str, range: &SentenceRange) -> AnalyzedSentence {
+        let sentence_text = text[range.start..range.end].to_string();
+        let mut sentence = AnalyzedSentence::new(&sentence_text, range.start, range.end);
+
+        if let Some(ref tokenizer) = self.word_tokenizer {
+            let mut tokens = tokenizer.tokenize(&sentence_text, range.start);
+            let start_token = AnalyzedTokenReadings::new(
+                AnalyzedToken::new("<S>", range.start, range.start)
+                    .with_pos_tags(vec!["SENT_START".to_string()]),
+            );
+            tokens.insert(0, start_token);
+            sentence.set_tokens(tokens);
+        }
+
+        if let Some(ref tagger) = self.tagger {
+            let tokens = &mut sentence.tokens_mut();
+            tagger.tag(tokens);
+        }
+
+        if let Some(ref chunker) = self.chunker {
+            chunker.add_chunk_tags(&mut sentence);
+        }
+
+        {
+            let tokens = sentence.tokens_mut();
+            for i in (0..tokens.len()).rev() {
+                if !tokens[i].is_whitespace() && !tokens[i].has_pos_tag("SENT_START") {
+                    if !tokens[i].has_pos_tag("SENT_END") {
+                        tokens[i].add_sent_end();
+                    }
+                    break;
+                }
+            }
+        }
+
+        if self.disambiguator.is_some() {
+            sentence.set_pre_disambiguation_tokens(sentence.tokens().to_vec());
+        }
+
+        if let Some(ref disambiguator) = self.disambiguator {
+            disambiguator.disambiguate(&mut sentence);
+        }
+
+        if let Some(ref chunker) = self.post_chunker {
+            chunker.add_chunk_tags(&mut sentence);
+        }
+
+        sentence
     }
 }
 

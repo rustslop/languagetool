@@ -11,6 +11,7 @@ pub mod postponed_adjective;
 pub mod pt_filters;
 pub mod ru_filters;
 pub mod spelling_support;
+pub mod suppress_if_any;
 pub mod text_level_rules;
 
 pub use native_rules::*;

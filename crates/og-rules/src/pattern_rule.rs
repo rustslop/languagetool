@@ -113,6 +113,8 @@ pub struct PatternRuleEngine {
     synthesizer: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
     language_filters: Option<std::sync::Arc<dyn crate::language_filter::LanguageFilterHook>>,
+    suppress_if_any: Option<std::sync::Arc<dyn crate::suppress_if_any::SuppressIfAnySupport>>,
+    suppress_if_any_tagger: Option<std::sync::Arc<dyn og_tagger::Tagger>>,
 }
 
 impl PatternRuleEngine {
@@ -124,7 +126,19 @@ impl PatternRuleEngine {
             synthesizer: None,
             suggestion_synth: None,
             language_filters: None,
+            suppress_if_any: None,
+            suppress_if_any_tagger: None,
         }
+    }
+
+    pub fn with_suppress_if_any_support(
+        mut self,
+        support: std::sync::Arc<dyn crate::suppress_if_any::SuppressIfAnySupport>,
+        tagger: Option<std::sync::Arc<dyn og_tagger::Tagger>>,
+    ) -> Self {
+        self.suppress_if_any = Some(support);
+        self.suppress_if_any_tagger = tagger;
+        self
     }
 
     pub fn with_language_filter_hook(
@@ -3162,6 +3176,15 @@ impl PatternRuleEngine {
             "org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter" => {
                 self.apply_multitoken_speller_filter(matched_positions, tokens, sentence, rm)
             }
+            "org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" => {
+                let parsed = self.resolve_java_filter_args(&filter.args, matched_texts);
+                let rule_ids: Vec<&str> = parsed
+                    .get("ruleIDs")
+                    .map(|ids| ids.split(',').collect())
+                    .unwrap_or_default();
+                let fast_only = parsed.get("fastOnly").map(String::as_str) == Some("true");
+                self.apply_suppress_if_any_rule_matches_filter(&rule_ids, fast_only, sentence, rm)
+            }
             "org.languagetool.rules.DateRangeChecker" => {
                 if self.apply_date_range_filter(&filter.args, matched_texts) {
                     Some(rm)
@@ -4163,6 +4186,24 @@ impl PatternRuleEngine {
             rm.set_replacements(kept);
             Some(rm)
         }
+    }
+
+    fn apply_suppress_if_any_rule_matches_filter(
+        &self,
+        rule_ids: &[&str],
+        fast_only: bool,
+        sentence: &AnalyzedSentence,
+        rm: RuleMatch,
+    ) -> Option<RuleMatch> {
+        let Some(support) = self.suppress_if_any.as_deref() else {
+            return Some(rm);
+        };
+        let Some(tagger) = self.suppress_if_any_tagger.as_deref() else {
+            return Some(rm);
+        };
+        crate::suppress_if_any::accept_rule_match(
+            support, tagger, rule_ids, fast_only, sentence, rm,
+        )
     }
 
     fn apply_multitoken_speller_filter(
@@ -7723,6 +7764,237 @@ mod tests {
             .map(|r| r.value())
             .collect();
         assert_eq!(reps, vec!["good"]);
+    }
+
+    struct RecheckTargetRule {
+        compiled: CompiledRule,
+        engine: PatternRuleEngine,
+    }
+
+    impl og_core::rule::Rule for RecheckTargetRule {
+        fn id(&self) -> &str {
+            &self.compiled.id
+        }
+
+        fn match_sentence(&self, sentence: &og_core::AnalyzedSentence) -> Vec<RuleMatch> {
+            self.engine.match_rule(&self.compiled, sentence)
+        }
+    }
+
+    struct RecheckSupport {
+        rules: Vec<std::sync::Arc<dyn og_core::rule::Rule>>,
+    }
+
+    impl crate::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
+        fn analyze_text(&self, text: &str) -> Vec<og_core::AnalyzedSentence> {
+            let mut sentence = make_analyzed_sentence(text);
+            for atr in sentence.tokens_mut() {
+                if atr.token().token() == "well" {
+                    let token = atr.token().clone();
+                    let analysis =
+                        og_core::AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["RBX".to_string()]);
+                    *atr.readings_mut() = vec![analysis];
+                }
+            }
+            vec![sentence]
+        }
+
+        fn rules_for_ids(&self, rule_ids: &[&str]) -> Vec<std::sync::Arc<dyn og_core::rule::Rule>> {
+            self.rules
+                .iter()
+                .filter(|rule| rule_ids.contains(&rule.id()))
+                .cloned()
+                .collect()
+        }
+    }
+
+    fn recheck_engine(target_xml: &str) -> PatternRuleEngine {
+        let compiler = XmlCompiler::new();
+        let rules: Vec<std::sync::Arc<dyn og_core::rule::Rule>> = compiler
+            .compile_file(target_xml)
+            .unwrap()
+            .rules
+            .into_iter()
+            .map(|compiled| {
+                std::sync::Arc::new(RecheckTargetRule {
+                    engine: PatternRuleEngine::new(),
+                    compiled,
+                }) as std::sync::Arc<dyn og_core::rule::Rule>
+            })
+            .collect();
+        PatternRuleEngine::new().with_suppress_if_any_support(
+            std::sync::Arc::new(RecheckSupport { rules }),
+            Some(std::sync::Arc::new(TableTagger)),
+        )
+    }
+
+    #[test]
+    fn suppress_if_any_filter_drops_match_when_target_rule_fires_on_replacement() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER" name="outer">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET"/>
+                <message>m</message>
+                <suggestion>baad</suggestion>
+            </rule>
+        </rules>"#;
+        assert!(
+            match_with_engine(&engine, xml, "the wxyd one").is_empty(),
+            "same-length space-free replacement takes the fast path: the matched token is \
+             re-tagged in place and TARGET fires at an overlapping position, so the whole \
+             match is suppressed (SuppressIfAnyRuleMatchesFilter.java:51-55)"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_keeps_match_when_target_stays_silent() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER" name="outer">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET"/>
+                <message>m</message>
+                <suggestion>good</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the wxyd one");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "good");
+    }
+
+    #[test]
+    fn suppress_if_any_filter_fast_path_uses_tagger_readings() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET_RB" name="target rb">
+                <pattern><token postag="RB"/></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let outer = |suggestion: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_RB" name="outer rb">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET_RB"/>
+                <message>m</message>
+                <suggestion>{suggestion}</suggestion>
+            </rule>
+        </rules>"#
+            )
+        };
+        assert!(
+            match_with_engine(&engine, &outer("well"), "the wxyd one").is_empty(),
+            "the fast path re-tags the replacement (well -> RB) so the postag target fires"
+        );
+        assert_eq!(
+            match_with_engine(&engine, &outer("good"), "the wxyd one").len(),
+            1,
+            "good tags JJ, the postag target stays silent and the match survives"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_fast_only_skips_the_exact_path() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET_RBX" name="target rbx">
+                <pattern><token postag="RBX"/></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let outer = |fast_only: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_FAST_ONLY" name="outer fast only">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET_RBX fastOnly:{fast_only}"/>
+                <message>m</message>
+                <suggestion>well</suggestion>
+            </rule>
+        </rules>"#
+            )
+        };
+        assert_eq!(
+            match_with_engine(&engine, &outer("true"), "the wxyd one").len(),
+            1,
+            "the fast path tags well -> RB, the RBX target stays silent, and with fastOnly \
+             the fast path is authoritative so the exact path never runs and the match fires \
+             (SuppressIfAnyRuleMatchesFilter.java:56-59)"
+        );
+        assert!(
+            match_with_engine(&engine, &outer("false"), "the wxyd one").is_empty(),
+            "without fastOnly the exact path re-analyzes the sentence and the re-analysis \
+             reading RBX makes the target veto the match"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_falls_back_to_exact_path_when_fast_path_cannot_apply() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_MULTI" name="outer multi">
+                <pattern>
+                    <marker><token>wxy</token><token>foo</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET fastOnly:true"/>
+                <message>m</message>
+                <suggestion>baad ok</suggestion>
+            </rule>
+        </rules>"#;
+        assert!(
+            match_with_engine(&engine, xml, "the wxy foo end").is_empty(),
+            "a space-containing replacement cannot take the fast path, so even fastOnly \
+             falls through to the exact path, which re-analyzes 'the baad ok end' and the \
+             target vetoes the match"
+        );
     }
 
     pub(super) fn make_analyzed_sentence(text: &str) -> og_core::AnalyzedSentence {
