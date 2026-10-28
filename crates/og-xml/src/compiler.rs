@@ -6,9 +6,9 @@ const REGEX_CACHE_SHARDS: usize = 16;
 
 pub type SharedRegex = std::sync::Arc<regex::Regex>;
 pub type SharedFancyRegex = std::sync::Arc<fancy_regex::Regex>;
-type RegexCacheShard = std::sync::Mutex<std::collections::HashMap<String, Option<SharedRegex>>>;
-type FancyRegexCacheShard =
-    std::sync::Mutex<std::collections::HashMap<String, Option<SharedFancyRegex>>>;
+type CacheShard<T> = std::sync::Mutex<std::collections::HashMap<String, Option<std::sync::Arc<T>>>>;
+type RegexCacheShard = CacheShard<regex::Regex>;
+type FancyRegexCacheShard = CacheShard<fancy_regex::Regex>;
 
 fn is_property_sequence(regexp: &str) -> bool {
     regexp.contains("\\p{Lu}") || regexp.contains("\\p{Ll}")
@@ -38,13 +38,19 @@ fn plain_fancy(pattern: &str) -> Option<fancy_regex::Regex> {
     fancy_regex::Regex::new(pattern).ok()
 }
 
+fn clear_shards<T>(shards: &[CacheShard<T>]) {
+    for shard in shards {
+        shard.lock().unwrap().clear();
+    }
+}
+
 pub fn shared_cached_regex(pattern: &str) -> Option<SharedRegex> {
     static PLAIN: std::sync::OnceLock<Vec<RegexCacheShard>> = std::sync::OnceLock::new();
     let shards = PLAIN.get_or_init(|| {
         register_regex_releaser(&PLAIN, || {
-            PLAIN
-                .get()
-                .map(|v| v.iter().for_each(|s| s.lock().unwrap().clear()));
+            if let Some(v) = PLAIN.get() {
+                clear_shards(v);
+            }
         });
         shard_vec()
     });
@@ -55,8 +61,9 @@ pub fn shared_cached_regex_ci(pattern: &str) -> Option<SharedRegex> {
     static CI: std::sync::OnceLock<Vec<RegexCacheShard>> = std::sync::OnceLock::new();
     let shards = CI.get_or_init(|| {
         register_regex_releaser(&CI, || {
-            CI.get()
-                .map(|v| v.iter().for_each(|s| s.lock().unwrap().clear()));
+            if let Some(v) = CI.get() {
+                clear_shards(v);
+            }
         });
         shard_vec()
     });
@@ -67,9 +74,9 @@ pub fn shared_cached_fancy_regex(pattern: &str) -> Option<SharedFancyRegex> {
     static FANCY: std::sync::OnceLock<Vec<FancyRegexCacheShard>> = std::sync::OnceLock::new();
     let shards = FANCY.get_or_init(|| {
         register_regex_releaser(&FANCY, || {
-            FANCY
-                .get()
-                .map(|v| v.iter().for_each(|s| s.lock().unwrap().clear()));
+            if let Some(v) = FANCY.get() {
+                clear_shards(v);
+            }
         });
         shard_vec()
     });
@@ -87,9 +94,7 @@ fn register_regex_releaser<T>(cell: &'static std::sync::OnceLock<T>, clear: fn()
 }
 
 fn lookup_or_build<T>(
-    shards: &'static [std::sync::Mutex<
-        std::collections::HashMap<String, Option<std::sync::Arc<T>>>,
-    >],
+    shards: &'static [CacheShard<T>],
     pattern: &str,
     build: fn(&str) -> Option<T>,
 ) -> Option<std::sync::Arc<T>>
@@ -2214,8 +2219,11 @@ fn regex_cache_release_clears_cached_compilations() {
 
 #[test]
 fn compiler_default_matches_new() {
+    fn default_of<T: Default>() -> T {
+        T::default()
+    }
     let xml = r#"<rules lang="en"><rule id="D" name="d"><pattern><token>t</token></pattern><message>m</message></rule></rules>"#;
-    let rs = XmlCompiler::default().compile_file(xml).unwrap();
+    let rs = default_of::<XmlCompiler>().compile_file(xml).unwrap();
     assert_eq!(rs.rules.len(), 1);
 }
 
@@ -2279,10 +2287,9 @@ mod surrogate_tests {
 
     #[test]
     fn compile_element_compiles_token_or_and_and_groups() {
-        let tok = |text: &str| {
-            let mut t = XmlPatternToken::default();
-            t.text = Some(text.to_string());
-            t
+        let tok = |text: &str| XmlPatternToken {
+            text: Some(text.to_string()),
+            ..Default::default()
         };
         let compiler = XmlCompiler::new();
         assert!(matches!(
