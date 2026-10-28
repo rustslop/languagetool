@@ -1,6 +1,7 @@
 pub mod de_comma_tagger;
 pub mod en_article;
 pub mod fr_suppress;
+pub mod language_filter;
 pub mod native_rules;
 pub mod pattern_rule;
 pub mod pattern_trace;

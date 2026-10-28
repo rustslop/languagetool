@@ -55,6 +55,16 @@ impl XmlPatternRule {
             category,
         }
     }
+
+    pub fn with_language_filter_hook(
+        mut self,
+        hook: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
+    ) -> Self {
+        if let Some(hook) = hook {
+            self.engine = self.engine.with_language_filter_hook(hook);
+        }
+        self
+    }
 }
 
 impl Rule for XmlPatternRule {
@@ -99,6 +109,7 @@ pub struct LanguageEngine {
     german_speller: Option<Arc<og_spell::GermanSpeller>>,
     synthesizer: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
+    language_filters: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
     checker: Checker,
     language_filter: Arc<dyn og_core::match_filters::LanguageMatchFilter>,
     l2_rules: std::sync::Mutex<HashMap<String, Vec<Arc<dyn Rule>>>>,
@@ -127,6 +138,7 @@ impl LanguageEngine {
             german_speller: None,
             synthesizer: None,
             suggestion_synth: None,
+            language_filters: None,
             checker,
             language_filter,
             l2_rules: std::sync::Mutex::new(HashMap::new()),
@@ -189,6 +201,7 @@ impl LanguageEngine {
             german_speller: None,
             synthesizer: None,
             suggestion_synth: None,
+            language_filters: None,
             checker: Checker::new()
                 .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
                 .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
@@ -998,6 +1011,14 @@ impl LanguageEngine {
             og_rules::postponed_adjective::LangSynthesizer::for_language(&resource_dir, &short)
                 .map(Arc::new);
         engine.suggestion_synth = engine.synthesizer.clone();
+        if short == "ca" {
+            engine.language_filters = Some(Arc::new(
+                crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
+                    crate::ca::tagger::CatalanTagger::shared_arc(),
+                    engine.synthesizer.clone(),
+                ),
+            ));
+        }
 
         let rules_dir = lt_root.join(format!(
             "{short}/src/main/resources/org/languagetool/rules/{short}"
@@ -1612,12 +1633,15 @@ impl LanguageEngine {
         let count = rule_set.rules.len();
         for mut compiled_rule in rule_set.rules {
             compiled_rule.source_file = source_file.map(str::to_string);
-            let rule = Arc::new(XmlPatternRule::with_resources(
-                compiled_rule,
-                self.spelling_support.clone(),
-                self.synthesizer.clone(),
-                self.suggestion_synth.clone(),
-            ));
+            let rule = Arc::new(
+                XmlPatternRule::with_resources(
+                    compiled_rule,
+                    self.spelling_support.clone(),
+                    self.synthesizer.clone(),
+                    self.suggestion_synth.clone(),
+                )
+                .with_language_filter_hook(self.language_filters.clone()),
+            );
             self.rules.push(rule);
         }
 

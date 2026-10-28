@@ -112,6 +112,7 @@ pub struct PatternRuleEngine {
     spelling: Option<std::sync::Arc<crate::spelling_support::SpellingSupport>>,
     synthesizer: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
+    language_filters: Option<std::sync::Arc<dyn crate::language_filter::LanguageFilterHook>>,
 }
 
 impl PatternRuleEngine {
@@ -122,7 +123,16 @@ impl PatternRuleEngine {
             spelling: None,
             synthesizer: None,
             suggestion_synth: None,
+            language_filters: None,
         }
+    }
+
+    pub fn with_language_filter_hook(
+        mut self,
+        hook: std::sync::Arc<dyn crate::language_filter::LanguageFilterHook>,
+    ) -> Self {
+        self.language_filters = Some(hook);
+        self
     }
 
     pub fn with_spelling_support(
@@ -3114,7 +3124,8 @@ impl PatternRuleEngine {
                 self.apply_valid_word_filter(&filter.args, matched_texts, rm)
             }
             "org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter"
-            | "org.languagetool.rules.nl.DutchSuppressMisspelledSuggestionsFilter" => {
+            | "org.languagetool.rules.nl.DutchSuppressMisspelledSuggestionsFilter"
+            | "org.languagetool.rules.ca.CatalanSuppressMisspelledSuggestionsFilter" => {
                 self.apply_suppress_misspelled_suggestions_filter(&filter.args, matched_texts, rm)
             }
             "org.languagetool.rules.fr.FrenchSuppressMisspelledSuggestionsFilter" => {
@@ -3211,7 +3222,24 @@ impl PatternRuleEngine {
                     synthesizer: self.synthesizer.as_deref(),
                 },
             ),
-            _ => Some(rm),
+            _ => match &self.language_filters {
+                Some(hook) => {
+                    let args = self.resolve_java_filter_args(&filter.args, matched_texts);
+                    hook.apply_filter(
+                        crate::language_filter::LanguageFilterCall {
+                            class: filter.class.as_str(),
+                            args: &args,
+                            matched_texts,
+                            matched_positions,
+                            element_positions,
+                            tokens,
+                            sentence,
+                        },
+                        rm,
+                    )
+                }
+                None => Some(rm),
+            },
         }
     }
 

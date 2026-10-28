@@ -1,6 +1,7 @@
 pub mod apostophation;
 pub mod consumers;
 pub mod convert_gender_number;
+pub mod dispatch;
 pub mod en_no_infinitiu;
 pub mod portar_gerundi;
 pub mod possessius_redundants;
