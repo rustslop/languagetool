@@ -842,7 +842,7 @@ mod tests {
         );
         let dict = std::sync::Arc::new(Dictionary::new());
         let en_support = SpellingSupport::new_for_language(dict, core, en, "en");
-        assert!(!en_support.multitoken_suggestions("zzz", false).is_empty() || true);
+        let _ = en_support.multitoken_suggestions("zzz", false);
         let base = SpellingSupport::new_for_language(
             std::sync::Arc::new(Dictionary::new()),
             core,

@@ -1662,6 +1662,8 @@ mod tests {
     use super::*;
     use og_core::{RuleMatchContext, RuleMatchRule};
 
+    type Case<'a> = (Vec<AnalyzedTokenReadings>, usize, Option<Vec<&'a str>>);
+
     fn pl_synth() -> Option<LangSynthesizer> {
         let dir = std::path::Path::new(
             "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/pl/src/main/resources/org/languagetool/resource/pl",
@@ -1998,7 +2000,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let pueblo = vec![
+        let pueblo = [
             tagged("La", "el", &["DA0FS0"]),
             tagged("casa", "casa", &["NCFS000"]),
             tagged("del", "del", &["SPS00"]),
@@ -2011,7 +2013,7 @@ mod tests {
             values_of(&out),
             vec!["blanco".to_string(), "blanca".to_string()]
         );
-        let casas = vec![
+        let casas = [
             tagged("Son", "ser", &["VMIP3P0"]),
             tagged("casas", "casa", &["NCFP000"]),
             tagged("rojos", "rojo", &["AQ0MP0"]),
@@ -2019,7 +2021,7 @@ mod tests {
         let refs: Vec<&AnalyzedTokenReadings> = casas.iter().collect();
         let out = accept_es(Some(&synth), "key:value", &[2], &refs, rm_for("x")).expect("kept");
         assert_eq!(values_of(&out), vec!["rojas".to_string()]);
-        let lujosa = vec![
+        let lujosa = [
             tagged("en", "en", &["SPS00"]),
             tagged("un", "uno", &["DI0MS0"]),
             tagged("restaurante", "restaurante", &["NCMS000"]),
@@ -2036,7 +2038,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("Disculpe", "disculpar", &["VMSP3S0"]),
             tagged("el", "el", &["DA0MS0"]),
             tagged("retraso", "retraso", &["NCMS000"]),
@@ -2054,11 +2056,11 @@ mod tests {
 
     #[test]
     fn es_without_positions_or_synthesizer_keeps_or_drops_the_match() {
-        let tokens = vec![tagged("casa", "casa", &["NCFS000"])];
+        let tokens = [tagged("casa", "casa", &["NCFS000"])];
         let refs: Vec<&AnalyzedTokenReadings> = tokens.iter().collect();
         assert!(accept_es(None, "key:value", &[], &refs, rm_for("x")).is_none());
         assert!(accept_es(None, "key:value", &[0], &refs, rm_for("x")).is_none());
-        let lujosa = vec![
+        let lujosa = [
             tagged("en", "en", &["SPS00"]),
             tagged("un", "uno", &["DI0MS0"]),
             tagged("restaurante", "restaurante", &["NCMS000"]),
@@ -2076,7 +2078,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let maison = vec![
+        let maison = [
             tagged("la", "le", &["D f s"]),
             tagged("maison", "maison", &["N f s"]),
             tagged("bleu", "bleu", &["J m s"]),
@@ -2157,7 +2159,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let cases: Vec<(Vec<AnalyzedTokenReadings>, usize, Option<Vec<&str>>)> = vec![
+        let cases: Vec<Case> = vec![
             (
                 vec![
                     tagged("un", "uno", &["DD0CS0"]),
@@ -2250,7 +2252,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let cases: Vec<(Vec<AnalyzedTokenReadings>, usize, Option<Vec<&str>>)> = vec![
+        let cases: Vec<Case> = vec![
             (
                 vec![
                     tagged("x", "x", &["UNKNOWN"]),
@@ -2396,7 +2398,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let cases: Vec<(Vec<AnalyzedTokenReadings>, usize, Option<Vec<&str>>)> = vec![
+        let cases: Vec<Case> = vec![
             (
                 vec![
                     tagged("el", "el", &["DD0CS0"]),
@@ -2445,7 +2447,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let comma_run = vec![
+        let comma_run = [
             tagged("cosa", "cosa", &["NCFS000"]),
             tagged(",", ",", &["_PUNCT"]),
             tagged("libros", "libro", &["NCMP000"]),
@@ -2460,7 +2462,7 @@ mod tests {
             ),
         }
 
-        let adverbial = vec![
+        let adverbial = [
             tagged("x", "x", &["UNKNOWN"]),
             tagged("libro", "libro", &["NCMS000"]),
             tagged("muy", "muy", &["RG_before"]),
@@ -2470,7 +2472,7 @@ mod tests {
         let out = accept_es(Some(&synth), "key:value", &[3], &refs, rm_for("x")).expect("kept");
         assert_eq!(values_of(&out), vec!["blanco".to_string()]);
 
-        let locative = vec![
+        let locative = [
             tagged("x", "x", &["UNKNOWN"]),
             tagged("libro", "libro", &["NCMS000"]),
             tagged("muy", "muy", &["RG_LOC_ADV"]),
@@ -2481,7 +2483,7 @@ mod tests {
         let out = accept_es(Some(&synth), "key:value", &[4], &refs, rm_for("x")).expect("kept");
         assert_eq!(values_of(&out), vec!["negro".to_string()]);
 
-        let stop = vec![
+        let stop = [
             tagged("x", "x", &["UNKNOWN"]),
             tagged("libro", "libro", &["NCMS000"]),
             tagged("y", "y", &["CC"]),
@@ -2492,7 +2494,7 @@ mod tests {
         let refs: Vec<&AnalyzedTokenReadings> = stop.iter().collect();
         assert!(accept_es(Some(&synth), "key:value", &[5], &refs, rm_for("x")).is_none());
 
-        let jump = vec![
+        let jump = [
             tagged("casa", "casa", &["NCFS000"]),
             tagged("de", "de", &["SPS00"]),
             tagged("libro", "libro", &["NCMS000"]),
@@ -2517,7 +2519,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let cases: Vec<(Vec<AnalyzedTokenReadings>, usize, Option<Vec<&str>>)> = vec![
+        let cases: Vec<Case> = vec![
             (
                 vec![
                     tagged("un", "un", &["D e s"]),
@@ -2686,7 +2688,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let d_environ = vec![
+        let d_environ = [
             tagged("lit", "lit", &["N m s"]),
             tagged("et", "et", &["C c"]),
             tagged("d'", "de", &["P"]),
@@ -2701,7 +2703,7 @@ mod tests {
             "the d'environ exception opens a new level even behind a coordination"
         );
 
-        let deux_ou_plus = vec![
+        let deux_ou_plus = [
             tagged("deux", "deux", &["D e p"]),
             tagged("ou", "ou", &["C c"]),
             tagged("plus", "plus", &["A"]),
@@ -2713,7 +2715,7 @@ mod tests {
             "'deux ou plus' must not count the numeral as a concordance determiner"
         );
 
-        let sans_synth = vec![
+        let sans_synth = [
             tagged("il", "il", &["PRO"]),
             tagged("maison", "maison", &["N f s"]),
             tagged("bleu", "bleu", &["J m s"]),
@@ -2732,7 +2734,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("La", "el", &["DA0FS0"]),
             tagged("de", "de", &["SPS00"]),
             tagged(",", ",", &["Fx"]),
@@ -2753,7 +2755,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("El", "el", &["DA0MS0"]),
             tagged("corre", "correr", &["VMIP3P0"]),
             tagged("y", "y", &["CC"]),
@@ -2800,7 +2802,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("La", "el", &["DA0FS0"]),
             tagged("casa", "casa", &["NCFS000"]),
             tagged("corre", "correr", &["VMIP3S0"]),
@@ -2818,7 +2820,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "es") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("En", "en", &["SPS00"]),
             tagged("en", "en", &["SPS00"]),
             tagged("un", "uno", &["DI0MS0"]),
@@ -2834,7 +2836,7 @@ mod tests {
 
     #[test]
     fn es_out_of_range_match_position_rejects() {
-        let tokens = vec![tagged("casa", "casa", &["NCFS000"])];
+        let tokens = [tagged("casa", "casa", &["NCFS000"])];
         let refs: Vec<&AnalyzedTokenReadings> = tokens.iter().collect();
         assert!(accept_es(None, "key:value", &[7], &refs, rm_for("x")).is_none());
     }
@@ -2845,7 +2847,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("Les", "le", &["D e p"]),
             tagged("chats", "chat", &["N m p"]),
             tagged(".", ".", &["N m p"]),
@@ -2864,7 +2866,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("Le", "le", &["D m s"]),
             tagged("chat", "chat", &["N m s"]),
             tagged("jolie", "joli", &["J f sp"]),
@@ -2880,7 +2882,7 @@ mod tests {
         let Some(synth) = LangSynthesizer::for_language(&dir, "fr") else {
             return;
         };
-        let tokens = vec![
+        let tokens = [
             tagged("Les", "le", &["D f p"]),
             tagged("deux", "deux", &["D f p"]),
             tagged("ou", "ou", &["C c"]),
@@ -2896,7 +2898,7 @@ mod tests {
 
     #[test]
     fn fr_com_token_updates_no_apparitions() {
-        let tokens = vec![
+        let tokens = [
             tagged("Le", "le", &["D m s"]),
             tagged("com", "com", &["D m p"]),
             tagged("restaurant", "restaurant", &["N m s"]),
@@ -2909,7 +2911,7 @@ mod tests {
 
     #[test]
     fn fr_out_of_range_match_position_rejects() {
-        let tokens = vec![tagged("maison", "maison", &["N f s"])];
+        let tokens = [tagged("maison", "maison", &["N f s"])];
         let refs: Vec<&AnalyzedTokenReadings> = tokens.iter().collect();
         assert!(accept_fr(None, "key:value", &[9], &refs, rm_for("x")).is_none());
     }

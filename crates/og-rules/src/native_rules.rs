@@ -1295,9 +1295,9 @@ mod tests {
     fn uppercase_sentence_start_rule_skips_protected_starts() {
         let rule = UppercaseSentenceStartRule::new();
         assert!(
-            rule.match_sentence(&make_sentence_with_start("a fine day it is ."))
-                .len()
-                > 0,
+            !rule
+                .match_sentence(&make_sentence_with_start("a fine day it is ."))
+                .is_empty(),
             "lowercase sentence start is flagged"
         );
         for text in [

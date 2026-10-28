@@ -7733,9 +7733,7 @@ mod tests {
     fn suppress_misspelled_suggestions_filter_skips_postag_checks_without_tagger() {
         use crate::spelling_support::SpellingSupport;
         let mut dict = og_spell::Dictionary::new();
-        for w in ["good"] {
-            dict.add_word(w);
-        }
+        dict.add_word("good");
         let support = SpellingSupport::new(dict, "");
         let engine = PatternRuleEngine::new().with_spelling_support(std::sync::Arc::new(support));
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -8048,7 +8046,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn xml_compiler_token_regex_word_class_is_ascii() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="en">
@@ -8070,6 +8067,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn immunized_tokens_are_invisible_to_pattern_rules() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="de">
@@ -8255,7 +8253,7 @@ mod tests {
         let prefix = "é".repeat(30);
         let suffix = "é".repeat(30);
         let text = format!("{prefix} cat {suffix}");
-        let matches = compile_and_match(&xml, &text);
+        let matches = compile_and_match(xml, &text);
         assert_eq!(matches.len(), 1);
         let context = matches[0].context();
         assert!(context.text().starts_with('é'), "{}", context.text());
@@ -11650,7 +11648,7 @@ mod unify_tests {
     #[test]
     fn russian_partial_tag_check_uses_the_shared_tagger() {
         let matched = vec!["стол".to_string()];
-        fn make<'a>(args: &'a str) -> HashMap<&'a str, String> {
+        fn make(args: &str) -> HashMap<&str, String> {
             args.split_whitespace()
                 .filter_map(|part| part.split_once(':'))
                 .map(|(k, v)| (k, v.to_string()))
