@@ -6,7 +6,8 @@ const REGEX_CACHE_SHARDS: usize = 16;
 
 pub type SharedRegex = std::sync::Arc<regex::Regex>;
 pub type SharedFancyRegex = std::sync::Arc<fancy_regex::Regex>;
-type CacheShard<T> = std::sync::Mutex<std::collections::HashMap<String, Option<std::sync::Arc<T>>>>;
+type CacheShard<T> =
+    std::sync::Mutex<std::collections::HashMap<String, Option<std::sync::Weak<T>>>>;
 type RegexCacheShard = CacheShard<regex::Regex>;
 type FancyRegexCacheShard = CacheShard<fancy_regex::Regex>;
 
@@ -102,14 +103,22 @@ where
     T: Send + Sync + 'static,
 {
     let shard = &shards[shard_index(pattern, REGEX_CACHE_SHARDS)];
-    if let Some(hit) = shard.lock().unwrap().get(pattern) {
-        return hit.clone();
+    if let Ok(guard) = shard.lock() {
+        match guard.get(pattern) {
+            None => {}
+            Some(None) => return None,
+            Some(Some(weak)) => {
+                if let Some(hit) = weak.upgrade() {
+                    return Some(hit);
+                }
+            }
+        }
     }
     let built = build(pattern).map(std::sync::Arc::new);
-    shard
-        .lock()
-        .unwrap()
-        .insert(pattern.to_string(), built.clone());
+    let cached = built.as_ref().map(std::sync::Arc::downgrade);
+    if let Ok(mut guard) = shard.lock() {
+        guard.insert(pattern.to_string(), cached);
+    }
     built
 }
 
