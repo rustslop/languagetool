@@ -12,8 +12,8 @@ pub use registry::*;
 #[unsafe(link_section = ".init_array")]
 #[used]
 static BOUND_TEST_ALLOCATOR: extern "C" fn() = {
-    // glibc's dynamic mmap threshold funnels freed multi-MB dictionaries back into
-    // per-thread arenas; malloc_trim cannot return those pages and long runs OOM.
+    // glibc's dynamic mmap threshold funnels freed multi-MB dictionary and rule
+    // allocations back into per-thread arenas; malloc_trim cannot return those pages.
     extern "C" fn bound() {
         unsafe {
             libc::mallopt(libc::M_ARENA_MAX, 6);
@@ -41,18 +41,38 @@ pub(crate) fn release_guard() -> impl Drop {
                 .checked_sub(ENGINE_IDLE_GRACE)
                 .map_or(self.acquired, |floor| self.acquired.max(floor));
             let freed = og_core::releasable::release_unused_since(keep_used_since);
+            let evicted = og_core::releasable::evict_lru_until_rss_below(
+                test_rss_budget(),
+                Some(self.acquired),
+            );
             #[cfg(target_os = "linux")]
-            if freed > 0 && og_core::releasable::trim_due(TRIM_INTERVAL) {
+            if (freed > 0 || evicted > 0) && og_core::releasable::trim_due(TRIM_INTERVAL) {
                 unsafe {
                     libc::malloc_trim(0);
                 }
             }
         }
     }
+    let budget = test_rss_budget();
+    og_core::releasable::set_eviction_budget_bytes(budget);
     ReleaseOnDrop {
         _heavy: og_core::releasable::heavy_guard(),
         acquired: std::time::Instant::now(),
     }
+}
+
+#[cfg(test)]
+fn test_rss_budget() -> usize {
+    const DEFAULT_BUDGET_MB: usize = 2048;
+    static BUDGET: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| {
+        let mb = std::env::var("OG_LANGS_TEST_RSS_BUDGET_MB")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|&mb| mb > 0)
+            .unwrap_or(DEFAULT_BUDGET_MB);
+        mb.saturating_mul(1024 * 1024)
+    })
 }
 
 pub(crate) fn weak_shared<T>(

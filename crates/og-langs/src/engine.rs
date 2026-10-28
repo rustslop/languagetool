@@ -226,8 +226,8 @@ impl LanguageEngine {
         if let Some(hit) = og_core::releasable::shared_probe(cell) {
             return Some(hit);
         }
-        let _heavy = og_core::releasable::heavy_guard();
         og_core::releasable::shared_get_or_build(cell, || {
+            let _heavy = og_core::releasable::heavy_guard();
             trim_released_engine_pages();
             match code {
                 "en" => Some(Self::english()),

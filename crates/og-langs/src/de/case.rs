@@ -1827,7 +1827,11 @@ mod tests {
     }
 
     fn case_matches(text: &str) -> Vec<(String, usize, String)> {
-        shared_engine()
+        case_matches_with(&shared_engine(), text)
+    }
+
+    fn case_matches_with(engine: &LanguageEngine, text: &str) -> Vec<(String, usize, String)> {
+        engine
             .check(text)
             .matches
             .iter()
@@ -1848,6 +1852,7 @@ mod tests {
     #[test]
     fn java_good_sentences_stay_clean() {
         use rayon::prelude::*;
+        let engine = shared_engine();
         let offenders: Vec<String> = [
             "(Dauer, Raum, Anwesende)",
             "Es gibt wenige Befragte.",
@@ -2025,7 +2030,7 @@ mod tests {
         ]
         .into_par_iter()
         .filter_map(|text| {
-            let matches = case_matches(text);
+            let matches = case_matches_with(&engine, text);
             (!matches.is_empty()).then(|| format!("{text}: got {matches:?}"))
         })
         .collect();
@@ -2035,6 +2040,7 @@ mod tests {
     #[test]
     fn java_bad_sentences_flag_exactly_once() {
         use rayon::prelude::*;
+        let engine = shared_engine();
         let offenders: Vec<String> = [
             "Während des Hochwassers den Eingeschlossenen Menschen Nahrung bringen",
             "Während Gefragte Menschen antworteten.",
@@ -2113,7 +2119,7 @@ mod tests {
         ]
         .into_par_iter()
         .filter_map(|text| {
-            let matches = case_matches(text);
+            let matches = case_matches_with(&engine, text);
             (matches.len() != 1).then(|| {
                 format!(
                     "{text}: Java CaseRuleTest expects exactly one DE_CASE match, got {matches:?}"

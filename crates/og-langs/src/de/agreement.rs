@@ -1911,6 +1911,13 @@ mod tests {
 
     fn agreement_family(text: &str) -> Vec<(String, usize, Vec<String>)> {
         let engine = LanguageEngine::shared_for_code("de").expect("german engine");
+        agreement_family_with(&engine, text)
+    }
+
+    fn agreement_family_with(
+        engine: &LanguageEngine,
+        text: &str,
+    ) -> Vec<(String, usize, Vec<String>)> {
         engine
             .check(text)
             .matches
@@ -1934,6 +1941,7 @@ mod tests {
     #[test]
     fn java_good_sentences_stay_clean() {
         use rayon::prelude::*;
+        let engine = LanguageEngine::shared_for_code("de").expect("german engine");
         let offenders: Vec<String> = [
             "Bis zur Anfang Juni geplanten Eröffnung gebe es noch einiges zu tun.",
             "Der fließend Französisch sprechende Präsident dankt stilvoll ab.",
@@ -1991,7 +1999,7 @@ mod tests {
         ]
         .into_par_iter()
         .filter_map(|text| {
-            let matches = agreement_family(text);
+            let matches = agreement_family_with(&engine, text);
             (!matches.is_empty()).then(|| format!("{text}: got {matches:?}"))
         })
         .collect();
