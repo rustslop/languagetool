@@ -1,8 +1,6 @@
 use std::cell::RefCell;
 
-use og_core::{
-    AnalyzedToken, AnalyzedTokenReadings, RuleMatch, RuleMatchContext, RuleMatchRule,
-};
+use og_core::{AnalyzedToken, AnalyzedTokenReadings, RuleMatch, RuleMatchContext, RuleMatchRule};
 
 use super::apostophation::{
     all_need_same_apostrophation_ms, get_preposition_and_determiner, needs_apostrophation_ms,
@@ -397,12 +395,18 @@ fn lemma_replace_skips_sentence_end_only_readings() {
             .with_pos_tags(vec!["NCMS000".to_string()]),
     ];
     let matched = matched_lemma_and_postag(&readings, &wrong);
-    assert_eq!(matched, Some(("dia", "NCMS000")));
+    assert_eq!(matched, Some(("dia", Some("NCMS000"))));
     let only_end = vec![readings[0].clone()];
     assert_eq!(matched_lemma_and_postag(&only_end, &wrong), None);
     let mut end_key = std::collections::HashMap::new();
     end_key.insert("?".to_string(), vec!["x".to_string()]);
     assert_eq!(matched_lemma_and_postag(&only_end, &end_key), None);
+    let no_postag = vec![AnalyzedToken::new("dia", 0, 3).with_lemma("dia")];
+    assert_eq!(
+        matched_lemma_and_postag(&no_postag, &wrong),
+        Some(("dia", None)),
+        "a lemma reading without a POSTag is not a SENT_END reading and still matches"
+    );
 }
 
 #[test]

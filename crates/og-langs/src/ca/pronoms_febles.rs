@@ -257,11 +257,6 @@ const INCORRECT_ORDERS: &[(&str, &str)] = &[
     ("s'en", "se'n"),
 ];
 
-#[allow(dead_code)]
-static APOSTROPHE_NEEDED: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new("(?i)^h?[aeiou\u{00e0}\u{00e8}\u{00e9}\u{00ed}\u{00f2}\u{00f3}\u{00fa}].*$")
-        .unwrap()
-});
 static APOSTROPHE_NEEDED_END: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new("(?i)^.*[aei]$").unwrap());
 
@@ -299,19 +294,7 @@ fn eq_ignore_case(a: &str, b: &str) -> bool {
 
 #[allow(dead_code)]
 pub(crate) fn transform_davant(input_pronom: &str, next_word: &str) -> String {
-    let next_lower = next_word.to_lowercase();
-    if APOSTROPHE_NEEDED.is_match(&next_lower) {
-        return transform(input_pronom, PronounPosition::DavantApos);
-    }
-    let pronom = transform(input_pronom, PronounPosition::Davant);
-    if pronom == "es "
-        && (next_lower.starts_with('s')
-            || next_lower.starts_with("ce")
-            || next_lower.starts_with("ci"))
-    {
-        return "se ".to_string();
-    }
-    pronom
+    crate::ca_filter_semantics_delta::pronoms_davant::transform_davant(input_pronom, next_word)
 }
 
 pub(crate) fn transform_darrere(input_pronom: &str, previous_word: &str) -> String {
