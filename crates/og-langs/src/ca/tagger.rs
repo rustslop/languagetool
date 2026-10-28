@@ -732,7 +732,12 @@ mod tests {
     }
 
     fn fixture_tagger() -> CatalanTagger {
-        let base = std::env::temp_dir().join(format!("og-ca-tagger-{}", std::process::id()));
+        // Parallel tests rewrite these files, so each thread needs its own directory.
+        let base = std::env::temp_dir().join(format!(
+            "og-ca-tagger-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let resource_dir = base.join("resource/ca");
         let rules_dir = base.join("rules/ca");
         std::fs::create_dir_all(&resource_dir).unwrap();
