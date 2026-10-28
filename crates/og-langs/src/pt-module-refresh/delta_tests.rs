@@ -12,8 +12,9 @@ fn rules_dir() -> PathBuf {
 
 fn compile_rules_file(path: &Path) -> Vec<CompiledRule> {
     let xml = std::fs::read_to_string(path).expect("rules xml");
+    let expanded = super::entity_resolution::expand_lt_entities(&xml);
     XmlCompiler::new()
-        .compile_file_with_base(&xml, path.parent())
+        .compile_file_with_base(&expanded, path.parent())
         .expect("compile rules xml")
         .rules
 }
@@ -29,17 +30,43 @@ fn extract_marker(text: &str) -> (String, Option<(usize, usize)>) {
 }
 
 fn check_rule_examples(path: &Path, rule_id: &str) -> Vec<String> {
+    check_rules_examples(path, &[rule_id])
+}
+
+fn check_rules_examples(path: &Path, rule_ids: &[&str]) -> Vec<String> {
     let rules = compile_rules_file(path);
-    let targets: Vec<&CompiledRule> = rules.iter().filter(|r| r.id == rule_id).collect();
-    assert!(
-        !targets.is_empty(),
-        "{rule_id} must be compiled from {}",
-        path.display()
-    );
+    for rule_id in rule_ids {
+        assert!(
+            rules.iter().any(|r| r.id == *rule_id),
+            "{rule_id} must be compiled from {}",
+            path.display()
+        );
+    }
     let engine = suite_engine();
     let synthesizer = suite_synthesizer();
     let pipeline = PortuguesePipeline::shared();
     og_rules::pattern_rule::set_test_date_hack(true);
+    let mut failures = Vec::new();
+    for rule_id in rule_ids {
+        failures.extend(check_compiled_rule_examples(
+            &rules,
+            rule_id,
+            &engine,
+            synthesizer.as_ref(),
+            &pipeline,
+        ));
+    }
+    failures
+}
+
+fn check_compiled_rule_examples(
+    rules: &[CompiledRule],
+    rule_id: &str,
+    engine: &og_rules::pattern_rule::PatternRuleEngine,
+    synthesizer: Option<&og_rules::postponed_adjective::LangSynthesizer>,
+    pipeline: &PortuguesePipeline,
+) -> Vec<String> {
+    let targets: Vec<&CompiledRule> = rules.iter().filter(|r| r.id == rule_id).collect();
     let mut failures = Vec::new();
     for rule in &targets {
         let pt_filter = rule.filter.as_ref().filter(|f| is_pt_filter(&f.class));
@@ -51,14 +78,9 @@ fn check_rule_examples(path: &Path, rule_id: &str) -> Vec<String> {
                     let tokens: Vec<_> = sentence.non_whitespace_tokens();
                     for m in engine.match_rule(aux, &sentence) {
                         let Some(mut m) = (match pt_filter {
-                            Some(filter) => apply_suite_filter(
-                                aux,
-                                filter,
-                                &sentence,
-                                &tokens,
-                                synthesizer.as_ref(),
-                                m,
-                            ),
+                            Some(filter) => {
+                                apply_suite_filter(aux, filter, &sentence, &tokens, synthesizer, m)
+                            }
                             None => Some(m),
                         }) else {
                             continue;
@@ -450,4 +472,155 @@ fn mais_reduzida_inferior_is_now_a_plain_rule() {
     );
     let failures = check_rule_examples(&rules_dir().join("style.xml"), "MAIS_REDUZIDA_INFERIOR");
     assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn entity_expansion_restores_the_previously_divergent_families() {
+    let failures = check_rules_examples(
+        &rules_dir().join("pt-PT/grammar.xml"),
+        &[
+            "CONTRAÇÃO_DO_DE_O_INFINITIVO_PT_PT",
+            "CONTRAÇÃO_EM_UM_NUM_PT_PT",
+            "PARONYM_PREMIO_PRÉMIO_PT",
+            "AO90_HAVER_DE",
+            "ARTICLES_PRECEDING_LOCATIONS",
+            "AO90_ACCENTUATED_PREFIXES",
+            "PRECISAR_DE_PT_PT_V2",
+            "INVARIABLE_NOUNS",
+            "CURRENCY_PLACEMENT_PT_FOREIGN",
+            "AO90_CARDINAL_POINTS_CASING",
+            "ZERO_IN_DAYS_OF_THE_MONTH",
+            "SEQUER_WITHOUT_NEGATIVE",
+            "CURRENCY_SPACE_PT_FOREIGN",
+            "CRIAR_QUERER",
+        ],
+    );
+    assert!(failures.is_empty(), "{failures:?}",);
+}
+
+#[test]
+fn pt_pt_antipattern_example_surface_is_java_sized() {
+    let xml = std::fs::read_to_string(rules_dir().join("pt-PT/grammar.xml")).expect("xml");
+    let antipattern = crate::pt::example_suite::collect_style_antipattern_examples(
+        &crate::pt::example_suite::strip_xml_comments_pub(&xml),
+    );
+    let total: usize = antipattern.by_key.values().map(Vec::len).sum();
+    assert_eq!(
+        total, 3069,
+        "593 raw antipattern examples expand to 3069 evaluations because group-level examples \
+         attach to every sub-rule key like Java's prepareRule (PatternRuleHandler.java:858-866)"
+    );
+    assert_eq!(
+        antipattern
+            .by_key
+            .keys()
+            .filter(|(_, s)| s.is_none())
+            .count(),
+        4
+    );
+    assert_eq!(
+        antipattern
+            .by_key
+            .keys()
+            .filter(|(_, s)| s.is_some())
+            .count(),
+        52
+    );
+}
+
+#[test]
+fn pt_pt_residue_dict_evidence() {
+    let tagger = PortugueseTagger::shared_arc().expect("tagger");
+    let desses: Vec<String> = tagger
+        .lookup("desses")
+        .iter()
+        .map(|(_, tag)| tag.to_string())
+        .collect();
+    assert!(
+        desses.iter().any(|t| t == "SPS00+*"),
+        "the pinned dict truncates the de+esses contraction chain: {desses:?}"
+    );
+    assert!(
+        !desses.iter().any(|t| t.starts_with("PD")),
+        "without a PD reading the VERBO_HIFENIZADOR_VERBOS_2 antipattern element \
+         PD.+|SPS00:PD.+ can never fire, so its veto dies (D1): {desses:?}"
+    );
+    let dai: Vec<String> = tagger
+        .lookup("daí")
+        .iter()
+        .map(|(_, tag)| tag.to_string())
+        .collect();
+    assert!(
+        dai.iter().all(|t| t.starts_with("SPS00+")),
+        "'daí' only carries the truncated plus-joined chain: {dai:?}"
+    );
+    let revisaste: Vec<String> = tagger
+        .lookup("Revisaste")
+        .iter()
+        .map(|(_, tag)| tag.to_string())
+        .collect();
+    assert!(
+        revisaste.is_empty(),
+        "'Revisaste' has no dict entry, stalling BRASILEIRISMO_REVISAR (D3): {revisaste:?}"
+    );
+    let irma = tagger.lookup("irmã");
+    assert!(
+        irma.iter().any(|(lemma, _)| *lemma == "irmão"),
+        "the ANTI[8] person-noun veto matches 'sua irmã' through the irmã->irmão lemma and eats \
+         the two POSSESSIVE_WITHOUT_ARTICLE no_match examples (D3 lemma): {irma:?}"
+    );
+    let genio: Vec<String> = tagger
+        .lookup("gênio")
+        .iter()
+        .map(|(_, tag)| tag.to_string())
+        .collect();
+    assert!(
+        genio.is_empty(),
+        "'gênio' has no dict entry; the pipeline then strips the AQ reading of the preceding \
+         'pequeno', killing the 'Meu pequeno gênio!' antipattern (D3): {genio:?}"
+    );
+    let pipeline = PortuguesePipeline::shared();
+    let pequeno: Vec<String> = pipeline
+        .analyze_text("Meu pequeno gênio!")
+        .iter()
+        .flat_map(|s| s.tokens().iter())
+        .filter(|t| t.token().token() == "pequeno")
+        .flat_map(|t| t.readings().iter().map(|r| r.pos_tags().join("|")))
+        .collect();
+    assert!(
+        !pequeno.iter().any(|t| t.starts_with("AQ")),
+        "the antipattern's AQ.+ element cannot fire on the stripped readings: {pequeno:?}"
+    );
+    let retirar: Vec<String> = pipeline
+        .analyze_text("O investigador diz necessitar daí retirar os dados.")
+        .iter()
+        .flat_map(|s| s.tokens().iter())
+        .filter(|t| t.token().token() == "retirar")
+        .flat_map(|t| t.readings().iter().map(|r| r.pos_tags().join("|")))
+        .collect();
+    assert!(
+        retirar.iter().all(String::is_empty),
+        "'retirar' surfaces only tagless readings through the pipeline, so the exact \
+         postag='VMN0000' element of CONTRACAO_INDEVIDA_DAI_DE_AI stalls (D3): {retirar:?}"
+    );
+}
+
+#[test]
+fn pt_pt_antipatterns_carry_the_shared_postag_no_bug() {
+    let rules = compile_rules_file(&rules_dir().join("pt-PT/grammar.xml"));
+    let rule = rules
+        .iter()
+        .find(|r| r.id == "VERBO_PRONOME_PESSOAL_VERB")
+        .expect("VERBO_PRONOME_PESSOAL_VERB");
+    let fingerprint = rule.antipatterns.iter().any(|a| {
+        a.tokens.iter().any(|t| {
+            t.postag.as_deref() == Some("SENT_START") && t.compiled_postag_regexp.is_some()
+        })
+    });
+    assert!(
+        fingerprint,
+        "a token written postag='SENT_START' postag_regexp='no' must compile a regex from the \
+         literal 'no' (og-xml compiler.rs postag_source fallback), the E1 family that kills the \
+         veto behind all 5 VERBO_PRONOME_PESSOAL_VERB antipattern failures"
+    );
 }
