@@ -66,17 +66,53 @@ pub type FxBuildHasher = std::hash::BuildHasherDefault<FxHasher>;
 pub type FxHashMap<K, V> = std::collections::HashMap<K, V, FxBuildHasher>;
 pub type FxHashSet<T> = std::collections::HashSet<T, FxBuildHasher>;
 
-fn global_intern(owned: String) -> &'static str {
-    static POOL: std::sync::OnceLock<std::sync::Mutex<FxHashSet<&'static str>>> =
-        std::sync::OnceLock::new();
-    let pool = POOL.get_or_init(|| std::sync::Mutex::new(FxHashSet::default()));
-    let mut guard = pool.lock().unwrap();
-    if let Some(existing) = guard.get(owned.as_str()) {
-        return existing;
+const INTERN_BLOCK_BYTES: usize = 4 * 1024 * 1024;
+
+struct InternArena {
+    set: FxHashSet<&'static str>,
+    block: &'static mut [u8],
+    used: usize,
+}
+
+impl InternArena {
+    fn new() -> Self {
+        Self {
+            set: FxHashSet::default(),
+            block: &mut [],
+            used: 0,
+        }
     }
-    let leaked: &'static str = Box::leak(owned.into_boxed_str());
-    guard.insert(leaked);
-    leaked
+
+    fn intern(&mut self, owned: &str) -> &'static str {
+        if let Some(existing) = self.set.get(owned) {
+            return existing;
+        }
+        let bytes = owned.as_bytes();
+        if self.block.len() - self.used < bytes.len() {
+            let capacity = INTERN_BLOCK_BYTES.max(bytes.len());
+            self.block = Box::leak(vec![0u8; capacity].into_boxed_slice());
+            self.used = 0;
+        }
+        let start = self.used;
+        self.block[start..start + bytes.len()].copy_from_slice(bytes);
+        self.used += bytes.len();
+        // callers only pass strings that already validated as UTF-8
+        let leaked: &'static str = unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                self.block.as_ptr().add(start),
+                bytes.len(),
+            ))
+        };
+        self.set.insert(leaked);
+        leaked
+    }
+}
+
+fn global_intern(owned: String) -> &'static str {
+    static POOL: std::sync::OnceLock<std::sync::Mutex<InternArena>> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| std::sync::Mutex::new(InternArena::new()));
+    let mut guard = pool.lock().unwrap();
+    guard.intern(&owned)
 }
 
 pub fn intern_string(owned: String) -> &'static str {

@@ -291,7 +291,7 @@ pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Inst
     evicted
 }
 
-const PROBE_EVICT_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+const PROBE_EVICT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
 const PROBE_EVICT_INTERVAL_MS: u64 = 1000;
 
 pub fn maybe_evict_over_budget() {

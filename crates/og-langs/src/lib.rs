@@ -16,7 +16,7 @@ static BOUND_TEST_ALLOCATOR: extern "C" fn() = {
     // allocations back into per-thread arenas; malloc_trim cannot return those pages.
     extern "C" fn bound() {
         unsafe {
-            libc::mallopt(libc::M_ARENA_MAX, 6);
+            libc::mallopt(libc::M_ARENA_MAX, 1);
             libc::mallopt(libc::M_MMAP_THRESHOLD, 2 * 1024 * 1024);
             libc::mallopt(libc::M_TRIM_THRESHOLD, 4 * 1024 * 1024);
         }
@@ -35,7 +35,7 @@ pub(crate) fn release_guard() -> impl Drop {
     }
     impl Drop for ReleaseOnDrop {
         fn drop(&mut self) {
-            const ENGINE_IDLE_GRACE: std::time::Duration = std::time::Duration::from_secs(120);
+            const ENGINE_IDLE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
             const TRIM_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
             let keep_used_since = std::time::Instant::now()
                 .checked_sub(ENGINE_IDLE_GRACE)
@@ -63,7 +63,7 @@ pub(crate) fn release_guard() -> impl Drop {
 
 #[cfg(test)]
 fn test_rss_budget() -> usize {
-    const DEFAULT_BUDGET_MB: usize = 2048;
+    const DEFAULT_BUDGET_MB: usize = 1536;
     static BUDGET: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *BUDGET.get_or_init(|| {
         let mb = std::env::var("OG_LANGS_TEST_RSS_BUDGET_MB")

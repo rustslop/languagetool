@@ -152,8 +152,8 @@ enum Outcome {
 
 type ExampleRecord = (String, String, Option<(Outcome, String)>, bool);
 
-const PINNED_PASSED: usize = 15722;
-const PINNED_DICT_EXCLUDED: usize = 9969;
+const PINNED_PASSED: usize = 15723;
+const PINNED_DICT_EXCLUDED: usize = 9968;
 const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
     ("AL_ANDALUS", "Un estudi sobre l'al-Àndalus."),
     ("APOSTROF_RECTE", "L’home"),
