@@ -106,8 +106,12 @@ pub mod detection;
 pub mod el;
 pub mod eo;
 pub mod es;
+#[path = "es-module-refresh/mod.rs"]
+pub mod es_module_refresh;
 pub mod fa;
 pub mod fr;
+#[path = "fr-module-refresh/mod.rs"]
+pub mod fr_module_refresh;
 pub mod ga;
 pub mod gl;
 pub mod is;
