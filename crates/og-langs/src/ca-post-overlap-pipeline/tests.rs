@@ -56,98 +56,6 @@ fn values(m: &RuleMatch) -> Vec<&str> {
 }
 
 #[test]
-fn trim_end_strips_shared_trailing_token() {
-    let text = "aa bb cc";
-    let m = make("R", 0, 8, &["xx zz cc"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 0);
-    assert_eq!(trimmed.length(), 5);
-    assert_eq!(values(&trimmed), vec!["xx zz"]);
-}
-
-#[test]
-fn trim_start_strips_shared_leading_token() {
-    let text = "aa bb";
-    let m = make("R", 0, 5, &["aa zz"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 3);
-    assert_eq!(trimmed.length(), 2);
-    assert_eq!(values(&trimmed), vec!["zz"]);
-}
-
-#[test]
-fn trim_loops_until_no_common_token_remains() {
-    let text = "aa bb cc";
-    let m = make("R", 0, 8, &["xx bb cc"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 0);
-    assert_eq!(trimmed.length(), 2);
-    assert_eq!(values(&trimmed), vec!["xx"]);
-}
-
-#[test]
-fn trim_both_sides_in_one_call() {
-    let text = "aa bb cc";
-    let m = make("R", 0, 8, &["aa zz cc"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 3);
-    assert_eq!(trimmed.length(), 2);
-    assert_eq!(values(&trimmed), vec!["zz"]);
-}
-
-#[test]
-fn trim_skipped_when_replacements_disagree() {
-    let text = "aa bb";
-    let m = make("R", 0, 5, &["xx bb", "yy zz"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 0);
-    assert_eq!(trimmed.length(), 5);
-    assert_eq!(values(&trimmed), vec!["xx bb", "yy zz"]);
-}
-
-#[test]
-fn trim_skipped_without_replacements_or_with_whitespace_error() {
-    let text = "aa bb";
-    let none = make("R", 0, 5, &[]);
-    let trimmed = trim_match_ends(&none, text);
-    assert_eq!(values(&trimmed), Vec::<&str>::new());
-    let blank = make("R", 0, 3, &["xx"]);
-    let trimmed = trim_match_ends(&blank, "   bb");
-    assert_eq!(trimmed.length(), 3);
-    assert_eq!(values(&trimmed), vec!["xx"]);
-}
-
-#[test]
-fn trim_start_guard_blocks_trim_that_would_empty_the_span() {
-    let text = "aa ";
-    let m = make("R", 0, 3, &["aa bb"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 0);
-    assert_eq!(trimmed.length(), 3);
-    assert_eq!(values(&trimmed), vec!["aa bb"]);
-}
-
-#[test]
-fn trim_trailing_space_only_suffix() {
-    let text = "aa ";
-    let m = make("R", 0, 3, &["bb "]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.length(), 2);
-    assert_eq!(values(&trimmed), vec!["bb"]);
-}
-
-#[test]
-fn trim_is_byte_offset_safe_on_multibyte_text() {
-    let text = "él ba ca";
-    let m = make("R", 0, 9, &["ón ba ca"]);
-    let trimmed = trim_match_ends(&m, text);
-    assert_eq!(trimmed.offset(), 0);
-    assert_eq!(trimmed.length(), 3);
-    assert_eq!(values(&trimmed), vec!["ón"]);
-    assert_eq!(original_error_str(&trimmed, text), "él");
-}
-
-#[test]
 fn after_overlapping_trims_then_re_sorts_by_new_offsets() {
     let text = "aaaa xx bb c";
     let big = make("R1", 0, 10, &["aaaa yy bb"]);
@@ -491,15 +399,6 @@ fn adjust_preserves_rule_message_and_positions() {
     assert_eq!(out[0].message(), "msg");
     assert_eq!(out[0].offset(), 0);
     assert_eq!(out[0].length(), 5);
-}
-
-#[test]
-fn java_whitespace_semantics_follow_stringtools() {
-    assert!(java_is_all_whitespace(" \t\n"));
-    assert!(java_is_all_whitespace("\u{a0}"));
-    assert!(java_is_all_whitespace("\u{feff}"));
-    assert!(!java_is_all_whitespace(" a "));
-    assert!(!java_is_all_whitespace("\u{1}"));
 }
 
 #[test]

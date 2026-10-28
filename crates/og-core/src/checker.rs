@@ -241,6 +241,8 @@ impl Checker {
 
         let mut all_matches: Vec<RuleMatch> = Vec::new();
         let mut analyzed_sentences = Vec::new();
+        let mut enabled_rule_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for range in &sentence_ranges {
             let sentence_text = text[range.start..range.end].to_string();
@@ -307,6 +309,7 @@ impl Checker {
                 ) {
                     continue;
                 }
+                enabled_rule_ids.insert(rule.id().to_string());
                 let matches = rule.match_sentence(&sentence);
                 all_matches.extend(matches);
             }
@@ -329,25 +332,22 @@ impl Checker {
             {
                 continue;
             }
+            enabled_rule_ids.insert(rule.id().to_string());
             let matches = rule.match_text(text, &analyzed_sentences);
             all_matches.extend(matches);
         }
 
         crate::match_filters::same_rule_group_filter(&mut all_matches);
-        if self.clean_overlapping_matches || self.language_filter.is_some() {
-            static BASE: crate::match_filters::BaseLanguageMatchFilter =
-                crate::match_filters::BaseLanguageMatchFilter;
-            let language_filter: &dyn LanguageMatchFilter =
-                self.language_filter.as_deref().unwrap_or(&BASE);
-            language_filter.filter_rule_matches(&mut all_matches, text);
-            if self.clean_overlapping_matches {
-                all_matches = crate::match_filters::clean_overlapping_filter(
-                    all_matches,
-                    text,
-                    language_filter,
-                );
-            }
+        static BASE: crate::match_filters::BaseLanguageMatchFilter =
+            crate::match_filters::BaseLanguageMatchFilter;
+        let language_filter: &dyn LanguageMatchFilter =
+            self.language_filter.as_deref().unwrap_or(&BASE);
+        all_matches = language_filter.filter_rule_matches(all_matches, text, &enabled_rule_ids);
+        if self.clean_overlapping_matches {
+            all_matches =
+                crate::match_filters::clean_overlapping_filter(all_matches, text, language_filter);
         }
+        all_matches = language_filter.filter_rule_matches_after_overlapping(all_matches, text);
 
         let sentence_ranges_json: Vec<Vec<usize>> = sentence_ranges
             .iter()
@@ -825,10 +825,16 @@ mod check_flow_tests {
 
     struct SuffixFilter;
     impl LanguageMatchFilter for SuffixFilter {
-        fn filter_rule_matches(&self, matches: &mut [RuleMatch], _text: &str) {
-            for m in matches {
+        fn filter_rule_matches(
+            &self,
+            mut matches: Vec<RuleMatch>,
+            _text: &str,
+            _enabled_rules: &std::collections::HashSet<String>,
+        ) -> Vec<RuleMatch> {
+            for m in &mut matches {
                 m.set_message(format!("{}-filtered", m.message()));
             }
+            matches
         }
     }
 
@@ -1052,6 +1058,66 @@ mod check_flow_tests {
                 .iter()
                 .all(|m| m.message().ends_with("-filtered"))
         );
+    }
+
+    #[test]
+    fn check_runs_after_overlapping_hook_regardless_of_clean_filter() {
+        struct AfterFilter;
+        impl LanguageMatchFilter for AfterFilter {
+            fn filter_rule_matches_after_overlapping(
+                &self,
+                mut matches: Vec<RuleMatch>,
+                _text: &str,
+            ) -> Vec<RuleMatch> {
+                for m in &mut matches {
+                    m.set_message(format!("{}-after", m.message()));
+                }
+                matches
+            }
+        }
+        for clean in [true, false] {
+            let checker = Checker::new()
+                .with_word_tokenizer(Arc::new(WordSplit))
+                .with_clean_overlapping_matches(clean)
+                .with_language_filter(Arc::new(AfterFilter))
+                .add_rule(FixedRule::on("R"));
+            let result = checker.check(&CheckRequest::new("word", Language::English));
+            assert!(
+                result
+                    .matches
+                    .iter()
+                    .all(|m| m.message().ends_with("-after")),
+                "JLanguageTool.java:1197 calls filterRuleMatchesAfterOverlapping unconditionally"
+            );
+        }
+    }
+
+    #[test]
+    fn check_passes_enabled_rule_ids_to_the_language_filter() {
+        struct RecordingFilter(std::sync::Mutex<Vec<String>>);
+        impl LanguageMatchFilter for RecordingFilter {
+            fn filter_rule_matches(
+                &self,
+                matches: Vec<RuleMatch>,
+                _text: &str,
+                enabled_rules: &std::collections::HashSet<String>,
+            ) -> Vec<RuleMatch> {
+                let mut seen = self.0.lock().unwrap();
+                seen.extend(enabled_rules.iter().cloned());
+                matches
+            }
+        }
+        let recorder = Arc::new(RecordingFilter(std::sync::Mutex::new(Vec::new())));
+        let checker = Checker::new()
+            .with_word_tokenizer(Arc::new(WordSplit))
+            .with_clean_overlapping_matches(false)
+            .with_language_filter(recorder.clone())
+            .add_rule(FixedRule::on("ON"))
+            .add_rule(FixedRule::off("OFF"));
+        checker.check(&CheckRequest::new("word", Language::English));
+        let mut seen = recorder.0.lock().unwrap().clone();
+        seen.sort_unstable();
+        assert_eq!(seen, vec!["ON"]);
     }
 
     #[test]

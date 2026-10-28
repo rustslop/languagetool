@@ -7,12 +7,14 @@ use og_core::rule_match::SuggestedReplacement;
 use regex::Regex;
 
 pub fn catalan_filter_rule_matches_after_overlapping(
-    matches: Vec<RuleMatch>,
+    mut matches: Vec<RuleMatch>,
     text: &str,
 ) -> Vec<RuleMatch> {
-    let mut trimmed: Vec<RuleMatch> = matches.iter().map(|m| trim_match_ends(m, text)).collect();
-    trimmed.sort_by_key(|m| m.offset());
-    trimmed
+    for m in &mut matches {
+        m.trim_match_ends(text);
+    }
+    matches.sort_by_key(|m| m.offset());
+    matches
 }
 
 pub fn catalan_filter_rule_matches(
@@ -75,61 +77,6 @@ pub fn catalan_filter_rule_matches(
     }
     results.sort_by_key(|m| m.offset());
     results
-}
-
-pub fn trim_match_ends(m: &RuleMatch, text: &str) -> RuleMatch {
-    let mut replacements = m.replacements().to_vec();
-    if replacements.is_empty() {
-        return m.clone();
-    }
-    let mut error_str = original_error_str(m, text);
-    if error_str.is_empty() || java_is_all_whitespace(error_str) {
-        return m.clone();
-    }
-    let mut from = m.offset();
-    let mut to = m.offset() + m.length();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        if let Some(last_space) = error_str.rfind(' ').filter(|i| *i > 0) {
-            let end_suffix = &error_str[last_space..];
-            let all_end_with = replacements.iter().all(|r| r.value().ends_with(end_suffix));
-            let end_trim_len = error_str.len() - last_space;
-            if all_end_with && to - end_trim_len > from {
-                let cut = end_suffix.len();
-                for r in &mut replacements {
-                    let trimmed = r.value()[..r.value().len() - cut].to_string();
-                    r.set_value(trimmed);
-                }
-                to -= end_trim_len;
-                error_str = &error_str[..last_space];
-                changed = true;
-            }
-        }
-        if let Some(first_space) = error_str.find(' ').filter(|i| *i > 0) {
-            let start_prefix_len = first_space + 1;
-            let start_prefix = &error_str[..start_prefix_len];
-            let all_start_with = replacements
-                .iter()
-                .all(|r| r.value().starts_with(start_prefix));
-            if all_start_with && from + start_prefix_len < to {
-                for r in &mut replacements {
-                    let trimmed = r.value()[start_prefix_len..].to_string();
-                    r.set_value(trimmed);
-                }
-                from += start_prefix_len;
-                error_str = &error_str[start_prefix_len..];
-                changed = true;
-            }
-        }
-    }
-    if from == m.offset() && to == m.offset() + m.length() {
-        return m.clone();
-    }
-    let mut out = m.clone();
-    out.set_offset_length(from, to - from);
-    out.set_replacements(replacements);
-    out
 }
 
 fn adjust_catalan_match(m: &RuleMatch, text: &str, enabled_rules: &HashSet<String>) -> RuleMatch {
@@ -252,20 +199,6 @@ fn sentence_has_typographic_apostrophe(sentence: &str) -> bool {
     sentence
         .split_whitespace()
         .any(|t| t.chars().count() > 1 && t.contains('\u{2019}'))
-}
-
-fn java_is_all_whitespace(s: &str) -> bool {
-    s.chars().all(java_whitespace_code_point)
-}
-
-fn java_whitespace_code_point(c: char) -> bool {
-    if matches!(c, '\u{FEFF}' | '\u{200B}' | '\u{00A0}' | '\u{202F}') {
-        return true;
-    }
-    if matches!(c, '\u{1}' | '\u{2}' | '\u{2007}') {
-        return false;
-    }
-    (c as u32) <= 0x20 || c.is_whitespace()
 }
 
 fn java_equals_ignore_case(a: &str, b: &str) -> bool {

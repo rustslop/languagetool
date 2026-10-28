@@ -1,10 +1,31 @@
+use og_core::RuleMatch;
 use og_core::match_filters::{LanguageMatchFilter, base_priority_for_id};
+use std::collections::HashSet;
 
 pub struct CatalanMatchFilter;
 
 impl LanguageMatchFilter for CatalanMatchFilter {
     fn priority_for_id(&self, id: &str) -> i32 {
         catalan_priority_for_id(id).unwrap_or_else(|| base_priority_for_id(id))
+    }
+
+    fn filter_rule_matches(
+        &self,
+        matches: Vec<RuleMatch>,
+        text: &str,
+        enabled_rules: &HashSet<String>,
+    ) -> Vec<RuleMatch> {
+        crate::ca_post_overlap_pipeline::catalan_filter_rule_matches(matches, text, enabled_rules)
+    }
+
+    fn filter_rule_matches_after_overlapping(
+        &self,
+        matches: Vec<RuleMatch>,
+        text: &str,
+    ) -> Vec<RuleMatch> {
+        crate::ca_post_overlap_pipeline::catalan_filter_rule_matches_after_overlapping(
+            matches, text,
+        )
     }
 }
 

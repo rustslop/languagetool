@@ -875,7 +875,12 @@ impl LanguageMatchFilter for EnglishMatchFilter {
         base_priority_for_id(id)
     }
 
-    fn filter_rule_matches(&self, matches: &mut [RuleMatch], text: &str) {
+    fn filter_rule_matches(
+        &self,
+        mut matches: Vec<RuleMatch>,
+        text: &str,
+        _enabled_rules: &std::collections::HashSet<String>,
+    ) -> Vec<RuleMatch> {
         for rule_match in matches.iter_mut() {
             let error_str = original_error_str(rule_match, text).to_string();
             let starts_with_apostrophe = error_str.starts_with('\'');
@@ -915,6 +920,7 @@ impl LanguageMatchFilter for EnglishMatchFilter {
                 rule_match.rule_mut().set_issue_type("locale-violation");
             }
         }
+        matches
     }
 }
 
@@ -1106,6 +1112,7 @@ pub fn for_code(code: &str) -> Arc<dyn LanguageMatchFilter> {
 mod tests {
     use super::*;
     use og_core::{RuleMatchContext, RuleMatchKind, RuleMatchRule, SuggestedReplacement};
+    use std::collections::HashSet;
 
     #[test]
     fn english_priorities_match_java() {
@@ -1242,53 +1249,54 @@ mod tests {
     #[test]
     fn english_apostrophe_errors_space_the_replacements() {
         let filter = EnglishMatchFilter;
-        let mut matches = vec![match_over(
+        let matches = vec![match_over(
             "listen to 'em now",
             "'em",
             "SOME_RULE",
             &["them", "'em", "’em", " them"],
         )];
-        filter.filter_rule_matches(&mut matches, "listen to 'em now");
+        let matches = filter.filter_rule_matches(matches, "listen to 'em now", &HashSet::new());
         assert_eq!(replacement_values(&matches), vec![" them", "'em", "’em"]);
     }
 
     #[test]
     fn english_nt_errors_space_the_replacements() {
         let filter = EnglishMatchFilter;
-        let mut matches = vec![match_over(
+        let matches = vec![match_over(
             "they do n't know",
             "n't",
             "SOME_RULE",
             &["not", "n’t", "n't", "not"],
         )];
-        filter.filter_rule_matches(&mut matches, "they do n't know");
+        let matches = filter.filter_rule_matches(matches, "they do n't know", &HashSet::new());
         assert_eq!(replacement_values(&matches), vec![" not", "n’t", "n't"]);
     }
 
     #[test]
     fn english_short_errors_keep_replacements_untouched() {
         let filter = EnglishMatchFilter;
-        let mut matches = vec![match_over(
+        let matches = vec![match_over(
             "the dog's bone",
             "'s",
             "SOME_RULE",
             &["is", "has"],
         )];
-        filter.filter_rule_matches(&mut matches, "the dog's bone");
+        let matches = filter.filter_rule_matches(matches, "the dog's bone", &HashSet::new());
         assert_eq!(replacement_values(&matches), vec!["is", "has"]);
     }
 
     #[test]
     fn english_gramme_rules_become_locale_violations() {
         let filter = EnglishMatchFilter;
-        let mut matches = vec![match_over(
+        let matches = vec![match_over(
             "one kilogramme of flour",
             "kilogramme",
             "EN_SIMPLE_REPLACE_KILOGRAMME",
             &["kilogram"],
         )];
         assert_eq!(matches[0].rule().pattern_match_kind(), RuleMatchKind::Other);
-        filter.filter_rule_matches(&mut matches, "one kilogramme of flour");
+        let matches =
+            filter.filter_rule_matches(matches, "one kilogramme of flour", &HashSet::new());
         assert_eq!(replacement_values(&matches), vec!["kilogram"]);
         assert_eq!(matches[0].rule().pattern_match_kind(), RuleMatchKind::Hint);
     }

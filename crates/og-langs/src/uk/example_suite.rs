@@ -566,7 +566,7 @@ pub(crate) fn module_check(text: &str) -> Vec<og_core::RuleMatch> {
     static BASE: og_core::match_filters::BaseLanguageMatchFilter =
         og_core::match_filters::BaseLanguageMatchFilter;
     og_core::match_filters::same_rule_group_filter(&mut all_matches);
-    BASE.filter_rule_matches(&mut all_matches, text);
+    all_matches = BASE.filter_rule_matches(all_matches, text, &std::collections::HashSet::new());
     og_core::match_filters::clean_overlapping_filter(all_matches, text, &BASE)
 }
 

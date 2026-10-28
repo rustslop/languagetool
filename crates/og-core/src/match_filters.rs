@@ -1,4 +1,5 @@
 use crate::rule_match::RuleMatch;
+use std::collections::HashSet;
 
 const NEGATIVE_CONSTANT: i32 = i32::MIN + 10_000;
 
@@ -37,7 +38,22 @@ pub trait LanguageMatchFilter: Send + Sync {
         0
     }
 
-    fn filter_rule_matches(&self, _matches: &mut [RuleMatch], _text: &str) {}
+    fn filter_rule_matches(
+        &self,
+        matches: Vec<RuleMatch>,
+        _text: &str,
+        _enabled_rules: &HashSet<String>,
+    ) -> Vec<RuleMatch> {
+        matches
+    }
+
+    fn filter_rule_matches_after_overlapping(
+        &self,
+        matches: Vec<RuleMatch>,
+        _text: &str,
+    ) -> Vec<RuleMatch> {
+        matches
+    }
 }
 
 pub struct BaseLanguageMatchFilter;
@@ -448,10 +464,14 @@ mod tests {
 
     #[test]
     fn base_filter_rule_matches_is_a_no_op() {
-        let mut matches = vec![m("A", 0, 5, None), m("B", 6, 9, None)];
-        BaseLanguageMatchFilter.filter_rule_matches(&mut matches, "text");
-        assert_eq!(matches.len(), 2);
-        assert_eq!(matches[0].offset(), 0);
+        let matches = vec![m("A", 0, 5, None), m("B", 6, 9, None)];
+        let out = BaseLanguageMatchFilter.filter_rule_matches(matches, "text", &HashSet::new());
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].offset(), 0);
+        let matches = vec![m("A", 0, 5, None), m("B", 6, 9, None)];
+        let out = BaseLanguageMatchFilter.filter_rule_matches_after_overlapping(matches, "text");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].offset(), 0);
     }
 
     #[test]
