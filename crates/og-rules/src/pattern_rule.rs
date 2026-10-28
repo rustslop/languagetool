@@ -8048,6 +8048,28 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn xml_compiler_token_regex_word_class_is_ascii() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="W_ASCII_PROBE" name="w ascii probe">
+                <pattern>
+                    <marker><token regexp="yes">\w+</token></marker>
+                </pattern>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let compiler = XmlCompiler::new();
+        let rule_set = compiler.compile_file(xml).unwrap();
+        let engine = PatternRuleEngine::new();
+        let matches = engine.match_rule(&rule_set.rules[0], &make_analyzed_sentence("word à ünn"));
+        assert_eq!(
+            matches.len(),
+            1,
+            "ASCII \\w must match only 'word', not accented tokens"
+        );
+    }
+
     fn immunized_tokens_are_invisible_to_pattern_rules() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="de">
