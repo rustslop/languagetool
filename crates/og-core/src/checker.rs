@@ -623,6 +623,93 @@ mod pipeline_order_tests {
         let result = checker.check(&request);
         assert!(result.matches.is_empty());
     }
+
+    struct SpaceSplit;
+    impl WordTokenizer for SpaceSplit {
+        fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
+            let mut tokens = Vec::new();
+            let mut pos = offset;
+            for word in text.split(' ') {
+                if word.is_empty() {
+                    pos += 1;
+                    continue;
+                }
+                tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                    word,
+                    pos,
+                    pos + word.len(),
+                )));
+                pos += word.len() + 1;
+            }
+            tokens
+        }
+    }
+
+    struct DeterminerOrPronounTagger;
+    impl Tagger for DeterminerOrPronounTagger {
+        fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
+            for atr in tokens.iter_mut() {
+                if atr.token().token() == "la" {
+                    let token = atr.token().clone();
+                    *atr.readings_mut() = vec![
+                        AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["D0FS0".to_string()]),
+                        AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["PP3FS000".to_string()]),
+                    ];
+                }
+            }
+        }
+    }
+
+    struct DropDeterminerReadings;
+    impl Disambiguator for DropDeterminerReadings {
+        fn disambiguate(&self, sentence: &mut AnalyzedSentence) {
+            for atr in sentence.tokens_mut() {
+                if atr.token().token() == "la" {
+                    atr.readings_mut()
+                        .retain(|r| !r.pos_tags().iter().any(|t| t.starts_with('D')));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn analyze_snapshots_readings_before_the_disambiguator_mutates_them() {
+        let checker = Checker::new()
+            .with_sentence_tokenizer(Arc::new(NoSplit))
+            .with_word_tokenizer(Arc::new(SpaceSplit))
+            .with_tagger(Arc::new(DeterminerOrPronounTagger))
+            .with_disambiguator(Arc::new(DropDeterminerReadings));
+        let sentences = checker.analyze("la celebre");
+        assert_eq!(sentences.len(), 1);
+        let sentence = &sentences[0];
+        let pre = sentence
+            .pre_disambiguation_tokens()
+            .iter()
+            .find(|t| t.token().token() == "la")
+            .expect("snapshot keeps the token");
+        assert!(
+            pre.readings()
+                .iter()
+                .any(|r| r.pos_tags().iter().any(|t| t == "D0FS0")),
+            "upstream JLanguageTool.java:1772-1777 deep-copies tagger output (copyReadings) \
+             because the disambiguator mutates readings in place; the Rust snapshot must keep \
+             the determiner reading after in-place mutation"
+        );
+        let post = sentence
+            .tokens()
+            .iter()
+            .find(|t| t.token().token() == "la")
+            .expect("live token present");
+        assert!(
+            !post
+                .readings()
+                .iter()
+                .any(|r| r.pos_tags().iter().any(|t| t.starts_with('D'))),
+            "the live tokens must show the disambiguated readings"
+        );
+    }
 }
 
 #[cfg(test)]
