@@ -1,4 +1,6 @@
 pub mod en;
+#[path = "en-module-refresh/mod.rs"]
+pub mod en_module_refresh;
 pub mod engine;
 pub mod registry;
 
@@ -88,6 +90,8 @@ pub mod br;
 pub mod ca;
 #[path = "ca-filter-semantics-delta/mod.rs"]
 pub mod ca_filter_semantics_delta;
+#[path = "ca-module-refresh/mod.rs"]
+pub mod ca_module_refresh;
 #[path = "ca-phrase-repeat-rule/mod.rs"]
 pub mod ca_phrase_repeat_rule;
 #[path = "ca-post-overlap-pipeline/mod.rs"]
@@ -96,6 +100,8 @@ pub mod confusion_probability;
 pub mod crh;
 pub mod da;
 pub mod de;
+#[path = "de-module-refresh/mod.rs"]
+pub mod de_module_refresh;
 pub mod detection;
 pub mod el;
 pub mod eo;
@@ -115,6 +121,8 @@ pub mod nl;
 pub mod paragraph_repeat_beginning;
 pub mod pl;
 pub mod pt;
+#[path = "pt-module-refresh/mod.rs"]
+pub mod pt_module_refresh;
 pub mod ro;
 pub mod ru;
 pub mod sk;
