@@ -79,8 +79,8 @@ impl XmlPatternRule {
 }
 
 struct RecheckState {
-    analyzer: Option<Checker>,
-    rules: Vec<Arc<dyn Rule>>,
+    analyzer: Option<std::sync::Weak<Checker>>,
+    rules: Vec<std::sync::Weak<dyn Rule>>,
 }
 
 pub struct RecheckSupport {
@@ -97,10 +97,10 @@ impl RecheckSupport {
         }
     }
 
-    fn update(&self, analyzer: Checker, rules: Vec<Arc<dyn Rule>>) {
+    fn update(&self, analyzer: &Arc<Checker>, rules: &[Arc<dyn Rule>]) {
         let mut state = self.state.lock().unwrap();
-        state.analyzer = Some(analyzer);
-        state.rules = rules;
+        state.analyzer = Some(std::sync::Arc::downgrade(analyzer));
+        state.rules = rules.iter().map(std::sync::Arc::downgrade).collect();
     }
 }
 
@@ -111,6 +111,7 @@ impl og_rules::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
             .unwrap()
             .analyzer
             .as_ref()
+            .and_then(std::sync::Weak::upgrade)
             .map(|checker| checker.analyze(text))
             .unwrap_or_default()
     }
@@ -121,8 +122,8 @@ impl og_rules::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
             .unwrap()
             .rules
             .iter()
+            .filter_map(std::sync::Weak::upgrade)
             .filter(|rule| rule_ids.contains(&rule.id()))
-            .cloned()
             .collect()
     }
 }
@@ -172,7 +173,7 @@ pub struct LanguageEngine {
     language_filters: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
     recheck_support: Arc<RecheckSupport>,
     recheck_tagger: Option<Arc<dyn og_tagger::Tagger>>,
-    checker: Checker,
+    checker: Arc<Checker>,
     language_filter: Arc<dyn og_core::match_filters::LanguageMatchFilter>,
     l2_rules: std::sync::Mutex<HashMap<String, Vec<Arc<dyn Rule>>>>,
     l2_checkers: std::sync::Mutex<HashMap<String, Checker>>,
@@ -180,13 +181,15 @@ pub struct LanguageEngine {
 
 impl LanguageEngine {
     pub fn new(language: Language) -> Self {
-        let checker = Checker::new()
-            .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge(
-                language.short_code().to_string(),
-            )))
-            .with_word_tokenizer(Arc::new(WordTokenizerBridge::for_code(
-                language.short_code(),
-            )));
+        let checker = Arc::new(
+            Checker::new()
+                .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge(
+                    language.short_code().to_string(),
+                )))
+                .with_word_tokenizer(Arc::new(WordTokenizerBridge::for_code(
+                    language.short_code(),
+                ))),
+        );
 
         let language_filter = crate::match_priority::for_code(language.short_code());
         Self {
@@ -268,9 +271,11 @@ impl LanguageEngine {
             language_filters: None,
             recheck_support: Arc::new(RecheckSupport::new()),
             recheck_tagger: None,
-            checker: Checker::new()
-                .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
-                .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
+            checker: Arc::new(
+                Checker::new()
+                    .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
+                    .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
+            ),
             language_filter: crate::match_priority::for_code("en"),
             l2_rules: std::sync::Mutex::new(HashMap::new()),
             l2_checkers: std::sync::Mutex::new(HashMap::new()),
@@ -1779,8 +1784,8 @@ impl LanguageEngine {
             checker = checker.with_post_chunker(chunker.clone());
         }
 
-        self.recheck_support
-            .update(checker.clone(), self.rules.clone());
+        let checker = Arc::new(checker);
+        self.recheck_support.update(&checker, &self.rules);
         self.checker = checker;
     }
 
