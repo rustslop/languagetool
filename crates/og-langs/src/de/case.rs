@@ -1851,6 +1851,7 @@ mod tests {
 
     #[test]
     fn java_good_sentences_stay_clean() {
+        let _release_guard = crate::release_guard();
         use rayon::prelude::*;
         let engine = shared_engine();
         let offenders: Vec<String> = [
@@ -2039,6 +2040,7 @@ mod tests {
 
     #[test]
     fn java_bad_sentences_flag_exactly_once() {
+        let _release_guard = crate::release_guard();
         use rayon::prelude::*;
         let engine = shared_engine();
         let offenders: Vec<String> = [
@@ -2132,6 +2134,7 @@ mod tests {
 
     #[test]
     fn java_divergences_pin_the_current_residue() {
+        let _release_guard = crate::release_guard();
         for text in [
             "Als Erstes würde ich sofort die Struktur ändern.",
             "Er sagte: Als Erstes würde ich sofort die Struktur ändern.",
@@ -2163,6 +2166,7 @@ mod tests {
 
     #[test]
     fn flags_mid_sentence_adjective() {
+        let _release_guard = crate::release_guard();
         let matches = case_matches("Ich habe Heute keine Zeit.");
         assert!(
             matches
@@ -2174,6 +2178,7 @@ mod tests {
 
     #[test]
     fn flags_substantivized_verb_lowercase() {
+        let _release_guard = crate::release_guard();
         let matches = case_matches("Das laufen fällt mir leicht.");
         assert!(
             matches
@@ -2185,6 +2190,7 @@ mod tests {
 
     #[test]
     fn accepts_correct_sentences() {
+        let _release_guard = crate::release_guard();
         for text in [
             "Das Laufen fällt mir leicht.",
             "Ein einfacher Satz zum Testen.",

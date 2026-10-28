@@ -67,6 +67,8 @@ fn registry() -> &'static Mutex<HashMap<usize, Arc<dyn CellReleaser>>> {
 
 static EVICTION_BUDGET: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(usize::MAX);
+static WAIT_WATERMARK: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
 
 pub fn set_eviction_budget_bytes(bytes: usize) {
     EVICTION_BUDGET.store(bytes, std::sync::atomic::Ordering::Release);
@@ -74,6 +76,14 @@ pub fn set_eviction_budget_bytes(bytes: usize) {
 
 pub fn eviction_budget_bytes() -> usize {
     EVICTION_BUDGET.load(std::sync::atomic::Ordering::Acquire)
+}
+
+pub fn set_wait_watermark_bytes(bytes: usize) {
+    WAIT_WATERMARK.store(bytes, std::sync::atomic::Ordering::Release);
+}
+
+pub fn wait_watermark_bytes() -> usize {
+    WAIT_WATERMARK.load(std::sync::atomic::Ordering::Acquire)
 }
 
 pub type ReleaseFn = std::sync::Arc<dyn Fn(Option<Instant>) -> usize + Send + Sync>;
@@ -291,8 +301,29 @@ pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Inst
     evicted
 }
 
-const PROBE_EVICT_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+const PROBE_EVICT_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 const PROBE_EVICT_INTERVAL_MS: u64 = 1000;
+
+const HEADROOM_WAIT_SLICE_MS: u64 = 25;
+const HEADROOM_WAIT_MAX_MS: u64 = 10_000;
+
+fn wait_for_headroom() {
+    let watermark = wait_watermark_bytes();
+    if watermark == usize::MAX
+        || HEAVY_DEPTH.with(|depth| depth.get()) > 0
+        || resident_bytes() <= watermark
+    {
+        return;
+    }
+    let mut waited = 0u64;
+    while waited < HEADROOM_WAIT_MAX_MS {
+        std::thread::sleep(std::time::Duration::from_millis(HEADROOM_WAIT_SLICE_MS));
+        waited += HEADROOM_WAIT_SLICE_MS;
+        if resident_bytes() <= watermark {
+            break;
+        }
+    }
+}
 
 pub fn maybe_evict_over_budget() {
     static LAST_CHECK_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -320,6 +351,7 @@ pub fn maybe_evict_over_budget() {
         return;
     }
     evict_over_budget_with(budget, PROBE_EVICT_GRACE);
+    wait_for_headroom();
 }
 
 fn evict_over_budget_with(budget_bytes: usize, grace: std::time::Duration) {

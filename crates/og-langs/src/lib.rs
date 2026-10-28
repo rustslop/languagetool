@@ -30,12 +30,13 @@ static BOUND_TEST_ALLOCATOR: extern "C" fn() = {
 #[cfg(test)]
 pub(crate) fn release_guard() -> impl Drop {
     struct ReleaseOnDrop {
+        _gate: HeavyTestGate,
         _heavy: og_core::releasable::HeavyGuard,
         acquired: std::time::Instant,
     }
     impl Drop for ReleaseOnDrop {
         fn drop(&mut self) {
-            const ENGINE_IDLE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+            const ENGINE_IDLE_GRACE: std::time::Duration = std::time::Duration::from_secs(120);
             const TRIM_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
             let keep_used_since = std::time::Instant::now()
                 .checked_sub(ENGINE_IDLE_GRACE)
@@ -55,15 +56,82 @@ pub(crate) fn release_guard() -> impl Drop {
     }
     let budget = test_rss_budget();
     og_core::releasable::set_eviction_budget_bytes(budget);
+    og_core::releasable::set_wait_watermark_bytes(test_rss_wait_watermark());
     ReleaseOnDrop {
+        _gate: heavy_test_gate(),
         _heavy: og_core::releasable::heavy_guard(),
         acquired: std::time::Instant::now(),
     }
 }
 
 #[cfg(test)]
+struct HeavyTestGate {
+    acquired: bool,
+}
+
+#[cfg(test)]
+impl Drop for HeavyTestGate {
+    fn drop(&mut self) {
+        if !self.acquired {
+            HEAVY_TEST_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+            return;
+        }
+        self.acquired = false;
+        HEAVY_TEST_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+        if let Ok(mut available) = HEAVY_TEST_AVAILABLE.lock() {
+            *available += 1;
+            HEAVY_TEST_CV.notify_one();
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static HEAVY_TEST_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+static HEAVY_TEST_AVAILABLE: std::sync::Mutex<usize> = std::sync::Mutex::new(1);
+
+#[cfg(test)]
+static HEAVY_TEST_CV: std::sync::Condvar = std::sync::Condvar::new();
+
+#[cfg(test)]
+fn heavy_test_gate() -> HeavyTestGate {
+    let mut acquired = false;
+    if HEAVY_TEST_DEPTH.with(|depth| depth.get()) == 0 {
+        let mut available = HEAVY_TEST_AVAILABLE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while *available == 0 {
+            available = HEAVY_TEST_CV
+                .wait(available)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        *available -= 1;
+        acquired = true;
+    }
+    HEAVY_TEST_DEPTH.with(|depth| depth.set(depth.get() + 1));
+    HeavyTestGate { acquired }
+}
+
+#[cfg(test)]
+fn test_rss_wait_watermark() -> usize {
+    const DEFAULT_WATERMARK_MB: usize = 3584;
+    static WATERMARK: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *WATERMARK.get_or_init(|| {
+        let mb = std::env::var("OG_LANGS_TEST_RSS_WAIT_MB")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|&mb| mb > 0)
+            .unwrap_or(DEFAULT_WATERMARK_MB);
+        mb.saturating_mul(1024 * 1024)
+    })
+}
+
+#[cfg(test)]
 fn test_rss_budget() -> usize {
-    const DEFAULT_BUDGET_MB: usize = 1536;
+    const DEFAULT_BUDGET_MB: usize = 2048;
     static BUDGET: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *BUDGET.get_or_init(|| {
         let mb = std::env::var("OG_LANGS_TEST_RSS_BUDGET_MB")
