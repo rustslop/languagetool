@@ -848,8 +848,7 @@ mod check_flow_tests {
             );
             let last_word = tokens
                 .iter()
-                .filter(|t| !t.is_whitespace() && t.token().token() != "<S>")
-                .next_back()
+                .rfind(|t| !t.is_whitespace() && t.token().token() != "<S>")
                 .expect("at least one word token");
             assert!(last_word.is_sentence_end());
             Vec::new()

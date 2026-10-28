@@ -735,7 +735,7 @@ mod mutation_tests {
         let json = serde_json::to_value(&m).unwrap();
         assert_eq!(json["contextForSureMatch"], 3);
         assert_eq!(json["ignoreForIncompleteSentence"], true);
-        let bare = serde_json::to_value(&base()).unwrap();
+        let bare = serde_json::to_value(base()).unwrap();
         assert_eq!(bare["contextForSureMatch"], -1);
         assert_eq!(bare["ignoreForIncompleteSentence"], false);
     }
