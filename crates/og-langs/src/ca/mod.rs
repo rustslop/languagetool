@@ -53,6 +53,7 @@ pub fn catalan_native_rules() -> CatalanNativeRules {
     CatalanNativeRules {
         rules: vec![
             Arc::new(native_rules::CatalanWordRepeatRule::new()),
+            Arc::new(crate::ca_phrase_repeat_rule::CatalanPhraseRepeatRule::new()),
             Arc::new(native_rules::CatalanWrongWordInContextRule::new()),
             Arc::new(simple_replace::catalan_simple_replace_verbs_rule()),
             Arc::new(simple_replace::catalan_simple_replace_balearic_rule()),
@@ -108,6 +109,7 @@ mod tests {
         ids.extend(native.text_level_rules.iter().map(|r| r.id()));
         let expected = [
             "CATALAN_WORD_REPEAT_RULE",
+            "CATALAN_PHRASE_REPEAT_RULE",
             "CA_UNPAIRED_QUESTION",
             "CATALAN_WRONG_WORD_IN_CONTEXT",
             "CA_SIMPLE_REPLACE_VERBS",
@@ -150,6 +152,14 @@ mod tests {
         let native = catalan_native_rules();
         let ids: Vec<&str> = native.rules.iter().map(|r| r.id()).collect();
         let pos = |id: &str| ids.iter().position(|x| *x == id).unwrap();
+        assert!(
+            pos("CATALAN_WORD_REPEAT_RULE") < pos("CATALAN_PHRASE_REPEAT_RULE"),
+            "Catalan.java:127 before :128"
+        );
+        assert!(
+            pos("CATALAN_PHRASE_REPEAT_RULE") < pos("CATALAN_WRONG_WORD_IN_CONTEXT"),
+            "Catalan.java:128 before :132"
+        );
         assert!(
             pos("CA_SIMPLE_REPLACE_ANGLICISM") < pos("PRONOMS_FEBLES_DUPLICATS"),
             "Catalan.java:137 before :138"

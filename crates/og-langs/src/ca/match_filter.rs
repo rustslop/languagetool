@@ -121,7 +121,7 @@ pub fn catalan_priority_for_id(id: &str) -> Option<i32> {
         "TASCAS_TASQUES" | "PREPOSICIONS_MINUSCULA" | "SUGGERIMENTS_LE" => Some(-97),
         "MORFOLOGIK_RULE_CA_ES" => Some(-100),
         "EXIGEIX_ACCENTUACIO_VALENCIANA" => Some(-120),
-        "PHRASE_REPETITION" | "SUBSTANTIUS_JUNTS" => Some(-150),
+        "PHRASE_REPETITION" | "CATALAN_PHRASE_REPEAT_RULE" | "SUBSTANTIUS_JUNTS" => Some(-150),
         "REPETITION_ADJ_N_ADJ" => Some(-155),
         "FALTA_ELEMENT_ENTRE_VERBS" | "PUNT_FINAL" | "PUNCTUATION_PARAGRAPH_END" => Some(-200),
         "CA_END_PARAGRAPH_PUNCTUATION" | "DICENDI_QUE" => Some(-250),
@@ -287,6 +287,7 @@ mod tests {
         ("MORFOLOGIK_RULE_CA_ES", -100),
         ("EXIGEIX_ACCENTUACIO_VALENCIANA", -120),
         ("PHRASE_REPETITION", -150),
+        ("CATALAN_PHRASE_REPEAT_RULE", -150),
         ("SUBSTANTIUS_JUNTS", -150),
         ("REPETITION_ADJ_N_ADJ", -155),
         ("FALTA_ELEMENT_ENTRE_VERBS", -200),
@@ -301,7 +302,7 @@ mod tests {
 
     #[test]
     fn table_size_pins_the_java_switch() {
-        assert_eq!(JAVA_TABLE.len(), 134);
+        assert_eq!(JAVA_TABLE.len(), 135);
     }
 
     #[test]

@@ -86,6 +86,12 @@ pub mod ast;
 pub mod be;
 pub mod br;
 pub mod ca;
+#[path = "ca-filter-semantics-delta/mod.rs"]
+pub mod ca_filter_semantics_delta;
+#[path = "ca-phrase-repeat-rule/mod.rs"]
+pub mod ca_phrase_repeat_rule;
+#[path = "ca-post-overlap-pipeline/mod.rs"]
+pub mod ca_post_overlap_pipeline;
 pub mod confusion_probability;
 pub mod crh;
 pub mod da;
