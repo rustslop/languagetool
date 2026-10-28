@@ -4185,6 +4185,16 @@ impl PatternRuleEngine {
         if underlined_error.is_empty() {
             return None;
         }
+        const MAX_UNDERLINED_LENGTH: usize = 50;
+        if underlined_error.chars().count() > MAX_UNDERLINED_LENGTH
+            || underlined_error
+                .chars()
+                .filter(|c| c.is_alphabetic())
+                .count()
+                < 2
+        {
+            return None;
+        }
         let are_tokens_accepted_by_speller = spelling.multitoken_checks_tokens_with_speller()
             && !underlined_error
                 .split_whitespace()
@@ -7347,6 +7357,83 @@ mod tests {
             .map(|r| r.value())
             .collect();
         assert_eq!(reps, vec!["Dark knight rises"]);
+    }
+
+    #[test]
+    fn multitoken_speller_filter_suggests_the_same_sized_phrase() {
+        let engine = engine_with_words(&[], "alpha beta gamma delta\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_SHORT" name="multitoken short">
+                <pattern>
+                    <marker>
+                        <token>alphaa</token>
+                        <token>beta</token>
+                        <token>gamma</token>
+                        <token>delta</token>
+                    </marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let text = "x alphaa beta gamma delta .";
+        let matches = match_with_engine(&engine, xml, text);
+        assert_eq!(matches.len(), 1);
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["Alpha beta gamma delta"]);
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_overlong_underlined_errors() {
+        let engine = engine_with_words(
+            &[],
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa\n",
+        );
+        let words = [
+            "alphaa", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        ];
+        let tokens: String = words
+            .iter()
+            .map(|w| format!("<token>{w}</token>"))
+            .collect();
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_LONG" name="multitoken long">
+                <pattern>
+                    <marker>{tokens}</marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#
+        );
+        let text = format!("x {} .", words.join(" "));
+        assert_eq!(words.join(" ").chars().count(), 57);
+        let matches = match_with_engine(&engine, &xml, &text);
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_underlined_errors_with_fewer_than_two_letters() {
+        let engine = engine_with_words(&[], "1 2 3 4 5\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_DIGITS" name="multitoken digits">
+                <pattern>
+                    <marker><token>12345</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "x 12345 .");
+        assert!(matches.is_empty());
     }
 
     #[test]
