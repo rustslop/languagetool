@@ -1,5 +1,6 @@
 use crate::Tagger;
 use crate::morfologik::MorfologikDictionary;
+use crate::morfologik::intern_string;
 use og_core::AnalyzedToken;
 use og_core::AnalyzedTokenReadings;
 use std::collections::HashMap;
@@ -913,9 +914,9 @@ fn load_manual_map(dir: &Path, files: &[&str]) -> ReadingMap {
             else {
                 continue;
             };
-            let form_leaked: &'static str = Box::leak(form.to_string().into_boxed_str());
-            let lemma_leaked: &'static str = Box::leak(lemma.to_string().into_boxed_str());
-            let tag_leaked: &'static str = Box::leak(tag.trim().to_string().into_boxed_str());
+            let form_leaked: &'static str = intern_string(form.to_string());
+            let lemma_leaked: &'static str = intern_string(lemma.to_string());
+            let tag_leaked: &'static str = intern_string(tag.trim().to_string());
             map.entry(form_leaked.into())
                 .or_default()
                 .push((lemma_leaked, tag_leaked));
@@ -926,9 +927,7 @@ fn load_manual_map(dir: &Path, files: &[&str]) -> ReadingMap {
 
 fn to_pa2(tags: &[&str]) -> Vec<&'static str> {
     tags.iter()
-        .map(|t| {
-            Box::leak(format!("{}:VER", t.replace("ADJ:", "PA2:")).into_boxed_str()) as &'static str
-        })
+        .map(|t| intern_string(format!("{}:VER", t.replace("ADJ:", "PA2:"))))
         .collect()
 }
 
@@ -938,7 +937,7 @@ fn fill_adj_infos(
     tags: &[&'static str],
     adj_infos: &mut HashMap<&'static str, Vec<AdjInfo>>,
 ) {
-    let fullform: &'static str = Box::leak(format!("{word}{suffix}").into_boxed_str());
+    let fullform: &'static str = intern_string(format!("{word}{suffix}"));
     let list: Vec<AdjInfo> = tags
         .iter()
         .map(|t| AdjInfo {
@@ -954,7 +953,7 @@ fn synthesize_verb_forms(dictionary: &MorfologikDictionary, lemma: &str) -> Vec<
     let lc_lemma = starts_lowercase(lemma);
     if let Some(words) = dictionary.verb_forms_by_lemma().get(lemma) {
         for word in words {
-            let leaked: &'static str = Box::leak(word.clone().into_boxed_str());
+            let leaked: &'static str = intern_string(word.clone());
             if leaked.contains('ß') {
                 continue;
             }
@@ -979,10 +978,10 @@ fn add_verb_line(line: &str, infos: &mut ExpansionInfos, dictionary: &Morfologik
     let (Some(prefix), Some(verb_baseform)) = (parts.next(), parts.next()) else {
         return;
     };
-    let prefix: &'static str = Box::leak(prefix.to_string().into_boxed_str());
-    let verb_baseform: &'static str = Box::leak(verb_baseform.to_string().into_boxed_str());
+    let prefix: &'static str = intern_string(prefix.to_string());
+    let verb_baseform: &'static str = intern_string(verb_baseform.to_string());
     for form in synthesize_verb_forms(dictionary, verb_baseform) {
-        let key: &'static str = Box::leak(format!("{prefix}{form}").into_boxed_str());
+        let key: &'static str = intern_string(format!("{prefix}{form}"));
         infos.verb_infos.insert(
             key,
             PrefixInfixVerb {
@@ -992,7 +991,7 @@ fn add_verb_line(line: &str, infos: &mut ExpansionInfos, dictionary: &Morfologik
             },
         );
     }
-    let zu_key: &'static str = Box::leak(format!("{prefix}zu{verb_baseform}").into_boxed_str());
+    let zu_key: &'static str = intern_string(format!("{prefix}zu{verb_baseform}"));
     infos.verb_infos.insert(
         zu_key,
         PrefixInfixVerb {
@@ -1001,9 +1000,8 @@ fn add_verb_line(line: &str, infos: &mut ExpansionInfos, dictionary: &Morfologik
             verb_baseform,
         },
     );
-    let upper_prefix: &'static str = Box::leak(uppercase_first(prefix).into_boxed_str());
-    let nom_key: &'static str =
-        Box::leak(format!("{upper_prefix}{verb_baseform}").into_boxed_str());
+    let upper_prefix: &'static str = intern_string(uppercase_first(prefix));
+    let nom_key: &'static str = intern_string(format!("{upper_prefix}{verb_baseform}"));
     infos.nom_verb_infos.insert(
         nom_key,
         NominalizedVerb {
@@ -1011,7 +1009,7 @@ fn add_verb_line(line: &str, infos: &mut ExpansionInfos, dictionary: &Morfologik
             verb_baseform,
         },
     );
-    let gen_key: &'static str = Box::leak(format!("{nom_key}s").into_boxed_str());
+    let gen_key: &'static str = intern_string(format!("{nom_key}s"));
     infos.nom_gen_verb_infos.insert(
         gen_key,
         NominalizedVerb {
@@ -1123,12 +1121,12 @@ impl GermanTagger {
             }
             let base = line.split('/').next().unwrap_or(line);
             if line.ends_with("/P") {
-                let word: &'static str = Box::leak(base.to_string().into_boxed_str());
+                let word: &'static str = intern_string(base.to_string());
                 for (i, (_, suffix)) in adj_tag_sets.iter().enumerate() {
                     fill_adj_infos(word, suffix, &pa2_sets[i], &mut infos.adj_infos);
                 }
             } else if line.ends_with("/A") && !line.ends_with("ste/A") && !line.ends_with("er/A") {
-                let word: &'static str = Box::leak(base.to_string().into_boxed_str());
+                let word: &'static str = intern_string(base.to_string());
                 for (tags, suffix) in adj_tag_sets.iter() {
                     fill_adj_infos(word, suffix, tags, &mut infos.adj_infos);
                 }
@@ -1950,10 +1948,7 @@ impl GermanTagger {
                 } else {
                     lemma.to_string()
                 };
-                (
-                    Box::leak(format!("{stem}{new_lemma}").into_boxed_str()) as &'static str,
-                    *tag,
-                )
+                (intern_string(format!("{stem}{new_lemma}")), *tag)
             })
             .collect()
     }
@@ -1989,9 +1984,9 @@ fn append_manual_lines(map: &mut ReadingMap, content: &str) {
         else {
             continue;
         };
-        let form_leaked: &'static str = Box::leak(form.to_string().into_boxed_str());
-        let lemma_leaked: &'static str = Box::leak(lemma.to_string().into_boxed_str());
-        let tag_leaked: &'static str = Box::leak(tag.trim().to_string().into_boxed_str());
+        let form_leaked: &'static str = intern_string(form.to_string());
+        let lemma_leaked: &'static str = intern_string(lemma.to_string());
+        let tag_leaked: &'static str = intern_string(tag.trim().to_string());
         map.entry(form_leaked.into())
             .or_default()
             .push((lemma_leaked, tag_leaked));
