@@ -997,14 +997,18 @@ impl LanguageEngine {
                 ));
             }
             if let Some(core_resource_dir) = find_lt_core_resource_dir() {
-                engine.spelling_support = Some(Arc::new(
-                    og_rules::spelling_support::SpellingSupport::new_for_language(
-                        dict,
-                        &core_resource_dir,
-                        &resource_dir,
-                        &short,
-                    ),
-                ));
+                let mut support = og_rules::spelling_support::SpellingSupport::new_for_language(
+                    dict,
+                    &core_resource_dir,
+                    &resource_dir,
+                    &short,
+                );
+                if short == "ca"
+                    && let Some(tagger) = crate::ca::tagger::CatalanTagger::shared_arc()
+                {
+                    support = support.with_tagger(tagger);
+                }
+                engine.spelling_support = Some(Arc::new(support));
             }
         }
         engine.synthesizer =
@@ -1697,7 +1701,6 @@ impl LanguageEngine {
         if let Some(ref chunker) = self.post_chunker {
             checker = checker.with_post_chunker(chunker.clone());
         }
-
         self.checker = checker;
     }
 

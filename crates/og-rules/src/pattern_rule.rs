@@ -4128,35 +4128,32 @@ impl PatternRuleEngine {
             .is_none_or(|v| !v.eq_ignore_ascii_case("false"));
         let suppress_postag = parsed.get("SuppressPostag").cloned();
         let filter_postag = parsed.get("FilterPostag").cloned();
-        let postag_matches = |word: &str, pattern: &str| -> bool {
-            let atr = AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(word, 0, 0))
-                .with_readings(
-                    self.spelling
-                        .as_ref()
-                        .map(|s| s.tag(word))
-                        .unwrap_or_default(),
-                );
-            atr.has_pos_tag_matching(pattern)
-        };
+        let spelling = self.spelling.as_deref();
+        let check_postag = spelling.is_some_and(|s| s.has_tagger())
+            && (suppress_postag.is_some() || filter_postag.is_some());
         let mut kept: Vec<og_core::SuggestedReplacement> = Vec::new();
         for repl in rm.replacements() {
             let value = repl.value();
-            let misspelled = match self.spelling.as_ref() {
-                Some(spelling) => value.split_whitespace().any(|w| spelling.is_misspelled(w)),
-                None => false,
-            };
+            let misspelled =
+                spelling.is_some_and(|s| value.split_whitespace().any(|w| s.is_misspelled(w)));
             if misspelled {
                 continue;
             }
-            if let Some(sp) = suppress_postag.as_deref()
-                && postag_matches(value, sp)
-            {
-                continue;
-            }
-            if let Some(fp) = filter_postag.as_deref()
-                && !postag_matches(value, fp)
-            {
-                continue;
+            if check_postag && let Some(spelling) = spelling {
+                let atr = AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(value, 0, 0))
+                    .with_readings(spelling.tag(value));
+                if suppress_postag
+                    .as_deref()
+                    .is_some_and(|sp| atr.has_pos_tag_matching(sp))
+                {
+                    continue;
+                }
+                if filter_postag
+                    .as_deref()
+                    .is_some_and(|fp| !atr.has_pos_tag_matching(fp))
+                {
+                    continue;
+                }
             }
             kept.push(repl.clone());
         }
@@ -7619,6 +7616,113 @@ mod tests {
             .map(|r| r.value())
             .collect();
         assert_eq!(reps, vec!["well"]);
+    }
+
+    struct ContextSensitiveTagger;
+
+    impl og_tagger::Tagger for ContextSensitiveTagger {
+        fn tag(&self, tokens: &[&str]) -> Vec<AnalyzedTokenReadings> {
+            tokens
+                .iter()
+                .map(|&word| {
+                    let tags: &[&str] = if tokens.len() > 1 {
+                        &["CTX"]
+                    } else {
+                        match word.to_lowercase().as_str() {
+                            "good" => &["JJ"],
+                            "well" => &["RB"],
+                            _ => &[],
+                        }
+                    };
+                    let readings = tags
+                        .iter()
+                        .map(|t| {
+                            og_core::AnalyzedToken::new(word, 0, word.len())
+                                .with_lemma(word)
+                                .with_pos_tags(vec![t.to_string()])
+                        })
+                        .collect();
+                    AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(word, 0, word.len()))
+                        .with_readings(readings)
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn suppress_misspelled_suggestions_filter_tags_each_replacement_alone() {
+        use crate::spelling_support::SpellingSupport;
+        let mut dict = og_spell::Dictionary::new();
+        for w in ["good", "well"] {
+            dict.add_word(w);
+        }
+        let support =
+            SpellingSupport::new(dict, "").with_tagger(std::sync::Arc::new(ContextSensitiveTagger));
+        let engine = PatternRuleEngine::new().with_spelling_support(std::sync::Arc::new(support));
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="SUPPRESS_SINGLETON" name="suppress singleton">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter" args="SuppressPostag:CTX"/>
+                <message>m</message>
+                <suggestion>good</suggestion>
+                <suggestion>well</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the good one");
+        assert_eq!(
+            matches.len(),
+            1,
+            "Java tags each surviving replacement alone (tagger.tag(singletonList(replacement)), \
+             AbstractSuppressMisspelledSuggestionsFilter.java:58); whole-list tagging would give \
+             every replacement the CTX tag and suppress the match"
+        );
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["good", "well"]);
+    }
+
+    #[test]
+    fn suppress_misspelled_suggestions_filter_skips_postag_checks_without_tagger() {
+        use crate::spelling_support::SpellingSupport;
+        let mut dict = og_spell::Dictionary::new();
+        for w in ["good"] {
+            dict.add_word(w);
+        }
+        let support = SpellingSupport::new(dict, "");
+        let engine = PatternRuleEngine::new().with_spelling_support(std::sync::Arc::new(support));
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="SUPPRESS_NO_TAGGER" name="suppress no tagger">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter" args="FilterPostag:RB"/>
+                <message>m</message>
+                <suggestion>godd</suggestion>
+                <suggestion>good</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the good one");
+        assert_eq!(
+            matches.len(),
+            1,
+            "checkPostag requires a tagger (AbstractSuppressMisspelledSuggestionsFilter.java:51); \
+             FilterPostag must not drop replacements when no tagger is configured"
+        );
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["good"]);
     }
 
     pub(super) fn make_analyzed_sentence(text: &str) -> og_core::AnalyzedSentence {

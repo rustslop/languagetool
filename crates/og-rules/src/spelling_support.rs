@@ -165,6 +165,10 @@ impl SpellingSupport {
         }
     }
 
+    pub fn has_tagger(&self) -> bool {
+        self.tagger.is_some()
+    }
+
     pub fn multitoken_suggestions(&self, word: &str, accepted_by_speller: bool) -> Vec<String> {
         self.multitoken
             .get_suggestions(word, accepted_by_speller, &self.dictionary)
