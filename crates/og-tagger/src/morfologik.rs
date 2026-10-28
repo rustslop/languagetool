@@ -3,6 +3,7 @@ use std::path::Path;
 type ReadingList = Vec<(&'static str, &'static str)>;
 type EntriesMap = FxHashMap<Box<str>, Box<[(Box<str>, Box<str>)]>>;
 pub type FormsByLemma = FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>>;
+type ReadingsByWord = FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>>;
 type SynthByLemma = FormsByLemma;
 type VerbForms = std::collections::HashMap<String, Vec<String>>;
 type LookupCache = std::sync::RwLock<FxHashMap<Box<str>, Box<[(&'static str, &'static str)]>>>;
@@ -1090,7 +1091,7 @@ impl FsaDict {
     }
 
     fn build_entries(&self) -> EntriesMap {
-        let mut entries: FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>> = FxHashMap::default();
+        let mut entries: ReadingsByWord = FxHashMap::default();
         self.fsa.for_each_sequence(&mut |sequence: &[u8]| {
             let mut fields = sequence.split(|b| *b == self.separator);
             let (word_raw, second, tag_raw) = match (fields.next(), fields.next(), fields.next()) {
@@ -1185,7 +1186,7 @@ impl FsaDict {
             let word = self.encoding.decode(word_raw);
             let lemma = self.encoding.decode(&lemma_bytes);
             let entry = verb_forms.entry(lemma).or_default();
-            if !entry.iter().any(|w| *w == word) {
+            if !entry.contains(&word) {
                 entry.push(word);
             }
         });
@@ -1230,7 +1231,7 @@ impl MorfologikDictionary {
     }
 
     pub fn from_decoded_text(data: &str) -> Self {
-        let mut map: FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>> = FxHashMap::default();
+        let mut map: ReadingsByWord = FxHashMap::default();
         let mut forms: FormsByLemma = FxHashMap::default();
         let mut verb_forms: VerbForms = std::collections::HashMap::new();
         for line in data.lines() {

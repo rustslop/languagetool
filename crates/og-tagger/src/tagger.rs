@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn tags_an_empty_token_slice_into_no_readings() {
-        let tagger = DefaultTagger::default();
+        let tagger = DefaultTagger::new();
         assert!(tagger.tag(&[]).is_empty());
     }
 }

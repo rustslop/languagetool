@@ -2363,14 +2363,8 @@ mod tests {
         let tagger = tagger();
         let result = Tagger::tag(&tagger, &["Den", "2019er", "Wert", "hatten", "sie"]);
         let tags = result[1].all_pos_tags();
-        assert!(
-            tags.iter().any(|t| *t == "ADJ:AKK:SIN:NEU:GRU:IND"),
-            "{tags:?}"
-        );
-        assert!(
-            tags.iter().any(|t| *t == "ADJ:NOM:SIN:MAS:GRU:SOL"),
-            "{tags:?}"
-        );
+        assert!(tags.contains(&"ADJ:AKK:SIN:NEU:GRU:IND"), "{tags:?}");
+        assert!(tags.contains(&"ADJ:NOM:SIN:MAS:GRU:SOL"), "{tags:?}");
         assert_eq!(tags.len(), 72, "{tags:?}");
     }
 
@@ -2727,8 +2721,9 @@ mod tests {
 
     #[test]
     fn prefix_verbs_from_spelling_txt_match_java_counts() {
+        type Case = (&'static str, usize, &'static [(&'static str, &'static str)]);
         let tagger = tagger();
-        let cases: &[(&str, usize, &[(&str, &str)])] = &[
+        let cases: &[Case] = &[
             (
                 "herausfallen",
                 5,
