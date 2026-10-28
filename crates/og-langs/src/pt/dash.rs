@@ -276,14 +276,14 @@ mod tests {
 
     #[test]
     fn metadata_pins_both_rule_registrations() {
-        let post = PostReformPortugueseDashRule::default();
+        let post = PostReformPortugueseDashRule;
         assert_eq!(post.id(), "PT_POSAO_DASH_RULE");
         assert_eq!(post.description(), "Travessões no lugar de hífens");
         assert_eq!(post.category().id().as_str(), "TYPOGRAPHY");
         assert!(matches!(post.issue_type(), IssueType::Typographical));
         assert!(post.is_picky());
 
-        let pre = PreReformPortugueseDashRule::default();
+        let pre = PreReformPortugueseDashRule;
         assert_eq!(pre.id(), "PT_PREAO_DASH_RULE");
         assert_eq!(pre.description(), "Travessões no lugar de hífens");
         assert_eq!(pre.category().id().as_str(), "TYPOGRAPHY");

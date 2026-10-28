@@ -1189,7 +1189,7 @@ mod tests {
             ("gehen", "VER:INF", "gehen"),
             (".", "$.", ""),
         ]);
-        let matches = sentence_rule_matches(&rule, &[flagged.clone()]);
+        let matches = sentence_rule_matches(&rule, std::slice::from_ref(&flagged));
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].1, 0);
         assert!(matches[0].0.contains("Mehr als 10%"));

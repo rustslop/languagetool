@@ -323,18 +323,17 @@ pub fn predicts_accent(tokens: &[&AnalyzedTokenReadings], completive_only: bool)
         && postverbal_can_be_subject(tokens, first_token_after_verb_pos, verb3s, verb3p, verb2p);
 
     let mut complement_can_be_object = has_accusative_not_dative_pronoun;
-    if first_postag_after_verb.starts_with('N') {
-        complement_can_be_object = true;
-    } else if first_token_after_verb_pos > 0
-        && first_token_after_verb_pos + 1 < tokens.len() as isize
-        && (matches_pos_tag_regex(tokens[first_token_after_verb_pos as usize], &DET)
-            || INTERROGATIVE_WORDS.contains(
-                &tokens[first_token_after_verb_pos as usize]
-                    .token()
-                    .token()
-                    .to_lowercase()
-                    .as_str(),
-            ))
+    if first_postag_after_verb.starts_with('N')
+        || (first_token_after_verb_pos > 0
+            && first_token_after_verb_pos + 1 < tokens.len() as isize
+            && (matches_pos_tag_regex(tokens[first_token_after_verb_pos as usize], &DET)
+                || INTERROGATIVE_WORDS.contains(
+                    &tokens[first_token_after_verb_pos as usize]
+                        .token()
+                        .token()
+                        .to_lowercase()
+                        .as_str(),
+                )))
     {
         complement_can_be_object = true;
     }
@@ -416,9 +415,7 @@ pub fn predicts_accent(tokens: &[&AnalyzedTokenReadings], completive_only: bool)
         complement_can_be_object = false;
     }
 
-    let mut is_intransitive_verb = (main_verb_lemma
-        .as_deref()
-        .is_some_and(|l| is_intransitive(l))
+    let mut is_intransitive_verb = (main_verb_lemma.as_deref().is_some_and(is_intransitive)
         && main_verb_lemma
             .as_deref()
             .is_none_or(|l| !COPULAR_VERBS.contains(&l)))

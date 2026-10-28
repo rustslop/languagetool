@@ -90,18 +90,15 @@ pub fn get_preposition_and_determiner(
             .collect();
     }
     let mut apos = "";
-    if !P_HAC_ASPIRADA.is_match(new_form) {
-        if gender_number == "MS"
+    if !P_HAC_ASPIRADA.is_match(new_form)
+        && ((gender_number == "MS"
             && P_APOSTROPHE_MASC_YES.is_match(new_form)
-            && !P_APOSTROPHE_MASC_NO.is_match(new_form)
-        {
-            apos = "apos";
-        } else if gender_number == "FS"
-            && P_APOSTROPHE_FEM_YES.is_match(new_form)
-            && !P_APOSTROPHE_FEM_NO.is_match(new_form)
-        {
-            apos = "apos";
-        }
+            && !P_APOSTROPHE_MASC_NO.is_match(new_form))
+            || (gender_number == "FS"
+                && P_APOSTROPHE_FEM_YES.is_match(new_form)
+                && !P_APOSTROPHE_FEM_NO.is_match(new_form)))
+    {
+        apos = "apos";
     }
     prep_det(&format!("{preposition}{gender_number}{apos}"))
 }

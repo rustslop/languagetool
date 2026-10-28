@@ -339,7 +339,7 @@ fn pt_pt_grammar_examples_with_pt_pipeline() {
         *merged_failures.entry(id.as_str()).or_default() += n;
     }
     let mut top_rules: Vec<(&str, usize)> = merged_failures.into_iter().collect();
-    top_rules.sort_unstable_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    top_rules.sort_unstable_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     eprintln!(
         "top failing rules: {}",
         top_rules

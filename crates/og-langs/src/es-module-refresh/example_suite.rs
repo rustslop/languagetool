@@ -286,7 +286,8 @@ fn es_refresh_grammar_example_suite_pins_the_java_delta() {
         .flat_map(|(group, rule)| rule.examples.iter().map(move |e| (group, e)))
         .collect();
 
-    let per_example: Vec<(String, String, Option<(Outcome, String)>)> = {
+    type ExampleResult = (String, String, Option<(Outcome, String)>);
+    let per_example: Vec<ExampleResult> = {
         use rayon::prelude::*;
         pairs
             .par_iter()

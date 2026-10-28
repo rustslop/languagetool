@@ -1140,7 +1140,7 @@ mod dict_probe {
         let mut checked = 0usize;
         let mut i = 0usize;
         hunspell.for_each_word(|w: &str| {
-            let sample = i % 2267 == 0;
+            let sample = i.is_multiple_of(2267);
             i += 1;
             if !sample {
                 return;

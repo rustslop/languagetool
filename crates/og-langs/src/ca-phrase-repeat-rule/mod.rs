@@ -528,7 +528,11 @@ mod tests {
 
     #[test]
     fn punctuation_anchors_are_ignored() {
-        let cases: &[(&str, &[(&str, &str, &[&str])])] = &[
+        type Case = (
+            &'static str,
+            &'static [(&'static str, &'static str, &'static [&'static str])],
+        );
+        let cases: &[Case] = &[
             (
                 "=r=r[s[i]]||{}",
                 &[

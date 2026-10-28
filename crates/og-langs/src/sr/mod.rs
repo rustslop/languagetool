@@ -182,7 +182,7 @@ fn sr_shared_speller_dictionary(
         )
         .map(std::sync::Arc::new)
         .map(og_spell::Dictionary::from_fsa_word_set)
-        .unwrap_or_else(og_spell::Dictionary::new);
+        .unwrap_or_default();
         if let Ok(extra) = std::fs::read_to_string(dir.join("spelling.txt")) {
             for line in extra.lines() {
                 let word = line.trim();

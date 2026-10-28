@@ -846,7 +846,7 @@ mod tests {
 
     #[test]
     fn default_rule_matches_and_reports_the_typographical_issue_type() {
-        let rule = CatalanUnpairedBracketsRule::default();
+        let rule = CatalanUnpairedBracketsRule;
         assert_eq!(rule.id(), "UNPAIRED_BRACKETS");
         assert_eq!(rule.issue_type(), IssueType::Typographical);
         let matches = matches_for("Aix\u{f2} \u{e9}s (impossible. ");

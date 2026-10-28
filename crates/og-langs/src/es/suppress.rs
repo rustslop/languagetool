@@ -385,14 +385,14 @@ mod tests {
     #[test]
     fn raw_match_string_applies_replace_and_case_conversion() {
         let token = AnalyzedTokenReadings::new(og_core::AnalyzedToken::new("trabajo", 0, 7));
-        let m = |regexp_match: Option<&str>, regexp_replace: Option<&str>, cc: Option<&str>| {
-            let mut m = XmlMatch::default();
-            m.no = 3;
-            m.regexp_match = regexp_match.map(str::to_string);
-            m.regexp_replace = regexp_replace.map(str::to_string);
-            m.case_conversion = cc.map(str::to_string);
-            m
-        };
+        let m =
+            |regexp_match: Option<&str>, regexp_replace: Option<&str>, cc: Option<&str>| XmlMatch {
+                no: 3,
+                regexp_match: regexp_match.map(str::to_string),
+                regexp_replace: regexp_replace.map(str::to_string),
+                case_conversion: cc.map(str::to_string),
+                ..Default::default()
+            };
         assert_eq!(
             raw_match_string(&m(Some("(.+)"), Some("tele$1"), None), &token).as_deref(),
             Some("teletrabajo")

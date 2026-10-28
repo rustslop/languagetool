@@ -752,7 +752,7 @@ impl LanguageEngine {
             .as_deref()
             .and_then(shared_german_speller_dictionary)
             .map(|dict| (*dict).clone())
-            .unwrap_or_else(og_spell::Dictionary::new);
+            .unwrap_or_default();
         let mut variant_ignore_words: Vec<String> = Vec::new();
         let mut variant_hunspell: Option<Arc<og_spell::hunspell::HunspellChecker>> = None;
         if let Some(lt_root) = find_lt_resource_dir() {

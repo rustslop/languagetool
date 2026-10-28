@@ -128,8 +128,9 @@ pub fn accept_rule_match(
         .iter()
         .map(|r| r.value().to_string())
         .collect();
-    if !args.new_lemma.is_empty() && atr_noun_orig.is_some() {
-        let orig = atr_noun_orig.as_ref().unwrap();
+    if !args.new_lemma.is_empty()
+        && let Some(orig) = atr_noun_orig.as_ref()
+    {
         atr_noun_list.push(
             AnalyzedToken::new(orig.token(), orig.start(), orig.end())
                 .with_lemma(args.new_lemma)
@@ -215,33 +216,33 @@ pub fn accept_rule_match(
         } else {
             split_postag.number.clone()
         };
-        if desired_gender_str == "C" && pos_word > 1 {
-            if let Some(split2) = split_of_reading(tokens[pos_word - 1], &SPLIT_GENDER_NUMBER)
-                && (split2.gender == "F" || split2.gender == "M")
-            {
-                desired_gender_str = split2.gender;
-            }
+        if desired_gender_str == "C"
+            && pos_word > 1
+            && let Some(split2) = split_of_reading(tokens[pos_word - 1], &SPLIT_GENDER_NUMBER)
+            && (split2.gender == "F" || split2.gender == "M")
+        {
+            desired_gender_str = split2.gender;
         }
-        if desired_gender_str == "C" && pos_word + 1 < tokens.len() {
-            if let Some(split2) = split_of_reading(tokens[pos_word + 1], &SPLIT_GENDER_NUMBER)
-                && (split2.gender == "F" || split2.gender == "M")
-            {
-                desired_gender_str = split2.gender;
-            }
+        if desired_gender_str == "C"
+            && pos_word + 1 < tokens.len()
+            && let Some(split2) = split_of_reading(tokens[pos_word + 1], &SPLIT_GENDER_NUMBER)
+            && (split2.gender == "F" || split2.gender == "M")
+        {
+            desired_gender_str = split2.gender;
         }
-        if desired_number_str == "N" && pos_word > 1 {
-            if let Some(split2) = split_of_reading(tokens[pos_word - 1], &SPLIT_GENDER_NUMBER)
-                && (split2.number == "S" || split2.number == "P")
-            {
-                desired_number_str = split2.number;
-            }
+        if desired_number_str == "N"
+            && pos_word > 1
+            && let Some(split2) = split_of_reading(tokens[pos_word - 1], &SPLIT_GENDER_NUMBER)
+            && (split2.number == "S" || split2.number == "P")
+        {
+            desired_number_str = split2.number;
         }
-        if desired_number_str == "N" && pos_word + 1 < tokens.len() {
-            if let Some(split2) = split_of_reading(tokens[pos_word + 1], &SPLIT_GENDER_NUMBER)
-                && (split2.number == "S" || split2.number == "P")
-            {
-                desired_number_str = split2.number;
-            }
+        if desired_number_str == "N"
+            && pos_word + 1 < tokens.len()
+            && let Some(split2) = split_of_reading(tokens[pos_word + 1], &SPLIT_GENDER_NUMBER)
+            && (split2.number == "S" || split2.number == "P")
+        {
+            desired_number_str = split2.number;
         }
 
         if desired_gender_str.contains(&split_postag.gender) {

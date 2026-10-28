@@ -258,7 +258,7 @@ mod tests {
     }
 
     fn run_rule(text: &str) -> Vec<RuleMatch> {
-        let rule = SpanishWordRepeatBeginningRule::default();
+        let rule = SpanishWordRepeatBeginningRule;
         let sentences = analyze_spanish_sentences(text);
         rule.match_text(text, &sentences)
     }

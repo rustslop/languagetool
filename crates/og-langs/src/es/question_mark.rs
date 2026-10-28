@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn flags_missing_inverted_exclamation_mark() {
-        let rule = QuestionMarkRule::default();
+        let rule = QuestionMarkRule;
         let sentences = analyze_spanish("Qué pasa!");
         let matches = rule.match_text("Qué pasa!", &sentences);
         assert_eq!(matches.len(), 1);
