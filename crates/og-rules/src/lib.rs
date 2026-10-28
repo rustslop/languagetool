@@ -5,6 +5,7 @@ pub mod language_filter;
 pub mod native_rules;
 pub mod pattern_rule;
 pub mod pattern_trace;
+pub mod phrase_repeat;
 pub mod pl_filters;
 pub mod postponed_adjective;
 pub mod pt_filters;
@@ -14,4 +15,5 @@ pub mod text_level_rules;
 
 pub use native_rules::*;
 pub use pattern_rule::*;
+pub use phrase_repeat::*;
 pub use text_level_rules::*;
