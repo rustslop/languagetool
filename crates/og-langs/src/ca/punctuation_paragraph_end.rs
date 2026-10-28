@@ -26,6 +26,14 @@ static NO_PROTOCOL_URL: LazyLock<regex::Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
+static IGNORED_PREFIXES: LazyLock<regex::Regex> = LazyLock::new(|| {
+    // Java `\s` without UNICODE_CHARACTER_CLASS matches ASCII whitespace only.
+    regex::Regex::new("(?i)^(Annex|Article principal)[ \t\n\x0B\x0C\r]*:").unwrap()
+});
+
+pub fn is_ignored_paragraph(first_sentence_in_paragraph: &str) -> bool {
+    IGNORED_PREFIXES.is_match(first_sentence_in_paragraph.trim())
+}
 
 fn is_paragraph_end(sentences: &[AnalyzedSentence], n: usize) -> bool {
     if sentences.is_empty() || n >= sentences.len() - 1 {
@@ -133,7 +141,11 @@ impl TextLevelRule for CatalanPunctuationMarkAtParagraphEnd {
                     if n > 0 && is_numeric(sentences[n - 1].text()) {
                         ignore_sentence = true;
                     }
-                    if n as isize - last_para > 1 && first_is_word && !ignore_sentence {
+                    if n as isize - last_para > 1
+                        && first_is_word
+                        && !ignore_sentence
+                        && !is_ignored_paragraph(sentences[(last_para + 1) as usize].text())
+                    {
                         let mut last_nw = tokens.len() - 1;
                         while last_nw > 0 && is_linebreak(tokens[last_nw]) {
                             last_nw -= 1;
@@ -382,5 +394,114 @@ mod tests {
         assert_eq!(&text[m.offset()..m.offset() + m.length()], "\u{BB}");
         let values: Vec<&str> = m.replacements().iter().map(|r| r.value()).collect();
         assert_eq!(values[0], "\u{BB}.");
+    }
+
+    #[test]
+    fn java_ca_end_of_paragraph_test_expectations() {
+        assert_eq!(
+            hits("Aix\u{f2} \u{e9}s un par\u{e0}graf amb una frase nom\u{e9}s").len(),
+            0,
+            "EndOfParagraphPunctuationRuleTest.java:40-41"
+        );
+        assert_eq!(
+            hits("Aix\u{f2} \u{e9}s un par\u{e0}graf amb una frase nom\u{e9}s,").len(),
+            0,
+            "EndOfParagraphPunctuationRuleTest.java:43-44"
+        );
+
+        let text = "Aix\u{f2} \u{e9}s un par\u{e0}graf amb una frase nom\u{e9}s. Aix\u{f2} \u{e9}s la segona frase";
+        let matches = hits(text);
+        assert_eq!(
+            matches.len(),
+            1,
+            "EndOfParagraphPunctuationRuleTest.java:46-47"
+        );
+        let m = &matches[0];
+        assert_eq!(
+            m.replacements()[0].value(),
+            "frase.",
+            "EndOfParagraphPunctuationRuleTest.java:48"
+        );
+        assert_eq!(
+            &text[m.offset()..m.offset() + m.length()],
+            "frase",
+            "EndOfParagraphPunctuationRuleTest.java:49 pins fromPos 59 (UTF-16 index) on the final 'frase'"
+        );
+        assert_eq!(
+            m.offset(),
+            text.rfind("frase").unwrap(),
+            "the Rust RuleMatch carries the byte offset of the same token"
+        );
+
+        assert_eq!(
+            hits(
+                "Aix\u{f2} \u{e9}s un par\u{e0}graf amb una frase nom\u{e9}s.\\nAix\u{f2} \u{e9}s una \u{fa}nica frase en un par\u{e0}graf"
+            )
+            .len(),
+            0,
+            "EndOfParagraphPunctuationRuleTest.java:56-58 passes a literal backslash-n, so the text stays on one line"
+        );
+
+        assert_eq!(
+            hits("Aix\u{f2} \u{e9}s un par\u{e0}graf.\n\nAnnex: Videojocs cancel\u{b7}lats").len(),
+            0,
+            "EndOfParagraphPunctuationRuleTest.java:60-61 ignores the paragraph per CatalanPunctuationMarkAtParagraphEnd.java:37-48"
+        );
+        assert_eq!(
+            hits("Aix\u{f2} \u{e9}s un par\u{e0}graf.\n\nArticle principal: Videojocs cancel\u{b7}lats")
+                .len(),
+            0,
+            "EndOfParagraphPunctuationRuleTest.java:63-64 ignores the paragraph per CatalanPunctuationMarkAtParagraphEnd.java:37-48"
+        );
+
+        let text =
+            "Aix\u{f2} \u{e9}s un par\u{e0}graf.\n\nAltre prefix: Videojocs cancel\u{b7}lats";
+        let matches = hits(text);
+        assert_eq!(
+            matches.len(),
+            1,
+            "EndOfParagraphPunctuationRuleTest.java:66-67 still flags an unrecognized prefix"
+        );
+        assert_eq!(
+            &text[matches[0].offset()..matches[0].offset() + matches[0].length()],
+            "cancel\u{b7}lats"
+        );
+    }
+
+    #[test]
+    fn ignored_prefix_matching_follows_the_java_pattern() {
+        use super::is_ignored_paragraph;
+        for text in [
+            "Annex: Videojocs cancel\u{b7}lats",
+            "Annex:",
+            "Annex: ",
+            "Annex : t\u{ed}tol",
+            "Annex\t: t\u{ed}tol",
+            "annex: t\u{ed}tol",
+            "ANNEX:t\u{ed}tol",
+            "Article principal: Videojocs",
+            "article principal: Videojocs",
+            "Article principal  : t\u{ed}tol",
+            "  Annex: t\u{ed}tol",
+        ] {
+            assert!(
+                is_ignored_paragraph(text),
+                "CatalanPunctuationMarkAtParagraphEnd.java:37-39 must ignore {text:?}"
+            );
+        }
+        for text in [
+            "Altre prefix: Videojocs",
+            "L'annex: Videojocs",
+            "Annex Videojocs",
+            "Annex",
+            "Annex\u{a0}: Videojocs",
+            "Annexari: Videojocs",
+            "Articles principals: Videojocs",
+        ] {
+            assert!(
+                !is_ignored_paragraph(text),
+                "CatalanPunctuationMarkAtParagraphEnd.java:37-39 must not ignore {text:?}"
+            );
+        }
     }
 }
