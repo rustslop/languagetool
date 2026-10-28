@@ -12,11 +12,11 @@ pub use registry::*;
 #[unsafe(link_section = ".init_array")]
 #[used]
 static BOUND_TEST_ALLOCATOR: extern "C" fn() = {
-    // glibc's dynamic mmap threshold funnels freed multi-MB dictionary and rule
-    // allocations back into per-thread arenas; malloc_trim cannot return those pages.
     extern "C" fn bound() {
         unsafe {
-            libc::mallopt(libc::M_ARENA_MAX, 1);
+            // One arena serializes rayon workers on the malloc lock; the static mmap
+            // threshold cap below, not the arena count, keeps freed pages returnable.
+            libc::mallopt(libc::M_ARENA_MAX, 6);
             libc::mallopt(libc::M_MMAP_THRESHOLD, 2 * 1024 * 1024);
             libc::mallopt(libc::M_TRIM_THRESHOLD, 4 * 1024 * 1024);
         }
