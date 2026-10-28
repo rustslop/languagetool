@@ -1167,6 +1167,70 @@ mod tests {
     }
 
     #[test]
+    fn wrong_word_in_context_word_boundaries_are_unicode_aware() {
+        let rule = CatalanWrongWordInContextRule::new();
+        let matches = rule.match_sentence(&sentence_with_readings(&[
+            ("El", &[]),
+            ("pic", &[]),
+            ("de", &[]),
+            ("l'ocell", &[]),
+            (".", &[]),
+        ]));
+        assert_eq!(
+            matches.len(),
+            1,
+            "pic in the ocell context must flip to bec"
+        );
+        let matches = rule.match_sentence(&sentence_with_readings(&[
+            ("En", &[]),
+            ("el", &[]),
+            ("teatre", &[]),
+            ("grec", &[]),
+            (",", &[]),
+            ("la", &[]),
+            ("tosquedat", &[]),
+            ("dels", &[]),
+            ("decorats", &[]),
+            ("es", &[]),
+            ("compensava", &[]),
+            ("per", &[]),
+            ("mitjà", &[]),
+            ("de", &[]),
+            ("màscares", &[]),
+            (",", &[]),
+            ("tràgiques", &[]),
+            ("o", &[]),
+            ("còmiques", &[]),
+            (",", &[]),
+            ("i", &[]),
+            ("les", &[]),
+            ("túniques", &[]),
+            ("estilitzades", &[]),
+            ("dels", &[]),
+            ("actors", &[]),
+            (",", &[]),
+            ("l'objecte", &[]),
+            ("de", &[]),
+            ("les", &[]),
+            ("quals", &[]),
+            ("era", &[]),
+            ("ressaltar", &[]),
+            ("el", &[]),
+            ("caràcter", &[]),
+            ("arquetípic", &[]),
+            ("dels", &[]),
+            ("personatges", &[]),
+            (".", &[]),
+        ]));
+        assert!(
+            matches.is_empty(),
+            "ported from CatalanWrongWordInContextRuleTest:59-63: Java prepends (?U) so \\b is \
+             Unicode-aware and 'pic' inside 'arquetípic' is not a word hit; the regex crate's \
+             \\b is Unicode-aware by default, so the same sentence must stay clean here"
+        );
+    }
+
+    #[test]
     fn word_coherency_rule_carries_the_java_id_and_message() {
         let rule = catalan_word_coherency_rule();
         assert_eq!(rule.id(), "CA_WORD_COHERENCY");

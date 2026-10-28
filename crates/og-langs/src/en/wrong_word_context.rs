@@ -349,4 +349,17 @@ mod tests {
         let matches = rule.match_sentence(&sentence);
         assert!(matches.is_empty() || !matches.iter().any(|m| m.message().contains("statue")));
     }
+
+    #[test]
+    fn word_boundaries_are_unicode_aware() {
+        let re = Regex::new(&format!("(?i)\\b{}\\b", "pic")).unwrap();
+        assert!(re.is_match("el pic alt"));
+        assert!(
+            !re.is_match("l'arquetípic"),
+            "WrongWordInContextRule.java:281-286 prepends (?U) so \\b stays Unicode-aware \
+             under Java 21; this construction feeds the en/es/nl/pt/ar wrong-word rules and \
+             the regex crate's \\b is Unicode-aware by default, so 'pic' must not hit inside \
+             'arquetípic'"
+        );
+    }
 }
