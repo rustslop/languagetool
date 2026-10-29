@@ -1,9 +1,7 @@
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static ENABLED: AtomicBool = AtomicBool::new(false);
+use std::cell::{Cell, RefCell};
 
 thread_local! {
+    static ENABLED: Cell<bool> = const { Cell::new(false) };
     static EVENTS: RefCell<Vec<TraceEvent>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -16,11 +14,11 @@ pub struct TraceEvent {
 }
 
 pub fn set_enabled(on: bool) {
-    ENABLED.store(on, Ordering::Relaxed);
+    ENABLED.with(|enabled| enabled.set(on));
 }
 
 pub fn enabled() -> bool {
-    ENABLED.load(Ordering::Relaxed)
+    ENABLED.with(|enabled| enabled.get())
 }
 
 pub fn clear() {
