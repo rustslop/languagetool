@@ -134,3 +134,29 @@ routes through E1/D1/D3 dead antipattern bodies or rule-side dict stalls.
    carries 52 `postag_regexp='no'` occurrences behind 191 of the 227 failures — re-run this
    suite and refresh this doc after it lands.
 3. **Promote this file** to `docs/attributions/pt-pt-suite-r27.md`.
+
+## Round 2 verification addendum (2026-10-29, this wave's porter)
+
+All three suites re-run on the refreshed ref (`cargo test -p og-langs --release --lib …`):
+
+- grammar.xml (8,123 tags): `pt::example_suite::portuguese_grammar_examples_with_pt_pipeline
+  -- --ignored` → 5297/5506 (96.2%), no_match 180 / fp 23 / marker 6 (209 failures; r26 doc
+  baseline was 210 at 8,101 tags).
+- pt-PT/grammar.xml (1,088 tags): `pt_module_refresh::pt_pt_suite -- --ignored` → 3324/3551
+  (93.6%), failures exactly equal the pinned tables above (18 main + 209 antipattern, 0
+  veto-overlap).
+- style.xml (3,425 tags): `pt::example_suite::portuguese_style_examples_with_pt_pipeline
+  -- --ignored` → 3441/3709 (92.8%), 129 main + 139 antipattern failures (r26 doc: 130 + 138).
+- antipattern extraction pins 1477/910/273/29 (`antipattern_tests`): pass.
+
+New pinned evidence (`predelta_diff.rs`, both `--ignored`): staging the pre-delta rule files
+from the LT ref git history (grammar `b650fda3881` 8,101 tags, style `1eefa2dc9c0` 3,355) and
+evaluating them against the current tree proves the refreshed XML introduces **zero** new
+suite failures and resolves exactly one pre-delta stall (grammar
+`[PT_MULTITOKEN_SPELLING_TWO] 'Michael Jodan.'`, via the live spelling/multitoken data). The
+single style-antipattern movement vs the r26 doc (138→139, the QUE_ESTA_ESTAO_EM example
+'…tratamento com Zaarpress HCT…') is **engine-side, not the PT delta**: under pre-delta data
+staged from git the rule matches the sentence identically (the only data-side reading change
+in it is 'uma' DI0FS0 → DI0FS0+Z0FS0, far outside the match window), and the veto's
+`postag='_PUNCT' postag_regexp='no'` element stays the documented E1 fingerprint — the r26
+simfix artifact already shows this exact example passing once E1 is fixed.
