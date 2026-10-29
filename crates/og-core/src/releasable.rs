@@ -255,6 +255,21 @@ pub fn resident_bytes() -> usize {
 }
 
 #[cfg(target_os = "linux")]
+pub fn available_bytes() -> Option<usize> {
+    let stat = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = stat
+        .lines()
+        .find(|line| line.starts_with("MemAvailable:"))?;
+    let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn available_bytes() -> Option<usize> {
+    None
+}
+
+#[cfg(target_os = "linux")]
 fn page_size() -> usize {
     static PAGE_SIZE: OnceLock<usize> = OnceLock::new();
     *PAGE_SIZE.get_or_init(|| {

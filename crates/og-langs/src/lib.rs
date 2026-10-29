@@ -91,13 +91,42 @@ thread_local! {
 }
 
 #[cfg(test)]
-static HEAVY_TEST_AVAILABLE: std::sync::Mutex<usize> = std::sync::Mutex::new(1);
+static HEAVY_TEST_AVAILABLE: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 
 #[cfg(test)]
 static HEAVY_TEST_CV: std::sync::Condvar = std::sync::Condvar::new();
 
 #[cfg(test)]
+fn heavy_test_permits() -> usize {
+    const SECOND_PERMIT_FLOOR_MB: usize = 5 * 1024 + 768;
+    static PERMITS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *PERMITS.get_or_init(|| {
+        std::env::var("OG_LANGS_TEST_HEAVY_PERMITS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|&permits| permits > 0)
+            .unwrap_or_else(|| {
+                1 + usize::from(
+                    og_core::releasable::available_bytes()
+                        .is_some_and(|available| available >= SECOND_PERMIT_FLOOR_MB * 1024 * 1024),
+                )
+            })
+    })
+}
+
+#[cfg(test)]
+fn ensure_heavy_test_permits() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        if let Ok(mut available) = HEAVY_TEST_AVAILABLE.lock() {
+            *available = heavy_test_permits();
+        }
+    });
+}
+
+#[cfg(test)]
 fn heavy_test_gate() -> HeavyTestGate {
+    ensure_heavy_test_permits();
     let mut acquired = false;
     if HEAVY_TEST_DEPTH.with(|depth| depth.get()) == 0 {
         let mut available = HEAVY_TEST_AVAILABLE
@@ -118,13 +147,15 @@ fn heavy_test_gate() -> HeavyTestGate {
 #[cfg(test)]
 fn test_rss_wait_watermark() -> usize {
     const DEFAULT_WATERMARK_MB: usize = 3584;
+    const EXTRA_WATERMARK_MB_PER_PERMIT: usize = 768;
     static WATERMARK: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *WATERMARK.get_or_init(|| {
         let mb = std::env::var("OG_LANGS_TEST_RSS_WAIT_MB")
             .ok()
             .and_then(|value| value.trim().parse::<usize>().ok())
             .filter(|&mb| mb > 0)
-            .unwrap_or(DEFAULT_WATERMARK_MB);
+            .unwrap_or(DEFAULT_WATERMARK_MB)
+            + (heavy_test_permits().saturating_sub(1)) * EXTRA_WATERMARK_MB_PER_PERMIT;
         mb.saturating_mul(1024 * 1024)
     })
 }
