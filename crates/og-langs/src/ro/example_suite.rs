@@ -168,6 +168,112 @@ fn romanian_grammar_examples_with_ro_pipeline() {
     let pipeline = ro_pipeline();
     og_rules::pattern_rule::set_test_date_hack(true);
 
+    struct RoExampleResult {
+        kind: &'static str,
+        fail: Option<String>,
+        correction: Option<String>,
+    }
+
+    let pairs: Vec<(
+        &Vec<&og_xml::compiler::CompiledRule>,
+        &og_xml::types::XmlExample,
+    )> = groups
+        .iter()
+        .filter_map(|group| group.first().map(|rule| (group, rule)))
+        .flat_map(|(group, rule)| rule.examples.iter().map(move |e| (group, e)))
+        .collect();
+
+    let outcomes: Vec<RoExampleResult> = {
+        use rayon::prelude::*;
+        pairs
+            .par_iter()
+            .map(|(group, example)| {
+                let rule = group[0];
+                let (clean_text, marker_range) = extract_marker(&example.text);
+                let mut matches = Vec::new();
+                for aux in group.iter() {
+                    for sentence in pipeline.analyze_text(&clean_text) {
+                        matches.extend(engine.match_rule(aux, &sentence));
+                    }
+                }
+                let (kind, failed) = match example.example_type {
+                    og_xml::types::XmlExampleType::Incorrect => {
+                        if matches.is_empty() {
+                            (
+                                "no_match",
+                                Some(format!(
+                                    "FAIL: [{}]: Expected match on incorrect example but got \
+                                     none: '{}'",
+                                    rule.id, clean_text
+                                )),
+                            )
+                        } else if marker_range.is_some_and(|(m_start, m_end)| {
+                            let first = &matches[0];
+                            let match_start = first.offset();
+                            let match_end = match_start + first.length();
+                            !(match_start <= m_start && match_end >= m_end)
+                        }) {
+                            (
+                                "marker",
+                                Some(format!(
+                                    "FAIL: [{}]: Match does not cover the marker: '{}'",
+                                    rule.id, clean_text
+                                )),
+                            )
+                        } else {
+                            ("", None)
+                        }
+                    }
+                    og_xml::types::XmlExampleType::Correct => {
+                        if !matches.is_empty() {
+                            (
+                                "fp",
+                                Some(format!(
+                                    "FAIL: [{}]: Expected no match on correct example: '{}'",
+                                    rule.id, clean_text
+                                )),
+                            )
+                        } else {
+                            ("", None)
+                        }
+                    }
+                    og_xml::types::XmlExampleType::TriggersError => ("", None),
+                };
+                if let Some(line) = failed {
+                    return RoExampleResult {
+                        kind,
+                        fail: Some(line),
+                        correction: None,
+                    };
+                }
+                if let Some(expected) = example.corrections.first()
+                    && !expected.is_empty()
+                {
+                    let offered = matches[0]
+                        .replacements()
+                        .iter()
+                        .map(|r| r.value().to_string())
+                        .collect::<Vec<_>>();
+                    if !offered.iter().any(|r| r == expected) {
+                        return RoExampleResult {
+                            kind,
+                            fail: None,
+                            correction: Some(format!(
+                                "CORRECTION: [{}]: '{}' expected '{expected}' got {offered:?}",
+                                rule.id, clean_text
+                            )),
+                        };
+                    }
+                }
+                RoExampleResult {
+                    kind,
+                    fail: None,
+                    correction: None,
+                }
+            })
+            .collect()
+    };
+
     let mut passed = 0usize;
     let mut correction_failures = Vec::new();
     let mut fail_lines: Vec<String> = Vec::new();
@@ -175,77 +281,20 @@ fn romanian_grammar_examples_with_ro_pipeline() {
     let mut fp = 0usize;
     let mut marker = 0usize;
     let mut evaluated = 0usize;
-    for group in &groups {
-        let Some(rule) = group.first() else {
-            continue;
-        };
-        for example in &rule.examples {
-            let (clean_text, marker_range) = extract_marker(&example.text);
-            let mut matches = Vec::new();
-            for aux in group.iter() {
-                for sentence in pipeline.analyze_text(&clean_text) {
-                    matches.extend(engine.match_rule(aux, &sentence));
-                }
+    for outcome in outcomes {
+        evaluated += 1;
+        if let Some(line) = outcome.fail {
+            match outcome.kind {
+                "no_match" => no_match += 1,
+                "fp" => fp += 1,
+                "marker" => marker += 1,
+                _ => {}
             }
-            evaluated += 1;
-            let failed = match example.example_type {
-                og_xml::types::XmlExampleType::Incorrect => {
-                    if matches.is_empty() {
-                        no_match += 1;
-                        Some(format!(
-                            "FAIL: [{}]: Expected match on incorrect example but got none: '{}'",
-                            rule.id, clean_text
-                        ))
-                    } else if marker_range.is_some_and(|(m_start, m_end)| {
-                        let first = &matches[0];
-                        let match_start = first.offset();
-                        let match_end = match_start + first.length();
-                        !(match_start <= m_start && match_end >= m_end)
-                    }) {
-                        marker += 1;
-                        Some(format!(
-                            "FAIL: [{}]: Match does not cover the marker: '{}'",
-                            rule.id, clean_text
-                        ))
-                    } else {
-                        None
-                    }
-                }
-                og_xml::types::XmlExampleType::Correct => {
-                    if !matches.is_empty() {
-                        fp += 1;
-                        Some(format!(
-                            "FAIL: [{}]: Expected no match on correct example: '{}'",
-                            rule.id, clean_text
-                        ))
-                    } else {
-                        None
-                    }
-                }
-                og_xml::types::XmlExampleType::TriggersError => None,
-            };
-            match failed {
-                Some(line) => fail_lines.push(line),
-                None => {
-                    if let Some(expected) = example.corrections.first()
-                        && !expected.is_empty()
-                    {
-                        let offered = matches[0]
-                            .replacements()
-                            .iter()
-                            .map(|r| r.value().to_string())
-                            .collect::<Vec<_>>();
-                        if !offered.iter().any(|r| r == expected) {
-                            correction_failures.push(format!(
-                                "CORRECTION: [{}]: '{}' expected '{expected}' got {offered:?}",
-                                rule.id, clean_text
-                            ));
-                            continue;
-                        }
-                    }
-                    passed += 1;
-                }
-            }
+            fail_lines.push(line);
+        } else if let Some(line) = outcome.correction {
+            correction_failures.push(line);
+        } else {
+            passed += 1;
         }
     }
     let total = passed + fail_lines.len() + correction_failures.len();
