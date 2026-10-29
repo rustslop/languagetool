@@ -110,8 +110,7 @@ fn heavy_test_permits() -> usize {
                 1 + usize::from(
                     og_core::releasable::available_bytes().is_some_and(|available| {
                         available < usize::MAX
-                            && og_core::releasable::resident_bytes()
-                                .saturating_add(available)
+                            && og_core::releasable::resident_bytes().saturating_add(available)
                                 >= floor
                     }),
                 )
