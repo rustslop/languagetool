@@ -12,3 +12,6 @@ thiserror = { workspace = true }
 regex = { workspace = true }
 fancy-regex = "0.14"
 phf = { version = "0.11", features = ["macros"] }
+
+[dev-dependencies]
+rayon = { workspace = true }

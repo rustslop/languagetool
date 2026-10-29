@@ -1401,6 +1401,13 @@ impl MorfologikDictionary {
         }
     }
 
+    fn lookup_seeking(&self, word: &str) -> ReadingList {
+        match &self.source {
+            Source::Fsa { dict, .. } => dict.lookup_uncached(word),
+            Source::Decoded { .. } => self.lookup(word),
+        }
+    }
+
     pub fn lookup(&self, word: &str) -> Vec<(&'static str, &'static str)> {
         let cache = match &self.source {
             Source::Fsa { dict, .. } => &dict.cache,
@@ -1712,6 +1719,7 @@ mod tests {
     }
 
     fn cross_check_lazy_lookup_matches_enumeration(dir: &std::path::Path, stem: &str) {
+        use rayon::prelude::*;
         let dict = MorfologikDictionary::load(
             &dir.join(format!("{stem}.dict")),
             &dir.join(format!("{stem}.info")),
@@ -1719,18 +1727,21 @@ mod tests {
         .unwrap_or_else(|| panic!("load {stem} dict"));
         let entries = dict.entries_map();
         assert!(!entries.is_empty(), "{stem} dictionary must enumerate");
-        for (word, readings) in entries.iter() {
-            let lazy = dict.lookup(word);
-            let diverged = lazy.len() != readings.len()
-                || lazy
-                    .iter()
-                    .zip(readings.iter())
-                    .any(|(l, e)| l.0 != e.0.as_ref() || l.1 != e.1.as_ref());
-            assert!(
-                !diverged,
-                "{stem}: lazy lookup diverged for {word}: {lazy:?} vs {readings:?}"
-            );
-        }
+        let divergence = entries
+            .par_iter()
+            .find_any(|(word, readings)| {
+                let lazy = dict.lookup_seeking(word);
+                lazy.len() != readings.len()
+                    || lazy
+                        .iter()
+                        .zip(readings.iter())
+                        .any(|(l, e)| l.0 != e.0.as_ref() || l.1 != e.1.as_ref())
+            })
+            .map(|(word, readings)| {
+                let lazy = dict.lookup_seeking(word);
+                format!("{stem}: lazy lookup diverged for {word}: {lazy:?} vs {readings:?}")
+            });
+        assert!(divergence.is_none(), "{}", divergence.unwrap_or_default());
         assert!(dict.lookup("__no_such_word_zq__").is_empty());
     }
 
