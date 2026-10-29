@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn engine_check_survives_russian_text_with_brackets() {
         let _release_guard = crate::release_guard();
-        let engine = crate::engine::LanguageEngine::for_code("ru").unwrap();
+        let engine = crate::engine::LanguageEngine::shared_for_code("ru").unwrap();
         let result = engine.check("Привет мир (тест).");
         assert!(!result.matches.is_empty());
     }
