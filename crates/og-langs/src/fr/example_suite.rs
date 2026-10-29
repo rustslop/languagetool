@@ -1,6 +1,6 @@
 use crate::fr::test_support::FrenchPipeline;
 use og_rules::pattern_rule::PatternRuleEngine;
-use og_xml::compiler::XmlCompiler;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -89,9 +89,8 @@ fn evaluate_examples_file(rules_path: &std::path::Path, file_label: &str, artifa
     let raw_example_count = xml.matches("<example").count();
     let without_comments = strip_xml_comments(&xml);
     let comment_example_count = raw_example_count - without_comments.matches("<example").count();
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, rules_path.parent())
-        .expect("compile rules xml");
+    let rule_set =
+        crate::test_util::shared_compiled_rules(rules_path, &xml).expect("compile rules xml");
 
     let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();
     let mut groups: Vec<Vec<&og_xml::compiler::CompiledRule>> = Vec::new();
@@ -271,8 +270,7 @@ mod tests {
             &std::fs::read_to_string(grammar_path()).expect("grammar.xml"),
         )
         .into_owned();
-        let rule_set = XmlCompiler::new()
-            .compile_file_with_base(&xml, grammar_path().parent())
+        let rule_set = crate::test_util::shared_compiled_rules(&grammar_path(), &xml)
             .expect("compile grammar.xml");
         let engine = build_pattern_engine();
         let pipeline = FrenchPipeline::shared();

@@ -1,6 +1,6 @@
 use crate::es::test_support::SpanishPipeline;
 use og_rules::pattern_rule::PatternRuleEngine;
-use og_xml::compiler::XmlCompiler;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -282,9 +282,7 @@ fn spanish_grammar_examples_with_es_pipeline() {
 #[test]
 fn dispatch_drives_the_compiled_comma_rule_end_to_end() {
     let xml = std::fs::read_to_string(grammar_path()).expect("grammar.xml");
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, grammar_path().parent())
-        .expect("compile");
+    let rule_set = crate::test_util::shared_compiled_rules(&grammar_path(), &xml).expect("compile");
     let rule = rule_set
         .rules
         .iter()
@@ -331,9 +329,7 @@ fn evaluate_examples_file(path: &std::path::Path, label: &str, artifact: &str) {
     let raw_example_count = xml.matches("<example").count();
     let stripped = strip_xml_comments(&xml);
     let commented_example_count = raw_example_count - stripped.matches("<example").count();
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, path.parent())
-        .expect("compile rules file");
+    let rule_set = crate::test_util::shared_compiled_rules(path, &xml).expect("compile rules file");
 
     let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();
     let mut groups: Vec<Vec<&og_xml::compiler::CompiledRule>> = Vec::new();

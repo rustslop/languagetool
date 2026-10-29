@@ -7,21 +7,12 @@ pub(crate) fn trace_engine() -> PatternRuleEngine {
 }
 
 pub(crate) fn compiled_rules() -> std::sync::Arc<CompiledRuleSet> {
-    static GRAMMAR: og_core::releasable::Releasable<CompiledRuleSet> =
-        og_core::releasable::Releasable::new();
-    og_core::releasable::shared_get_or_build(&GRAMMAR, || {
-        let path = crate::pl::pl_rules_dir()
-            .expect("pl rules dir")
-            .join("grammar.xml");
-        let xml = std::fs::read_to_string(&path).expect("grammar.xml");
-        let xml = crate::pl::normalize_pl_rules_xml(&xml);
-        Some(std::sync::Arc::new(
-            XmlCompiler::new()
-                .compile_file_with_base(xml.as_ref(), path.parent())
-                .expect("compile pl grammar.xml"),
-        ))
-    })
-    .expect("pl grammar")
+    let path = crate::pl::pl_rules_dir()
+        .expect("pl rules dir")
+        .join("grammar.xml");
+    let xml = std::fs::read_to_string(&path).expect("grammar.xml");
+    let xml = crate::pl::normalize_pl_rules_xml(&xml);
+    crate::test_util::shared_compiled_rules(&path, xml.as_ref()).expect("pl grammar")
 }
 
 fn group_of<'a>(rules: &'a CompiledRuleSet, rule_id: &str) -> Vec<&'a CompiledRule> {

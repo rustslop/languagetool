@@ -1,7 +1,7 @@
 use crate::nl::test_support::DutchPipeline;
 use og_rules::pattern_rule::PatternRuleEngine;
 use og_rules::postponed_adjective::LangSynthesizer;
-use og_xml::compiler::{CompiledRule, CompiledRuleSet, XmlCompiler};
+use og_xml::compiler::{CompiledRule, CompiledRuleSet};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -250,9 +250,8 @@ fn evaluate_examples_file(rules_path: &Path, file_label: &str, artifact: &str) {
     let raw_example_count = xml.matches("<example").count();
     let without_comments = strip_xml_comments(&xml);
     let comment_example_count = raw_example_count - without_comments.matches("<example").count();
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, rules_path.parent())
-        .expect("compile rules xml");
+    let rule_set =
+        crate::test_util::shared_compiled_rules(rules_path, &xml).expect("compile rules xml");
 
     let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();
     let mut groups: Vec<Vec<&CompiledRule>> = Vec::new();
@@ -486,28 +485,8 @@ mod tests {
     use og_core::rule::Rule as _;
 
     fn compiled_rules_from(path: PathBuf) -> std::sync::Arc<CompiledRuleSet> {
-        static GRAMMAR: og_core::releasable::Releasable<CompiledRuleSet> =
-            og_core::releasable::Releasable::new();
-        static STYLE: og_core::releasable::Releasable<CompiledRuleSet> =
-            og_core::releasable::Releasable::new();
-        static VARIANT: og_core::releasable::Releasable<CompiledRuleSet> =
-            og_core::releasable::Releasable::new();
-        let cell = if path.ends_with("style.xml") {
-            &STYLE
-        } else if path.ends_with("nl-NL/grammar.xml") {
-            &VARIANT
-        } else {
-            &GRAMMAR
-        };
-        og_core::releasable::shared_get_or_build(cell, || {
-            let xml = std::fs::read_to_string(&path).unwrap();
-            Some(std::sync::Arc::new(
-                XmlCompiler::new()
-                    .compile_file_with_base(&xml, path.parent())
-                    .expect("compile rules xml"),
-            ))
-        })
-        .expect("nl rule set")
+        let xml = std::fs::read_to_string(&path).unwrap();
+        crate::test_util::shared_compiled_rules(&path, &xml).expect("nl rule set")
     }
 
     fn rule_matches(rules_path: PathBuf, rule_id: &str, text: &str) -> Vec<(usize, usize)> {
