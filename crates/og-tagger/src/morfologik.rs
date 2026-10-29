@@ -1401,6 +1401,7 @@ impl MorfologikDictionary {
         }
     }
 
+    #[cfg(test)]
     fn lookup_seeking(&self, word: &str) -> ReadingList {
         match &self.source {
             Source::Fsa { dict, .. } => dict.lookup_uncached(word),
