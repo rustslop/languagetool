@@ -1,17 +1,29 @@
 use std::cell::RefCell;
 
-use og_core::{AnalyzedToken, AnalyzedTokenReadings, RuleMatch, RuleMatchContext, RuleMatchRule};
+use og_core::{
+    AnalyzedToken, AnalyzedTokenReadings, RuleMatch, RuleMatchContext, RuleMatchRule,
+    SuggestedReplacement,
+};
 
+use super::adjust_verb_suggestions::{
+    AdjustArgs, accept_rule_match as adjust_verb_accept, get_target_postag,
+};
 use super::apostophation::{
     all_need_same_apostrophation_ms, get_preposition_and_determiner, needs_apostrophation_ms,
 };
+use super::ca_adapt::adapt_suggestion_ca;
 use super::consumers::{
     any_change_vowel_consonant, find_suggestions_es_verb3_allowed, oblidarse_word_after_suffix,
 };
 use super::convert_gender_number::{ConvertArgs, accept_rule_match as convert_accept};
 use super::en_no_infinitiu::accept_rule_match as en_no_infinitiu_accept;
+use super::oblidarse_suggestions::accept_rule_match as oblidarse_accept;
 use super::portar_gerundi::accept_rule_match as portar_gerundi_accept;
 use super::possessius_redundants::accept_rule_match as possessius_accept;
+use super::pronoms_actions::{
+    convert_pronouns_for_intransitive_verb, do_add_pronoun_reflexive, do_remove_pronoun_reflexive,
+    fix_apostrophes, get_dative_pronoun, get_reflexive_pronoun,
+};
 use super::pronoms_davant::transform_davant;
 use super::que_inici::{accept_rule_match as que_inici_accept, predicts_accent};
 use super::simple_replace_lemmas::matched_lemma_and_postag;
@@ -670,4 +682,237 @@ fn consumers_pin_the_changed_predicates() {
     assert!(find_suggestions_es_verb3_allowed("menjava"));
     assert_eq!(oblidarse_word_after_suffix("ull"), (" d'", 1));
     assert_eq!(oblidarse_word_after_suffix("braç"), (" de", 0));
+}
+
+#[test]
+fn pronoms_actions_pin_the_java_do_family() {
+    assert_eq!(get_reflexive_pronoun("3S"), "es");
+    assert_eq!(get_reflexive_pronoun("1P"), "ens");
+    assert_eq!(get_reflexive_pronoun("3C"), "");
+    assert_eq!(get_dative_pronoun("3S"), "li");
+    assert_eq!(get_dative_pronoun("3P"), "els");
+    assert_eq!(get_dative_pronoun("3C"), "li");
+    assert_eq!(
+        do_add_pronoun_reflexive("", "menja", "3S", false),
+        "es menja"
+    );
+    assert_eq!(do_remove_pronoun_reflexive("em", "menjo", false), "menjo");
+    assert_eq!(
+        do_remove_pronoun_reflexive("em", "menjo", true),
+        "menjo",
+        "no pronouns survive the strip, darrere stays empty"
+    );
+    assert_eq!(
+        convert_pronouns_for_intransitive_verb("se'l menja"),
+        "se li menja"
+    );
+    assert_eq!(fix_apostrophes("em oblidat"), "m'oblidat");
+    assert_eq!(fix_apostrophes("d'viatge"), "de viatge");
+    assert_eq!(fix_apostrophes("t'comença"), "et comença");
+}
+
+#[test]
+fn adapt_suggestion_ca_pins_the_catalan_rewrites() {
+    assert_eq!(adapt_suggestion_ca("de el gos", ""), "del gos");
+    assert_eq!(adapt_suggestion_ca("per els gossos", ""), "pels gossos");
+    assert_eq!(adapt_suggestion_ca("l' avi", ""), "l'avi");
+    assert_eq!(adapt_suggestion_ca("t'comença", ""), "et comença");
+    assert_eq!(adapt_suggestion_ca("la avi", ""), "l'avi");
+    assert_eq!(
+        adapt_suggestion_ca("la una cosa", ""),
+        "la una cosa",
+        "CA_APOSTROPHES4 vowel class has no plain u"
+    );
+    assert_eq!(adapt_suggestion_ca("d'viatge", ""), "de viatge");
+    assert_eq!(adapt_suggestion_ca("de ha perdut", ""), "d'ha perdut");
+    assert_eq!(adapt_suggestion_ca("a ls coses", ""), "als coses");
+    assert_eq!(
+        adapt_suggestion_ca("a l'avi", ""),
+        "a l'avi",
+        "CA_REMOVE_SPACES lookahead keeps l' untouched"
+    );
+    assert_eq!(adapt_suggestion_ca("menjava", "menjava"), "menjava");
+    assert_eq!(adapt_suggestion_ca("De el Gos", "El gos"), "Del gos");
+}
+
+#[test]
+fn get_target_postag_sorts_like_the_java_comparator() {
+    assert_eq!(get_target_postag(&[], ""), "");
+    assert_eq!(
+        get_target_postag(&["VMIP1S00".to_string(), "VMIP3S00".to_string()], ""),
+        "VMIP3S00"
+    );
+    assert_eq!(
+        get_target_postag(&["VMSP3S00".to_string(), "VMIP3S00".to_string()], ""),
+        "VMIP3S00",
+        "indicative outranks subjunctive"
+    );
+    assert_eq!(
+        get_target_postag(&["VMIS3S00".to_string(), "VMIP2P00".to_string()], ""),
+        "VMIP2P00",
+        "feu present beats passat"
+    );
+}
+
+#[test]
+fn adjust_verb_suggestions_prefixes_de_when_apostrophation_flips() {
+    let (text, tokens) = build(&[
+        spec("De", &[("de", "SPS00")]),
+        spec_gv("menjava", &[("menjava", "VMII3S00")]),
+        spec("pomes", &[("pomes", "NCFP000")]),
+        spec(".", &[]),
+    ]);
+    let r = refs(&tokens);
+    let start = tokens[2].token().start();
+    let rm = make_match("VERB_SUGG", start, "menjava".len(), &text)
+        .with_replacements(vec![SuggestedReplacement::new("ha perdut")]);
+    let tagger = |_w: &str| Vec::<AnalyzedTokenReadings>::new();
+    let synth = |lemma: &str, postag: &str| {
+        assert_eq!((lemma, postag), ("ha", "VMII3S00"));
+        vec!["ha".to_string()]
+    };
+    let out = adjust_verb_accept(
+        &rm,
+        &text,
+        start,
+        tokens[2].token().end(),
+        &AdjustArgs {
+            actions: "",
+            number_from_next_words: false,
+            force_number: "",
+        },
+        &r,
+        &tagger,
+        &synth,
+    )
+    .expect("kept");
+    assert_eq!(replacement_values(&out), vec!["D'ha perdut".to_string()]);
+    assert_eq!(out.offset(), tokens[1].token().start());
+    assert_eq!(
+        out.length(),
+        tokens[2].token().end() - tokens[1].token().start()
+    );
+}
+
+#[test]
+fn adjust_verb_suggestions_synthesizes_the_reflexive_suffix_action() {
+    let (text, tokens) = build(&[
+        spec("Se", &[("se", "PP3CS000")]),
+        spec_gv("menja", &[("menja", "VMIP3S00")]),
+        spec("pomes", &[("pomes", "NCFP000")]),
+        spec(".", &[]),
+    ]);
+    let r = refs(&tokens);
+    let start = tokens[2].token().start();
+    let rm = make_match("VERB_SUGG", start, "menja".len(), &text)
+        .with_replacements(vec![SuggestedReplacement::new("menjar-se")]);
+    let tagger = |_w: &str| Vec::<AnalyzedTokenReadings>::new();
+    let synth = |lemma: &str, postag: &str| {
+        assert_eq!((lemma, postag), ("menjar", "VMIP3S00"));
+        vec!["menja".to_string()]
+    };
+    let out = adjust_verb_accept(
+        &rm,
+        &text,
+        start,
+        tokens[2].token().end(),
+        &AdjustArgs {
+            actions: "",
+            number_from_next_words: false,
+            force_number: "",
+        },
+        &r,
+        &tagger,
+        &synth,
+    )
+    .expect("kept");
+    assert_eq!(replacement_values(&out), vec!["es menja".to_string()]);
+    assert_eq!(out.offset(), tokens[2].token().start());
+}
+
+#[test]
+fn adjust_verb_suggestions_drops_the_match_without_postags() {
+    let (text, tokens) = build(&[spec_gv("menjava", &[]), spec(".", &[])]);
+    let r = refs(&tokens);
+    let start = tokens[1].token().start();
+    let rm = make_match("VERB_SUGG", start, "menjava".len(), &text)
+        .with_replacements(vec![SuggestedReplacement::new("menjava")]);
+    let tagger = |_w: &str| Vec::<AnalyzedTokenReadings>::new();
+    let synth = |_lemma: &str, _postag: &str| Vec::<String>::new();
+    assert!(
+        adjust_verb_accept(
+            &rm,
+            &text,
+            start,
+            tokens[1].token().end(),
+            &AdjustArgs {
+                actions: "",
+                number_from_next_words: false,
+                force_number: "",
+            },
+            &r,
+            &tagger,
+            &synth,
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn oblidarse_builds_the_reflexive_and_en_suggestions() {
+    let (text, tokens) = build(&[
+        spec("se", &[("se", "PP3CS000")]),
+        spec("m'", &[("m'", "PP1CS000")]),
+        spec_gv("ha", &[("haver", "VAIP3S00")]),
+        spec_gv("oblidat", &[("oblidar", "VMP00SM")]),
+        spec("de", &[("de", "SPS00")]),
+        spec(".", &[]),
+    ]);
+    let r = refs(&tokens);
+    let start = tokens[1].token().start();
+    let mut rm = make_match("OBLIDARSE", start, 16, &text)
+        .with_replacements(vec![SuggestedReplacement::new("me n'he oblidat")]);
+    rm.set_message("oblidar o passar");
+    let synth = |lemma: &str, postag: &str| {
+        assert_eq!((lemma, postag), ("haver", "VAIP1S00"));
+        vec!["he".to_string()]
+    };
+    let out = oblidarse_accept(&rm, start, &r, &synth).expect("kept");
+    assert_eq!(
+        replacement_values(&out),
+        vec!["m'he oblidat".to_string(), "me n'he oblidat".to_string()]
+    );
+    assert_eq!(out.offset(), tokens[1].token().start());
+    assert_eq!(
+        out.length(),
+        tokens[4].token().end() - tokens[1].token().start()
+    );
+    assert_eq!(out.message(), "oblidar o descuidar");
+}
+
+#[test]
+fn oblidarse_apostrophates_the_word_after_and_extends_the_match() {
+    let (text, tokens) = build(&[
+        spec("se", &[("se", "PP3CS000")]),
+        spec("m'", &[("m'", "PP1CS000")]),
+        spec_gv("ha", &[("haver", "VAIP3S00")]),
+        spec_gv("oblidat", &[("oblidar", "VMP00SM")]),
+        spec("ull", &[("ull", "NCMS000")]),
+        spec(".", &[]),
+    ]);
+    let r = refs(&tokens);
+    let start = tokens[1].token().start();
+    let rm = make_match("OBLIDARSE", start, 16, &text)
+        .with_replacements(vec![SuggestedReplacement::new("x")]);
+    let synth = |_lemma: &str, _postag: &str| vec!["he".to_string()];
+    let out = oblidarse_accept(&rm, start, &r, &synth).expect("kept");
+    assert_eq!(
+        replacement_values(&out),
+        vec!["m'he oblidat d'".to_string(), "x ".to_string()],
+        "Java appends just \" d'\"; the word after stays in the text covered by the +1 extension"
+    );
+    assert_eq!(
+        out.length(),
+        tokens[4].token().end() - tokens[1].token().start() + 1
+    );
 }

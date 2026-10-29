@@ -5,8 +5,11 @@ use std::sync::Arc;
 use og_core::{AnalyzedSentence, RuleMatch};
 use og_rules::language_filter::{LanguageFilterCall, LanguageFilterHook};
 
+use super::adjust_verb_suggestions::{AdjustArgs, accept_rule_match as adjust_verb_accept};
+use super::ca_adapt::adapt_suggestion_ca;
 use super::convert_gender_number::{ConvertArgs, accept_rule_match as convert_accept};
 use super::en_no_infinitiu::accept_rule_match as en_no_infinitiu_accept;
+use super::oblidarse_suggestions::accept_rule_match as oblidarse_accept;
 use super::portar_gerundi::accept_rule_match as portar_gerundi_accept;
 use super::possessius_redundants::accept_rule_match as possessius_accept;
 use super::que_inici::accept_rule_match as que_inici_accept;
@@ -93,7 +96,7 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                     rm.offset() + rm.length(),
                     call.tokens,
                     &|lemma, postag| self.synth(lemma, postag),
-                    &|s| s.to_string(),
+                    &|s| adapt_suggestion_ca(s, ""),
                 )
             }
             "org.languagetool.rules.ca.PortarGerundiSuggestionsFilter" => portar_gerundi_accept(
@@ -103,6 +106,29 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                 arg(call.args, "newLemma"),
                 &|lemma, postag| self.synth(lemma, postag),
             ),
+            "org.languagetool.rules.ca.AdjustVerbSuggestionsFilter" => {
+                let sentence_text = offset_aligned_sentence_text(call.sentence);
+                adjust_verb_accept(
+                    &rm,
+                    &sentence_text,
+                    rm.offset(),
+                    rm.offset() + rm.length(),
+                    &AdjustArgs {
+                        actions: arg(call.args, "actions"),
+                        number_from_next_words: arg(call.args, "numberFromNextWords")
+                            .eq_ignore_ascii_case("true"),
+                        force_number: arg(call.args, "forceNumber"),
+                    },
+                    call.tokens,
+                    &|word| self.tag(word),
+                    &|lemma, postag| self.synth(lemma, postag),
+                )
+            }
+            "org.languagetool.rules.ca.OblidarseSugestionsFilter" => {
+                oblidarse_accept(&rm, rm.offset(), call.tokens, &|lemma, postag| {
+                    self.synth(lemma, postag)
+                })
+            }
             "org.languagetool.rules.ca.PossessiusRedundantsFilter" => {
                 let pattern_token_pos = call.matched_positions.first().copied().unwrap_or(0);
                 let mut rm = rm;
@@ -142,5 +168,38 @@ mod tests {
             )
             .expect("kept");
         assert_eq!(out.rule().id(), "R");
+    }
+
+    #[test]
+    fn adjust_verb_and_oblidarse_route_into_the_module() {
+        let hook = CatalanPatternFilterHook::new(None, None);
+        for class in [
+            "org.languagetool.rules.ca.AdjustVerbSuggestionsFilter",
+            "org.languagetool.rules.ca.OblidarseSugestionsFilter",
+        ] {
+            let rm = RuleMatch::new(
+                "m",
+                0,
+                1,
+                og_core::RuleMatchRule::new("R", "d"),
+                og_core::RuleMatchContext::new("c", 0, 1),
+            );
+            let out = hook.apply_filter(
+                LanguageFilterCall {
+                    class,
+                    args: &HashMap::new(),
+                    matched_texts: &[],
+                    matched_positions: &[],
+                    element_positions: &[],
+                    tokens: &[],
+                    sentence: &AnalyzedSentence::new("a", 0, 1),
+                },
+                rm,
+            );
+            assert!(
+                out.is_none(),
+                "{class} must reach the ported filter, not the default keep"
+            );
+        }
     }
 }

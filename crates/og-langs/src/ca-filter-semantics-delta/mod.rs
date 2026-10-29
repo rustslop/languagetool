@@ -1,10 +1,14 @@
+pub mod adjust_verb_suggestions;
 pub mod apostophation;
+pub mod ca_adapt;
 pub mod consumers;
 pub mod convert_gender_number;
 pub mod dispatch;
 pub mod en_no_infinitiu;
+pub mod oblidarse_suggestions;
 pub mod portar_gerundi;
 pub mod possessius_redundants;
+pub mod pronoms_actions;
 pub mod pronoms_davant;
 pub mod que_inici;
 pub mod simple_replace_lemmas;

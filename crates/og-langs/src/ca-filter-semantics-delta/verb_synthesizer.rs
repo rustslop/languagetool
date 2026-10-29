@@ -176,7 +176,7 @@ impl<'a> VerbSynthesizer<'a> {
         reading_with_tag_regex(self.tokens[i as usize], &P_VERB_IS).is_some()
     }
 
-    fn is_first_verb_is(&self) -> bool {
+    pub fn is_first_verb_is(&self) -> bool {
         if self.i_first_verb == -1 {
             return false;
         }

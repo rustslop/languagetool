@@ -61,12 +61,12 @@ pub fn uppercase_first_char(s: &str) -> String {
 
 pub fn is_capitalized_word(s: &str) -> bool {
     let mut chars = s.chars();
-    chars.next().is_some_and(char::is_uppercase) && chars.next().is_none_or(|c| !c.is_uppercase())
+    chars.next().is_some_and(char::is_uppercase)
+        && chars.all(|c| !c.is_alphabetic() || c.is_lowercase())
 }
 
 pub fn is_all_uppercase_word(s: &str) -> bool {
-    let mut letters = s.chars().filter(|c| c.is_alphabetic());
-    letters.next().is_some_and(char::is_uppercase) && letters.all(char::is_uppercase)
+    !s.chars().any(|c| c.is_alphabetic() && c.is_lowercase())
 }
 
 pub fn preserve_case(input: &str, model: &str) -> String {
