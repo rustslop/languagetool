@@ -98,7 +98,7 @@ static HEAVY_TEST_CV: std::sync::Condvar = std::sync::Condvar::new();
 
 #[cfg(test)]
 fn heavy_test_permits() -> usize {
-    const SECOND_PERMIT_FLOOR_MB: usize = 5 * 1024;
+    const SECOND_PERMIT_FLOOR_MB: usize = 3 * 1024;
     static PERMITS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *PERMITS.get_or_init(|| {
         std::env::var("OG_LANGS_TEST_HEAVY_PERMITS")
@@ -106,9 +106,14 @@ fn heavy_test_permits() -> usize {
             .and_then(|value| value.trim().parse::<usize>().ok())
             .filter(|&permits| permits > 0)
             .unwrap_or_else(|| {
+                let floor = SECOND_PERMIT_FLOOR_MB * 1024 * 1024;
                 1 + usize::from(
-                    og_core::releasable::available_bytes()
-                        .is_some_and(|available| available >= SECOND_PERMIT_FLOOR_MB * 1024 * 1024),
+                    og_core::releasable::available_bytes().is_some_and(|available| {
+                        available < usize::MAX
+                            && og_core::releasable::resident_bytes()
+                                .saturating_add(available)
+                                >= floor
+                    }),
                 )
             })
     })
