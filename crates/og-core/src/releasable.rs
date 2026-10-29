@@ -69,9 +69,16 @@ static EVICTION_BUDGET: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(usize::MAX);
 static WAIT_WATERMARK: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(usize::MAX);
+static FUTILE_EVICTION: Mutex<Option<(usize, Instant)>> = Mutex::new(None);
+const FUTILE_EVICTION_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub fn set_eviction_budget_bytes(bytes: usize) {
-    EVICTION_BUDGET.store(bytes, std::sync::atomic::Ordering::Release);
+    let previous = EVICTION_BUDGET.swap(bytes, std::sync::atomic::Ordering::AcqRel);
+    if previous != bytes
+        && let Ok(mut futile) = FUTILE_EVICTION.lock()
+    {
+        *futile = None;
+    }
 }
 
 pub fn eviction_budget_bytes() -> usize {
@@ -295,8 +302,19 @@ fn trim_released_pages() {
 #[cfg(not(target_os = "linux"))]
 fn trim_released_pages() {}
 
+fn evict_recently_futile(budget_bytes: usize) -> bool {
+    FUTILE_EVICTION.lock().ok().is_some_and(|futile| {
+        futile.is_some_and(|(budget, at)| {
+            budget == budget_bytes && at.elapsed() < FUTILE_EVICTION_COOLDOWN
+        })
+    })
+}
+
 pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Instant>) -> usize {
     if resident_bytes() <= budget_bytes {
+        return 0;
+    }
+    if evict_recently_futile(budget_bytes) {
         return 0;
     }
     let mut evicted = 0usize;
@@ -309,6 +327,12 @@ pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Inst
             // the loop cannot observe its own progress and evicts every victim.
             trim_released_pages();
             evicted += 1;
+        }
+    }
+    if protect_after.is_some() && evicted > 0 {
+        let reached_budget = resident_bytes() <= budget_bytes;
+        if let Ok(mut futile) = FUTILE_EVICTION.lock() {
+            *futile = (!reached_budget).then(|| (budget_bytes, Instant::now()));
         }
     }
     evicted
@@ -748,6 +772,35 @@ mod tests {
         shared_get_or_build(&CELL, || Some(Arc::new("kept".to_string()))).unwrap();
         assert_eq!(evict_lru_until_rss_below(usize::MAX, None), 0);
         assert!(CELL.state.lock().unwrap().value.is_some());
+    }
+
+    #[test]
+    fn futile_eviction_backs_off_within_the_cooldown() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static A: Releasable<String> = Releasable::new();
+        static B: Releasable<String> = Releasable::new();
+        release_all();
+        set_eviction_budget_bytes(0);
+        shared_get_or_build(&A, || Some(Arc::new("a".to_string()))).unwrap();
+        shared_get_or_build(&B, || Some(Arc::new("b".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        let protect = Instant::now();
+        assert!(evict_lru_until_rss_below(0, Some(protect)) >= 1);
+        assert!(A.state.lock().unwrap().value.is_none());
+        assert!(B.state.lock().unwrap().value.is_none());
+        shared_get_or_build(&A, || Some(Arc::new("a2".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        let protect_again = Instant::now();
+        assert_eq!(
+            evict_lru_until_rss_below(0, Some(protect_again)),
+            0,
+            "a pass that cannot reach its budget must not evict again within the cooldown"
+        );
+        assert!(
+            A.state.lock().unwrap().value.is_some(),
+            "the rebuilt cell must survive the skipped pass"
+        );
+        set_eviction_budget_bytes(usize::MAX);
     }
 
     #[test]
