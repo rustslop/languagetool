@@ -8042,6 +8042,154 @@ mod tests {
         );
     }
 
+    #[test]
+    fn raw_pos_rule_matches_pre_disambiguation_readings() {
+        use og_core::checker::{
+            Checker as CoreChecker, Disambiguator, SentenceRange, SentenceTokenizer, Tagger,
+            WordTokenizer,
+        };
+        use og_core::{AnalyzedToken, AnalyzedTokenReadings};
+        use std::sync::Arc;
+
+        struct OneSentence;
+        impl SentenceTokenizer for OneSentence {
+            fn split(&self, text: &str) -> Vec<SentenceRange> {
+                vec![SentenceRange {
+                    start: 0,
+                    end: text.len(),
+                }]
+            }
+        }
+
+        struct WordAndPunct;
+        impl WordTokenizer for WordAndPunct {
+            fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
+                let mut tokens = Vec::new();
+                let mut word_start: Option<usize> = None;
+                for (i, c) in text.char_indices() {
+                    if c.is_alphanumeric() || c == '\'' {
+                        word_start.get_or_insert(i);
+                    } else {
+                        if let Some(s) = word_start.take() {
+                            tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                                &text[s..i],
+                                offset + s,
+                                offset + i,
+                            )));
+                        }
+                        if !c.is_whitespace() {
+                            let end = i + c.len_utf8();
+                            tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                                &text[i..end],
+                                offset + i,
+                                offset + end,
+                            )));
+                        }
+                    }
+                }
+                if let Some(s) = word_start {
+                    tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                        &text[s..],
+                        offset + s,
+                        offset + text.len(),
+                    )));
+                }
+                tokens
+            }
+        }
+
+        struct DetOrPronTagger;
+        impl Tagger for DetOrPronTagger {
+            fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
+                for atr in tokens.iter_mut() {
+                    if atr.token().token() == "la" {
+                        let token = atr.token().clone();
+                        *atr.readings_mut() = vec![
+                            AnalyzedToken::new(token.token(), token.start(), token.end())
+                                .with_pos_tags(vec!["D0FS0".to_string()]),
+                            AnalyzedToken::new(token.token(), token.start(), token.end())
+                                .with_pos_tags(vec!["PP3FS000".to_string()]),
+                        ];
+                    }
+                }
+            }
+        }
+
+        struct DropDeterminerReadings;
+        impl Disambiguator for DropDeterminerReadings {
+            fn disambiguate(&self, sentence: &mut og_core::AnalyzedSentence) {
+                for atr in sentence.tokens_mut() {
+                    if atr.token().token() == "la" {
+                        atr.readings_mut()
+                            .retain(|r| !r.pos_tags().iter().any(|t| t.starts_with('D')));
+                    }
+                }
+            }
+        }
+
+        let checker = CoreChecker::new()
+            .with_sentence_tokenizer(Arc::new(OneSentence))
+            .with_word_tokenizer(Arc::new(WordAndPunct))
+            .with_tagger(Arc::new(DetOrPronTagger))
+            .with_disambiguator(Arc::new(DropDeterminerReadings));
+        let sentence = checker
+            .analyze("Fue la celebre \"plegariá\".")
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let pattern = |raw_pos: bool| {
+            let raw = if raw_pos { " raw_pos=\"yes\"" } else { "" };
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="es">
+            <rule id="CELEBRES_RAW" name="celebres raw">
+                <pattern{raw}>
+                    <token postag="D.*" postag_regexp="yes"/>
+                    <marker><token regexp="yes">celebres?</token></marker>
+                    <token regexp='yes' spacebefore='yes'>["“‘«']</token>
+                </pattern>
+                <message>m</message>
+            </rule>
+        </rules>"#
+            )
+        };
+        let compiler = XmlCompiler::new();
+        let engine = PatternRuleEngine::new();
+
+        let raw_set = compiler.compile_file(&pattern(true)).unwrap();
+        let raw_matches: Vec<_> = raw_set
+            .rules
+            .iter()
+            .flat_map(|r| engine.match_rule(r, &sentence))
+            .collect();
+        assert_eq!(
+            raw_matches.len(),
+            1,
+            "es grammar.xml CELEBRES shape: raw_pos must see the pre-disambiguation D0FS0 \
+             reading of 'la' that the disambiguator removed in place \
+             (JLanguageTool.java:1769-1777 snapshots tagger output before disambiguation)"
+        );
+        let m = &raw_matches[0];
+        assert_eq!(
+            &sentence.text()[m.offset()..m.offset() + m.length()],
+            "celebre",
+            "the marker covers only the adjective"
+        );
+
+        let live_set = compiler.compile_file(&pattern(false)).unwrap();
+        let live_matches: Vec<_> = live_set
+            .rules
+            .iter()
+            .flat_map(|r| engine.match_rule(r, &sentence))
+            .collect();
+        assert!(
+            live_matches.is_empty(),
+            "without raw_pos the rule reads the disambiguated readings, where the D0FS0 \
+             reading is gone and only PP3FS000 survives"
+        );
+    }
+
     pub(super) fn make_analyzed_sentence(text: &str) -> og_core::AnalyzedSentence {
         use og_core::{AnalyzedToken, AnalyzedTokenReadings};
         let mut sentence = og_core::AnalyzedSentence::new(text, 0, text.len());
