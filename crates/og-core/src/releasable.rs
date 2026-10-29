@@ -162,7 +162,8 @@ where
         guard.last_use = Some(now);
         return hit;
     }
-    evict_lru_until_rss_below(eviction_budget_bytes(), None);
+    let protect_after = Instant::now().checked_sub(PROBE_EVICT_GRACE);
+    evict_lru_until_rss_below(eviction_budget_bytes(), protect_after);
     let built = build();
     let mut stored = false;
     let outcome = {
