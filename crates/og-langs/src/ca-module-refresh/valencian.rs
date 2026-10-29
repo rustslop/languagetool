@@ -9,10 +9,12 @@ fn ca_engine() -> Arc<crate::engine::LanguageEngine> {
         .expect("Catalan engine must be registered via for_code")
 }
 
-const VALENCIAN_ZERO_CHECK_SENTENCES: [&str; 3] = [
+const VALENCIAN_ZERO_CHECK_SENTENCES: [&str; 5] = [
     "Cal usar m\u{e8}todes d'an\u{e0}lisi adequats.",
     "Tant de bo s'imposen el di\u{e0}leg i la diplom\u{e0}cia",
     "Persones humanes",
+    "Estos ganivets no corresponen amb estes forquilles.",
+    "Aquests ganivets no corresponen amb aquestes forquilles.",
 ];
 
 const ACCEPTED_DICT_DEPENDENT_IDS: [&str; 3] = [
