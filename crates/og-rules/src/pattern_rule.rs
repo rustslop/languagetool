@@ -2837,6 +2837,24 @@ fn uppercase_first_char(s: &str) -> String {
     out
 }
 
+const MAX_UNDERLINED_LENGTH: usize = 50;
+
+fn is_clearly_unsuitable(s: &str) -> bool {
+    static JAVA_LETTER: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    // Java scans UTF-16 units: an astral char adds 2 to the length, and its
+    // surrogate halves are never Character.isLetter (general category L only).
+    let utf16_len: usize = s.chars().map(char::len_utf16).sum();
+    if utf16_len > MAX_UNDERLINED_LENGTH {
+        return true;
+    }
+    let java_letter = JAVA_LETTER.get_or_init(|| regex::Regex::new(r"\p{L}").unwrap());
+    let letters = java_letter
+        .find_iter(s)
+        .filter(|m| m.as_str().len() <= 3)
+        .count();
+    letters < 2
+}
+
 fn is_sagt(w: &str) -> bool {
     matches!(w, "Sagt" | "sagt" | "Sag" | "sag")
 }
@@ -4220,17 +4238,7 @@ impl PatternRuleEngine {
         let start = rm.offset();
         let end = start + rm.length();
         let underlined_error = text.get(start..end).unwrap_or_default();
-        if underlined_error.is_empty() {
-            return None;
-        }
-        const MAX_UNDERLINED_LENGTH: usize = 50;
-        if underlined_error.chars().count() > MAX_UNDERLINED_LENGTH
-            || underlined_error
-                .chars()
-                .filter(|c| c.is_alphabetic())
-                .count()
-                < 2
-        {
+        if is_clearly_unsuitable(underlined_error) {
             return None;
         }
         let are_tokens_accepted_by_speller = spelling.multitoken_checks_tokens_with_speller()
@@ -7472,6 +7480,45 @@ mod tests {
         </rules>"#;
         let matches = match_with_engine(&engine, xml, "x 12345 .");
         assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_letter_number_only_underlined_errors() {
+        let engine = engine_with_words(&[], "Ⅷ Ⅸ\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_ROMAN" name="multitoken roman">
+                <pattern>
+                    <marker><token>Ⅷ</token><token>Ⅷ</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "x Ⅷ Ⅷ .");
+        assert!(
+            matches.is_empty(),
+            "Character.isLetter(Ⅷ) is false, so Java drops this match"
+        );
+    }
+
+    #[test]
+    fn is_clearly_unsuitable_matches_java_utf16_units_and_letter_classes() {
+        assert!(is_clearly_unsuitable(""));
+        assert!(is_clearly_unsuitable("😂 😂"));
+        assert!(is_clearly_unsuitable("Ⅷ Ⅷ"));
+        assert!(is_clearly_unsuitable("𐐨𐐩"));
+        assert!(is_clearly_unsuitable("a"));
+        assert!(!is_clearly_unsuitable("a b"));
+        assert!(!is_clearly_unsuitable("ab Ⅷ"));
+        let forty_nine = format!("ab {}", "😂".repeat(23));
+        assert_eq!(forty_nine.chars().map(char::len_utf16).sum::<usize>(), 49);
+        assert!(!is_clearly_unsuitable(&forty_nine));
+        let fifty_one = format!("ab {}", "😂".repeat(24));
+        assert_eq!(fifty_one.chars().map(char::len_utf16).sum::<usize>(), 51);
+        assert!(is_clearly_unsuitable(&fifty_one));
+        assert!(is_clearly_unsuitable(&"a".repeat(51)));
+        assert!(!is_clearly_unsuitable(&"a".repeat(50)));
     }
 
     #[test]
