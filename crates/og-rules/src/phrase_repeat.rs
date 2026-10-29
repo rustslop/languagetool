@@ -13,7 +13,11 @@ const DESC_REPETITION_SHORT: &str = "Word repetition";
 const ISSUE_TYPE_DUPLICATION: &str = "duplication";
 
 static WORD_FOR_SPELLER: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[\p{L}\d\p{P}\p{Zs}]+$").unwrap());
+    LazyLock::new(|| regex::Regex::new(r"^[\p{L}0-9\p{P}\p{Zs}]+$").unwrap());
+static NUMERIC_SPACE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^[\p{Nd} ]*$").unwrap());
+static SINGLE_LETTER: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^\p{L}$").unwrap());
 
 pub type PhraseRepeatIgnore = dyn Fn(&[&AnalyzedTokenReadings], usize, usize) -> bool + Send + Sync;
 
@@ -191,8 +195,8 @@ pub fn is_word(token: &str) -> bool {
         return false;
     }
     let mut chars = token.chars();
-    if let (Some(c), None) = (chars.next(), chars.next())
-        && !c.is_alphabetic()
+    if let (Some(_), None) = (chars.next(), chars.next())
+        && !SINGLE_LETTER.is_match(token)
     {
         return false;
     }
@@ -205,7 +209,7 @@ fn is_emoji(token: &str) -> bool {
 }
 
 fn is_numeric_space(token: &str) -> bool {
-    !token.is_empty() && token.chars().all(|c| c == ' ' || c.is_numeric())
+    NUMERIC_SPACE.is_match(token)
 }
 
 fn context_around(sentence: &AnalyzedSentence, start: usize, end: usize) -> RuleMatchContext {
@@ -333,6 +337,34 @@ mod tests {
         let sentence =
             sentence_with_words("16 15 15 16 15 15", &["16", "15", "15", "16", "15", "15"]);
         assert!(PhraseRepeatRule::new().match_sentence(&sentence).is_empty());
+    }
+
+    #[test]
+    fn non_nd_number_repeats_are_words_like_java() {
+        let sentence = sentence_with_words("²³ ²³ ²³ ²³", &["²³", "²³", "²³", "²³"]);
+        let matches = PhraseRepeatRule::new().match_sentence(&sentence);
+        assert_eq!(matches.len(), 1, "{matches:?}");
+        assert_eq!(first_suggestion(&matches), "²³ ²³");
+    }
+
+    #[test]
+    fn single_numeral_letter_repeats_are_not_flagged() {
+        let sentence = sentence_with_words("Ⅷ Ⅷ Ⅷ Ⅷ", &["Ⅷ", "Ⅷ", "Ⅷ", "Ⅷ"]);
+        assert!(PhraseRepeatRule::new().match_sentence(&sentence).is_empty());
+    }
+
+    #[test]
+    fn is_word_matches_java_unicode_classes() {
+        assert!(is_word("²³"));
+        assert!(is_word("½½"));
+        assert!(is_word("1𐐨"));
+        assert!(!is_word("Ⅷ"));
+        assert!(!is_word("№"));
+        assert!(!is_word("١𐐨"));
+        assert!(!is_word(""));
+        assert!(!is_word("😂"));
+        assert!(!is_word("16"));
+        assert!(is_word("no"));
     }
 
     #[test]
