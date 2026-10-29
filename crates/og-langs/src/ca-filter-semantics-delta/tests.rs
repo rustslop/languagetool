@@ -6,7 +6,7 @@ use og_core::{
 };
 
 use super::adjust_verb_suggestions::{
-    AdjustArgs, accept_rule_match as adjust_verb_accept, get_target_postag,
+    AdjustArgs, AdjustServices, accept_rule_match as adjust_verb_accept, get_target_postag,
 };
 use super::apostophation::{
     all_need_same_apostrophation_ms, get_preposition_and_determiner, needs_apostrophation_ms,
@@ -782,8 +782,10 @@ fn adjust_verb_suggestions_prefixes_de_when_apostrophation_flips() {
             force_number: "",
         },
         &r,
-        &tagger,
-        &synth,
+        &AdjustServices {
+            tagger: &tagger,
+            synth: &synth,
+        },
     )
     .expect("kept");
     assert_eq!(replacement_values(&out), vec!["D'ha perdut".to_string()]);
@@ -822,8 +824,10 @@ fn adjust_verb_suggestions_synthesizes_the_reflexive_suffix_action() {
             force_number: "",
         },
         &r,
-        &tagger,
-        &synth,
+        &AdjustServices {
+            tagger: &tagger,
+            synth: &synth,
+        },
     )
     .expect("kept");
     assert_eq!(replacement_values(&out), vec!["es menja".to_string()]);
@@ -851,8 +855,10 @@ fn adjust_verb_suggestions_drops_the_match_without_postags() {
                 force_number: "",
             },
             &r,
-            &tagger,
-            &synth,
+            &AdjustServices {
+                tagger: &tagger,
+                synth: &synth,
+            },
         )
         .is_none()
     );

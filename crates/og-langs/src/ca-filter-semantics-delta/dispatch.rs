@@ -5,7 +5,9 @@ use std::sync::Arc;
 use og_core::{AnalyzedSentence, RuleMatch};
 use og_rules::language_filter::{LanguageFilterCall, LanguageFilterHook};
 
-use super::adjust_verb_suggestions::{AdjustArgs, accept_rule_match as adjust_verb_accept};
+use super::adjust_verb_suggestions::{
+    AdjustArgs, AdjustServices, accept_rule_match as adjust_verb_accept,
+};
 use super::ca_adapt::adapt_suggestion_ca;
 use super::convert_gender_number::{ConvertArgs, accept_rule_match as convert_accept};
 use super::en_no_infinitiu::accept_rule_match as en_no_infinitiu_accept;
@@ -108,6 +110,10 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
             ),
             "org.languagetool.rules.ca.AdjustVerbSuggestionsFilter" => {
                 let sentence_text = offset_aligned_sentence_text(call.sentence);
+                let services = AdjustServices {
+                    tagger: &|word| self.tag(word),
+                    synth: &|lemma, postag| self.synth(lemma, postag),
+                };
                 adjust_verb_accept(
                     &rm,
                     &sentence_text,
@@ -120,8 +126,7 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                         force_number: arg(call.args, "forceNumber"),
                     },
                     call.tokens,
-                    &|word| self.tag(word),
-                    &|lemma, postag| self.synth(lemma, postag),
+                    &services,
                 )
             }
             "org.languagetool.rules.ca.OblidarseSugestionsFilter" => {

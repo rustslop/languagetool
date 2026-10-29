@@ -23,6 +23,11 @@ pub struct AdjustArgs<'a> {
     pub force_number: &'a str,
 }
 
+pub struct AdjustServices<'a> {
+    pub tagger: &'a dyn Fn(&str) -> Vec<AnalyzedTokenReadings>,
+    pub synth: &'a dyn Fn(&str, &str) -> Vec<String>,
+}
+
 pub fn get_target_postag(postags: &[String], target_postag: &str) -> String {
     if postags.is_empty() {
         return target_postag.to_string();
@@ -98,8 +103,7 @@ pub fn accept_rule_match(
     to_pos: usize,
     args: &AdjustArgs<'_>,
     tokens: &[&AnalyzedTokenReadings],
-    tagger: &dyn Fn(&str) -> Vec<AnalyzedTokenReadings>,
-    synth: &dyn Fn(&str, &str) -> Vec<String>,
+    services: &AdjustServices<'_>,
 ) -> Option<RuleMatch> {
     let mut replacements: Vec<String> = Vec::new();
     let default_actions = "removePronounReflexive".to_string();
@@ -148,7 +152,7 @@ pub fn accept_rule_match(
         };
         if !after_lemma.is_empty() && args.number_from_next_words {
             let first_word = after_lemma.split(' ').next().unwrap_or(after_lemma);
-            desired_number = if tagger(first_word)
+            desired_number = if (services.tagger)(first_word)
                 .first()
                 .is_some_and(|atr| has_any_partial_pos_tag(atr, &["S"]))
             {
@@ -200,9 +204,10 @@ pub fn accept_rule_match(
         if target_postag.is_empty() {
             return None;
         }
-        let verb_str = verb_synthesizer.synthesize(new_lemma, &target_postag, synth, &|s| {
-            adapt_suggestion_ca(s, "")
-        });
+        let verb_str =
+            verb_synthesizer.synthesize(new_lemma, &target_postag, services.synth, &|s| {
+                adapt_suggestion_ca(s, "")
+            });
         let mut pronouns_str = String::new();
         let is_pronouns_after =
             verb_synthesizer.num_pronouns_after() > 0 || !verb_synthesizer.is_first_verb_is();
