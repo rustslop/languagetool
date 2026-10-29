@@ -14,7 +14,7 @@ use super::verb_synthesizer::P_VERB;
 
 static P_ANY_PRONOUN: LazyLock<Regex> = LazyLock::new(|| Regex::new("^P.*$").unwrap());
 static P_WORD_AFTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^(D.*|V\\.N.*|P[DI].*|NC.*)$").unwrap());
+    LazyLock::new(|| Regex::new("^(D.*|V.N.*|P[DI].*|NC.*)$").unwrap());
 
 fn add_reflexive(key: &str, with_en: bool, vowel: bool) -> Option<&'static str> {
     Some(match (with_en, vowel, key) {

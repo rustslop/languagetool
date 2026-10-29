@@ -916,3 +916,34 @@ fn oblidarse_apostrophates_the_word_after_and_extends_the_match() {
         tokens[4].token().end() - tokens[1].token().start() + 1
     );
 }
+
+#[test]
+fn oblidarse_takes_the_de_path_for_an_infinitive_after_the_verb() {
+    let (text, tokens) = build(&[
+        spec("se", &[("se", "PP3CS000")]),
+        spec("m'", &[("m'", "PP1CS000")]),
+        spec_gv("ha", &[("haver", "VAIP3S00")]),
+        spec_gv("oblidat", &[("oblidar", "VMP00SM")]),
+        spec("dur", &[("dur", "VMN00000")]),
+        spec(".", &[]),
+    ]);
+    let r = refs(&tokens);
+    let start = tokens[1].token().start();
+    let mut rm = make_match("OBLIDARSE", start, 16, &text)
+        .with_replacements(vec![SuggestedReplacement::new("me n'he oblidat")]);
+    rm.set_message("oblidar o passar");
+    let synth = |lemma: &str, postag: &str| {
+        assert_eq!((lemma, postag), ("haver", "VAIP1S00"));
+        vec!["he".to_string()]
+    };
+    let out = oblidarse_accept(&rm, start, &r, &synth).expect("kept");
+    assert_eq!(
+        replacement_values(&out),
+        vec!["m'he oblidat de".to_string(), "me n'he oblidat".to_string()],
+        "VMN00000 matches V.N.* with the LT any-char dot, so wordAfter is set and the en path is skipped"
+    );
+    assert_eq!(
+        out.length(),
+        tokens[4].token().end() - tokens[1].token().start()
+    );
+}
