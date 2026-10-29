@@ -44,8 +44,6 @@ fn rules_owning_example<'a>(
 }
 
 fn example_uses_raw_pos(fragment: &str) -> bool {
-    // raw_pos is not compiled by the shared XML parser, so the flag is read
-    // back from the rule XML: its absence from CompiledRule is the gap under diagnosis.
     for file in ["grammar.xml", "style.xml"] {
         let xml = std::fs::read_to_string(rules_dir().join(file)).expect("rules xml");
         let mut rest = xml.as_str();

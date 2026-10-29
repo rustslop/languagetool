@@ -96,7 +96,6 @@ impl InternArena {
         let start = self.used;
         self.block[start..start + bytes.len()].copy_from_slice(bytes);
         self.used += bytes.len();
-        // callers only pass strings that already validated as UTF-8
         let leaked: &'static str = unsafe {
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(
                 self.block.as_ptr().add(start),

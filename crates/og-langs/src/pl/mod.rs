@@ -221,8 +221,6 @@ fn rewrite_java_regex_classes(xml: &str) -> Option<String> {
 }
 
 fn append_sent_end_to_filter_postags(xml: &str) -> Option<String> {
-    // Java re-adds SENT_END on filtered sentence-final tokens (MatchState.java:151-156);
-    // letting the filter postag keep that reading reproduces it without engine changes.
     const NEEDLE: &str = "action=\"filter\" postag=\"";
     if !xml.contains(NEEDLE) {
         return None;
@@ -245,8 +243,6 @@ fn append_sent_end_to_filter_postags(xml: &str) -> Option<String> {
 }
 
 fn normalize_disambiguation_xml(xml: &str) -> String {
-    // Java quirks the shared crates cannot express: the bare dash is a literal class member,
-    // and AnalyzedToken.matches treats a remove <wd> null pos as an any-pos wildcard.
     let escaped = xml.replace(
         "[\\p{Punct}-\u{2212}\u{2013}\u{2014}\u{2015}\u{201e}\u{00ab}\u{00bb}\u{2026}\u{201d}&amp;&amp;[^!\\.]",
         "[\\p{Punct}\\-\u{2212}\u{2013}\u{2014}\u{2015}\u{201e}\u{00ab}\u{00bb}\u{2026}\u{201d}&amp;&amp;[^!\\.]",

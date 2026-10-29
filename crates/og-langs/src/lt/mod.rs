@@ -13,8 +13,6 @@ pub fn normalize_lt_rules_xml(xml: &str) -> std::borrow::Cow<'_, str> {
     if !xml.contains("\\p{Punct}") {
         return std::borrow::Cow::Borrowed(xml);
     }
-    // Java's \p{Punct} is ASCII-only; Rust regex's is Unicode P*, which would
-    // also swallow the grammar's explicit – and — branches.
     std::borrow::Cow::Owned(xml.replace("\\p{Punct}", JAVA_ASCII_PUNCT_CLASS))
 }
 

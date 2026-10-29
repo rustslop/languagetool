@@ -203,7 +203,6 @@ fn catalan_grammar_examples_with_ca_pipeline() {
             let rule = group[0];
             let (clean_text, marker_range) = extract_marker(&example.text);
             let mut matches = Vec::new();
-            // Java tests ca incorrect examples unsplit (PatternRuleTest.java:617-620)
             let unsplit_incorrect =
                 example.example_type == og_xml::types::XmlExampleType::Incorrect;
             for aux in group.iter() {

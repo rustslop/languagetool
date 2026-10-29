@@ -211,8 +211,6 @@ impl CatalanPhraseRepeatRule {
         match_start: usize,
         match_end: usize,
     ) -> bool {
-        // Java passes position+phraseLength as the inclusive "end" of the match;
-        // mirroring that exact overlap convention decides which antipatterns block.
         let window_start = match_start.saturating_sub(3).max(1);
         let window_end = (match_end + 3).min(tokens.len() - 1);
         for antipattern in LITERAL_ANTIPATTERNS {

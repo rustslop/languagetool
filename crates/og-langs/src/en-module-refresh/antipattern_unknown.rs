@@ -90,8 +90,6 @@ fn unknown_arm_of_the_refreshed_antipattern_is_load_bearing() {
 
     let path = grammar_path().expect("en grammar.xml path");
     let xml = std::fs::read_to_string(&path).expect("en grammar.xml");
-    // og-xml's anchor_regex trims postag patterns, so the pre-4cff7008 trailing space never
-    // compiled to a dead UNKNOWN arm here; deleting the antipattern is the only observable.
     let example_at = xml
         .find(SUPPRESSED)
         .expect("the upstream antipattern example sentence");

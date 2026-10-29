@@ -1173,7 +1173,6 @@ pub fn postponed_adjective_concordance_filter(
         for s in &suggestions {
             definitive.push(format!(" {s}"));
         }
-        // Java shifts the match to tokenStart-1 keeping the end; our span may start on the space
         let new_start = tokens[i].token().start().saturating_sub(1);
         let new_len = (rm.offset() + rm.length()).saturating_sub(new_start);
         rm.set_offset_length(new_start, new_len);

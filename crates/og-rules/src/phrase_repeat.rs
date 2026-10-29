@@ -199,8 +199,6 @@ pub fn is_word(token: &str) -> bool {
     true
 }
 
-// Java StringTools.isEmoji: only tokens whose UTF-16 length exceeds their code
-// point count (i.e. containing a surrogate pair) can be an emoji.
 fn is_emoji(token: &str) -> bool {
     let utf16_len = token.encode_utf16().count();
     utf16_len > 1 && utf16_len != token.chars().count() && !WORD_FOR_SPELLER.is_match(token)

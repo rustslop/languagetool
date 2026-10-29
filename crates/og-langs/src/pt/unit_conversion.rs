@@ -746,7 +746,6 @@ fn parse_number(raw: &str) -> Option<f64> {
         .filter(|c| c.is_ascii_digit() || *c == ',' || *c == '.')
         .collect();
     let commas = cleaned.chars().filter(|c| *c == ',').count();
-    // Java's GERMANY NumberFormat treats '.' as grouping, so a bare dot is dropped
     let normalized = if commas > 1 {
         return None;
     } else if commas == 1 {

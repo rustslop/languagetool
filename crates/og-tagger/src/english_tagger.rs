@@ -263,8 +263,6 @@ fn normalize_english_word(surface: &str) -> std::borrow::Cow<'_, str> {
 }
 
 fn fsa_order_key(word: &str, lemma: &str) -> Vec<u8> {
-    // morfologik SUFFIX encoder: the FSA orders a word's readings by the
-    // encoded lemma (b'A' + trimmed-suffix-count, then the lemma tail) and tag
     let w = word.as_bytes();
     let l = lemma.as_bytes();
     let mut i = 0;

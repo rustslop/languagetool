@@ -214,8 +214,6 @@ impl Rule for IrishCompoundRule {
                 if *ws_before {
                     sb.push(' ');
                 }
-                // Java's SENT_START token has empty text (JLanguageTool.java:1813);
-                // this engine's carries "<S>", so drop it to keep keys identical.
                 if !atr.is_sentence_start() {
                     sb.push_str(atr.token().token());
                 }

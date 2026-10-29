@@ -101,8 +101,6 @@ impl BretonTagger {
             .collect()
     }
 
-    // Java BretonTagger.tag: retry the dictionary without the -mañ/-se/-hont
-    // suffix before falling back to an untagged reading.
     pub(crate) fn analyzed_tokens_at(
         &self,
         word: &str,

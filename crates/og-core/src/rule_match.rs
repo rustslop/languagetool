@@ -406,7 +406,6 @@ impl RuleMatch {
     }
 }
 
-// Java StringTools.isWhitespace parity: counts NBSP/ZWSP/BOM as whitespace, excludes U+2007.
 fn is_java_whitespace(c: char) -> bool {
     if matches!(c, '\u{0001}' | '\u{0002}') {
         return false;

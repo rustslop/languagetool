@@ -10,7 +10,6 @@ pub fn matched_lemma_and_postag<'a>(
 ) -> Option<(&'a str, Option<&'a str>)> {
     readings.iter().find_map(|at| {
         let postag = at.pos_tags().first().map(|p| p.as_str());
-        // Java AbstractSimpleReplaceLemmasRule.java:87-90: a null POSTag is not an end tag.
         let is_end_tag = postag == Some(SENTENCE_END_TAGNAME);
         let lemma = at.lemma()?;
         if !is_end_tag && wrong_words.contains_key(lemma) {

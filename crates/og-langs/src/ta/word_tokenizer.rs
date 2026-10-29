@@ -110,7 +110,6 @@ fn domain_chars_re() -> &'static Regex {
 
 fn url_chars_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    // Java's "[a-zA-ZÄÖÜäöü0-9/%$-_.+!*'(),?#~]" reads $-_. as the range 0x24..='_' (so ':' '=' '&' '@' match)
     RE.get_or_init(|| Regex::new(r"^[a-zA-ZÄÖÜäöü0-9/%$-_.+!*'(),?#~]+$").unwrap())
 }
 

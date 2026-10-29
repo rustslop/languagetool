@@ -84,8 +84,6 @@ pub fn russian_simple_word_repeat_rule() -> WordRepeatRule {
         .with_ignore_single_letter_repeats()
 }
 
-// Java's switch matches the constant names RUSSIAN_SIMPLE_REPLACE_RULE and
-// RUSSIAN_SPECIFIC_CASE, never their values RU_SIMPLE_REPLACE/RU_SPECIFIC_CASE.
 pub fn russian_priority_for_id(id: &str) -> Option<i32> {
     match id {
         "RU_DASH_RULE" => Some(12),

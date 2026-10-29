@@ -266,8 +266,6 @@ fn esperanto_grammar_examples_with_eo_pipeline() {
 }
 
 fn apply_java_add_reading_semantics(sentence: &mut AnalyzedSentence) {
-    // Java's addReading (AnalyzedTokenReadings.java:327-339) drops a trailing null-POS reading
-    // when appending, so setSentEnd leaves an untagged sentence-final token with [SENT_END] only.
     for token in sentence.tokens_mut() {
         if token.is_sentence_end() {
             token.readings_mut().retain(|r| !r.pos_tags().is_empty());

@@ -126,9 +126,6 @@ impl<'a> Chars<'a> {
     }
 }
 
-// Greedy longest-match plus two vetoes standing in for gosen's cost model:
-// an entry must not shadow a longer entry starting inside it, and 助動詞「た」
-// cannot precede the auxiliary ない (しい|っそう loses to し|いっそう).
 fn segment_text(text: &str, lexicon: &Lexicon) -> Vec<Segment> {
     let chars = Chars::new(text);
     let n = chars.items.len();

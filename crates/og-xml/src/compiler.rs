@@ -424,8 +424,6 @@ impl XmlCompiler {
             .as_deref()
             .map(decode_surrogate_pairs)
             .map(|p| crate::java_perl_class::to_ascii_perl_classes(&p).unwrap_or(p));
-        // Java compiles token regexes without UNICODE_CHARACTER_CLASS (StringMatcher.java:99),
-        // so \w \d \s stay ASCII there; only rule-level <regexp> patterns are Unicode-aware.
         let compiled_re = if is_reference {
             None
         } else {

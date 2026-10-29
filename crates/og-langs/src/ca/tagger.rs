@@ -663,8 +663,6 @@ mod tests {
             .iter()
             .any(|(_, t)| t == "AQ0FS0");
         if !stem_known {
-            // data-blocked without ca-ES.dict: the -ment heuristic needs a
-            // VMP00SF/AQ FS reading of the stem in the dictionary
             return;
         }
         let readings = readings_of("ordinàriament");
@@ -732,7 +730,6 @@ mod tests {
     }
 
     fn fixture_tagger() -> CatalanTagger {
-        // Parallel tests rewrite these files, so each thread needs its own directory.
         let base = std::env::temp_dir().join(format!(
             "og-ca-tagger-{}-{:?}",
             std::process::id(),

@@ -339,8 +339,6 @@ pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Inst
             break;
         }
         if victim.release(protect_after) > 0 {
-            // glibc keeps freed heap pages resident until a trim, so without this
-            // the loop cannot observe its own progress and evicts every victim.
             trim_released_pages();
             evicted += 1;
         }
@@ -368,8 +366,6 @@ fn wait_for_headroom() {
     {
         return;
     }
-    // Sleeping cannot free pages; only a trim by a concurrent releaser can, so
-    // wait just long enough for an in-flight gated test to drop its engines.
     let mut waited = 0u64;
     while waited < HEADROOM_WAIT_MAX_MS {
         std::thread::sleep(std::time::Duration::from_millis(HEADROOM_WAIT_SLICE_MS));
@@ -450,7 +446,6 @@ impl Drop for HeavyGuard {
     }
 }
 
-// Reentrant on purpose: heavyweight tests hold this across engine builds on the same thread.
 pub fn heavy_guard() -> HeavyGuard {
     let mut acquired = false;
     if HEAVY_DEPTH.with(|depth| depth.get()) == 0 {

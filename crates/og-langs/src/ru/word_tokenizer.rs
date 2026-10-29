@@ -18,8 +18,6 @@ impl Default for RussianWordTokenizer {
     }
 }
 
-// Java RussianWordTokenizer's sentinel chain only observably keeps contiguous
-// б/у and б/н unsplit; its SP_DOT sentinels round-trip to the unguarded stream.
 impl og_tokenizer::WordTokenizer for RussianWordTokenizer {
     fn tokenize(&self, text: &str) -> Vec<Token> {
         let raw = self.inner.tokenize(text);

@@ -344,7 +344,6 @@ impl TextLevelRule for PolishUnpairedBracketsRule {
         let ss = stack.len();
         let mut symmetric = false;
         if ss > 2 && ss % 2 == 1 {
-            // Java compares each half-pair against the LAST stack element, not the mirrored one.
             symmetric = (0..ss / 2).all(|i| {
                 symbol_index(&START_SYMBOLS, stack[i].symbol)
                     == symbol_index(&END_SYMBOLS, stack[ss - 1].symbol)

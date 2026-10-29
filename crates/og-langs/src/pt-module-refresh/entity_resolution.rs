@@ -53,8 +53,6 @@ fn read_entity(root: &Path, system_id: &str) -> Option<String> {
 }
 
 fn path_from_lt_resource_folder(system_id: &str) -> String {
-    // Java parity quirk: RuleEntityResolver.java:31-34 keeps only the part
-    // after the last "/resource/" and then drops every "../" segment.
     system_id
         .rfind("/resource/")
         .map_or(system_id, |idx| &system_id[idx + "/resource/".len()..])

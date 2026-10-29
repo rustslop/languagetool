@@ -34,8 +34,6 @@ impl KhmerWordRepeatRule {
     }
 
     fn ignore(sentence: &AnalyzedSentence, token_start: usize) -> bool {
-        // Java checks tokensWithWS[origPos-1] == "\u0020" (KhmerWordRepeatRule.java:82-87), which is
-        // true exactly when the character immediately before the token is a plain space delimiter.
         let relative = token_start.saturating_sub(sentence.start());
         if relative == 0 {
             return false;

@@ -188,7 +188,6 @@ fn falta_full_id(m: &RuleMatch) -> String {
     let sub_id = serde_json::to_value(m.rule())
         .ok()
         .and_then(|v| v.get("subId").and_then(|s| s.as_str()).map(str::to_owned));
-    // RuleMatchRule only exposes subId through serde; needed for the [3]/[4]/[5] subrule checks.
     match sub_id {
         Some(sub) => format!("{id}[{sub}]"),
         None => id.to_owned(),

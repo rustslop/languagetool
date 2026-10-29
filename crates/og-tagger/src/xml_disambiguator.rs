@@ -237,8 +237,6 @@ struct RemoveWordMatcher {
 }
 
 impl XmlDisambiguator {
-    // Java's IsEnglishWordFilter resolves en-US only when the en module is on the classpath;
-    // de/fr/es/nl/pt/ca modules don't depend on it, so their pipelines run the filter inert.
     pub fn from_xml(xml: &str) -> Result<Self, String> {
         Self::from_xml_with_english(xml, None)
     }

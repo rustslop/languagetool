@@ -237,8 +237,6 @@ impl EoHunspell {
             if rule.cont.contains(&name) && self.reachable_has(&stem, rule.name, depth - 1) {
                 return true;
             }
-            // hunspell cross-product: an affix with empty cont classes lets the
-            // opposite-direction affix draw its license from the deeper stem.
             if rule.cont.is_empty()
                 && self.reachable_has(&stem, rule.name, depth - 1)
                 && self.reachable_has(&stem, name, depth - 1)

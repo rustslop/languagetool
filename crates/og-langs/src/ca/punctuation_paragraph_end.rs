@@ -27,7 +27,6 @@ static NO_PROTOCOL_URL: LazyLock<regex::Regex> = LazyLock::new(|| {
     .unwrap()
 });
 static IGNORED_PREFIXES: LazyLock<regex::Regex> = LazyLock::new(|| {
-    // Java `\s` without UNICODE_CHARACTER_CLASS matches ASCII whitespace only.
     regex::Regex::new("(?i)^(Annex|Article principal)[ \t\n\x0B\x0C\r]*:").unwrap()
 });
 
