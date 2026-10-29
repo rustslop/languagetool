@@ -98,7 +98,7 @@ static HEAVY_TEST_CV: std::sync::Condvar = std::sync::Condvar::new();
 
 #[cfg(test)]
 fn heavy_test_permits() -> usize {
-    const SECOND_PERMIT_FLOOR_MB: usize = 5 * 1024 + 768;
+    const SECOND_PERMIT_FLOOR_MB: usize = 5 * 1024;
     static PERMITS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *PERMITS.get_or_init(|| {
         std::env::var("OG_LANGS_TEST_HEAVY_PERMITS")
