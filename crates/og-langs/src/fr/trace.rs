@@ -1,7 +1,7 @@
 use crate::fr::test_support::FrenchPipeline;
 use og_core::AnalyzedSentence;
 use og_tokenizer::WordTokenizer as _;
-use og_xml::compiler::{CompiledRule, CompiledRuleSet, XmlCompiler};
+use og_xml::compiler::{CompiledRule, CompiledRuleSet};
 use std::path::PathBuf;
 
 fn rules_dir() -> PathBuf {
@@ -9,38 +9,19 @@ fn rules_dir() -> PathBuf {
 }
 
 fn compiled_grammar() -> std::sync::Arc<CompiledRuleSet> {
-    static GRAMMAR: og_core::releasable::Releasable<CompiledRuleSet> =
-        og_core::releasable::Releasable::new();
-    og_core::releasable::shared_get_or_build(&GRAMMAR, || {
-        let path = rules_dir().join("grammar.xml");
-        let xml = crate::fr::normalize_fr_rules_xml(
-            &std::fs::read_to_string(&path).expect("grammar.xml"),
-        )
-        .into_owned();
-        Some(std::sync::Arc::new(
-            XmlCompiler::new()
-                .compile_file_with_base(&xml, path.parent())
-                .expect("compile grammar.xml"),
-        ))
-    })
-    .expect("fr grammar")
+    let path = rules_dir().join("grammar.xml");
+    let xml =
+        crate::fr::normalize_fr_rules_xml(&std::fs::read_to_string(&path).expect("grammar.xml"))
+            .into_owned();
+    crate::test_util::shared_compiled_rules(&path, &xml).expect("fr grammar")
 }
 
 fn compiled_style() -> std::sync::Arc<CompiledRuleSet> {
-    static STYLE: og_core::releasable::Releasable<CompiledRuleSet> =
-        og_core::releasable::Releasable::new();
-    og_core::releasable::shared_get_or_build(&STYLE, || {
-        let path = rules_dir().join("style.xml");
-        let xml =
-            crate::fr::normalize_fr_rules_xml(&std::fs::read_to_string(&path).expect("style.xml"))
-                .into_owned();
-        Some(std::sync::Arc::new(
-            XmlCompiler::new()
-                .compile_file_with_base(&xml, path.parent())
-                .expect("compile style.xml"),
-        ))
-    })
-    .expect("fr style")
+    let path = rules_dir().join("style.xml");
+    let xml =
+        crate::fr::normalize_fr_rules_xml(&std::fs::read_to_string(&path).expect("style.xml"))
+            .into_owned();
+    crate::test_util::shared_compiled_rules(&path, &xml).expect("fr style")
 }
 
 fn rules_owning_example<'a>(
@@ -63,8 +44,6 @@ fn rules_owning_example<'a>(
 }
 
 fn example_uses_raw_pos(fragment: &str) -> bool {
-    // raw_pos is not compiled by the shared XML parser, so the flag is read
-    // back from the rule XML: its absence from CompiledRule is the gap under diagnosis.
     for file in ["grammar.xml", "style.xml"] {
         let xml = std::fs::read_to_string(rules_dir().join(file)).expect("rules xml");
         let mut rest = xml.as_str();

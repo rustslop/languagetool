@@ -3,6 +3,7 @@ use std::path::Path;
 type ReadingList = Vec<(&'static str, &'static str)>;
 type EntriesMap = FxHashMap<Box<str>, Box<[(Box<str>, Box<str>)]>>;
 pub type FormsByLemma = FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>>;
+type ReadingsByWord = FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>>;
 type SynthByLemma = FormsByLemma;
 type VerbForms = std::collections::HashMap<String, Vec<String>>;
 type LookupCache = std::sync::RwLock<FxHashMap<Box<str>, Box<[(&'static str, &'static str)]>>>;
@@ -65,17 +66,52 @@ pub type FxBuildHasher = std::hash::BuildHasherDefault<FxHasher>;
 pub type FxHashMap<K, V> = std::collections::HashMap<K, V, FxBuildHasher>;
 pub type FxHashSet<T> = std::collections::HashSet<T, FxBuildHasher>;
 
-fn global_intern(owned: String) -> &'static str {
-    static POOL: std::sync::OnceLock<std::sync::Mutex<FxHashSet<&'static str>>> =
-        std::sync::OnceLock::new();
-    let pool = POOL.get_or_init(|| std::sync::Mutex::new(FxHashSet::default()));
-    let mut guard = pool.lock().unwrap();
-    if let Some(existing) = guard.get(owned.as_str()) {
-        return existing;
+const INTERN_BLOCK_BYTES: usize = 4 * 1024 * 1024;
+
+struct InternArena {
+    set: FxHashSet<&'static str>,
+    block: &'static mut [u8],
+    used: usize,
+}
+
+impl InternArena {
+    fn new() -> Self {
+        Self {
+            set: FxHashSet::default(),
+            block: &mut [],
+            used: 0,
+        }
     }
-    let leaked: &'static str = Box::leak(owned.into_boxed_str());
-    guard.insert(leaked);
-    leaked
+
+    fn intern(&mut self, owned: &str) -> &'static str {
+        if let Some(existing) = self.set.get(owned) {
+            return existing;
+        }
+        let bytes = owned.as_bytes();
+        if self.block.len() - self.used < bytes.len() {
+            let capacity = INTERN_BLOCK_BYTES.max(bytes.len());
+            self.block = Box::leak(vec![0u8; capacity].into_boxed_slice());
+            self.used = 0;
+        }
+        let start = self.used;
+        self.block[start..start + bytes.len()].copy_from_slice(bytes);
+        self.used += bytes.len();
+        let leaked: &'static str = unsafe {
+            std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                self.block.as_ptr().add(start),
+                bytes.len(),
+            ))
+        };
+        self.set.insert(leaked);
+        leaked
+    }
+}
+
+fn global_intern(owned: String) -> &'static str {
+    static POOL: std::sync::OnceLock<std::sync::Mutex<InternArena>> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| std::sync::Mutex::new(InternArena::new()));
+    let mut guard = pool.lock().unwrap();
+    guard.intern(&owned)
 }
 
 pub fn intern_string(owned: String) -> &'static str {
@@ -1090,7 +1126,7 @@ impl FsaDict {
     }
 
     fn build_entries(&self) -> EntriesMap {
-        let mut entries: FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>> = FxHashMap::default();
+        let mut entries: ReadingsByWord = FxHashMap::default();
         self.fsa.for_each_sequence(&mut |sequence: &[u8]| {
             let mut fields = sequence.split(|b| *b == self.separator);
             let (word_raw, second, tag_raw) = match (fields.next(), fields.next(), fields.next()) {
@@ -1185,7 +1221,7 @@ impl FsaDict {
             let word = self.encoding.decode(word_raw);
             let lemma = self.encoding.decode(&lemma_bytes);
             let entry = verb_forms.entry(lemma).or_default();
-            if !entry.iter().any(|w| *w == word) {
+            if !entry.contains(&word) {
                 entry.push(word);
             }
         });
@@ -1230,7 +1266,7 @@ impl MorfologikDictionary {
     }
 
     pub fn from_decoded_text(data: &str) -> Self {
-        let mut map: FxHashMap<Box<str>, Vec<(Box<str>, Box<str>)>> = FxHashMap::default();
+        let mut map: ReadingsByWord = FxHashMap::default();
         let mut forms: FormsByLemma = FxHashMap::default();
         let mut verb_forms: VerbForms = std::collections::HashMap::new();
         for line in data.lines() {
@@ -1361,6 +1397,14 @@ impl MorfologikDictionary {
             Source::Decoded { materialized, .. } => {
                 materialized.verb_forms.get_or_init(VerbForms::default)
             }
+        }
+    }
+
+    #[cfg(test)]
+    fn lookup_seeking(&self, word: &str) -> ReadingList {
+        match &self.source {
+            Source::Fsa { dict, .. } => dict.lookup_uncached(word),
+            Source::Decoded { .. } => self.lookup(word),
         }
     }
 
@@ -1675,6 +1719,7 @@ mod tests {
     }
 
     fn cross_check_lazy_lookup_matches_enumeration(dir: &std::path::Path, stem: &str) {
+        use rayon::prelude::*;
         let dict = MorfologikDictionary::load(
             &dir.join(format!("{stem}.dict")),
             &dir.join(format!("{stem}.info")),
@@ -1682,18 +1727,21 @@ mod tests {
         .unwrap_or_else(|| panic!("load {stem} dict"));
         let entries = dict.entries_map();
         assert!(!entries.is_empty(), "{stem} dictionary must enumerate");
-        for (word, readings) in entries.iter() {
-            let lazy = dict.lookup(word);
-            let diverged = lazy.len() != readings.len()
-                || lazy
-                    .iter()
-                    .zip(readings.iter())
-                    .any(|(l, e)| l.0 != e.0.as_ref() || l.1 != e.1.as_ref());
-            assert!(
-                !diverged,
-                "{stem}: lazy lookup diverged for {word}: {lazy:?} vs {readings:?}"
-            );
-        }
+        let divergence = entries
+            .par_iter()
+            .find_any(|(word, readings)| {
+                let lazy = dict.lookup_seeking(word);
+                lazy.len() != readings.len()
+                    || lazy
+                        .iter()
+                        .zip(readings.iter())
+                        .any(|(l, e)| l.0 != e.0.as_ref() || l.1 != e.1.as_ref())
+            })
+            .map(|(word, readings)| {
+                let lazy = dict.lookup_seeking(word);
+                format!("{stem}: lazy lookup diverged for {word}: {lazy:?} vs {readings:?}")
+            });
+        assert!(divergence.is_none(), "{}", divergence.unwrap_or_default());
         assert!(dict.lookup("__no_such_word_zq__").is_empty());
     }
 

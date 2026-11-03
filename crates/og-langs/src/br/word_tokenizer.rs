@@ -27,8 +27,6 @@ fn is_single_apostrophe(text: &str) -> bool {
     matches!(chars.next(), Some(c) if is_apostrophe(c)) && chars.next().is_none()
 }
 
-// Java BretonWordTokenizer sentinelizes [Cc]apos[Hh] (the c'h trigraph) before the
-// generic split and cuts any other letter+apostrophe, restoring U+2019 in both.
 impl og_tokenizer::WordTokenizer for BretonWordTokenizer {
     fn tokenize(&self, text: &str) -> Vec<Token> {
         let raw = self.inner.tokenize(text);

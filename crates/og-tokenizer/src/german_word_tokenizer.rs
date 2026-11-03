@@ -268,7 +268,10 @@ mod tests {
 
     #[test]
     fn default_matches_new() {
-        let via_default: Vec<String> = GermanWordTokenizer::default()
+        fn default_of<T: Default>() -> T {
+            T::default()
+        }
+        let via_default: Vec<String> = default_of::<GermanWordTokenizer>()
             .tokenize("ein- oder mehrmals")
             .into_iter()
             .map(|t| t.text().to_string())

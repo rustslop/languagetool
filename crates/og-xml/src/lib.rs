@@ -2,6 +2,7 @@ pub mod compiler;
 pub mod disambig_parser;
 pub mod disambig_types;
 pub mod java_case_fold;
+pub mod java_perl_class;
 pub mod parser;
 pub mod types;
 pub mod unifier;

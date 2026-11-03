@@ -179,8 +179,23 @@ fn mk_init_cap(chars: &[char]) -> Vec<char> {
 impl HunspellChecker {
     pub fn load(aff_path: &Path, dic_path: &Path) -> Option<Self> {
         let aff = std::fs::read_to_string(aff_path).ok()?;
-        let dic: &'static str = Box::leak(std::fs::read_to_string(dic_path).ok()?.into_boxed_str());
+        let dic = Self::shared_dic_text(dic_path)?;
         Self::parse(&aff, dic)
+    }
+
+    fn shared_dic_text(dic_path: &Path) -> Option<&'static str> {
+        static CACHE: std::sync::OnceLock<
+            std::sync::Mutex<HashMap<std::path::PathBuf, &'static str>>,
+        > = std::sync::OnceLock::new();
+        let cache = CACHE.get_or_init(Default::default);
+        let mut guard = cache.lock().unwrap();
+        if let Some(hit) = guard.get(dic_path) {
+            return Some(hit);
+        }
+        let text = std::fs::read_to_string(dic_path).ok()?;
+        let leaked: &'static str = Box::leak(text.into_boxed_str());
+        guard.insert(dic_path.to_path_buf(), leaked);
+        Some(leaked)
     }
 
     fn parse(aff: &str, dic: &'static str) -> Option<Self> {

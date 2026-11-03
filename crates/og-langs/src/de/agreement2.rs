@@ -188,6 +188,7 @@ mod tests {
 
     #[test]
     fn fires_on_kleiner_haus() {
+        let _release_guard = crate::release_guard();
         let engine = crate::engine::LanguageEngine::shared_for_code("de").expect("german engine");
         let matches = engine.check("Kleiner Haus am Waldrand steht seit Jahren.");
         assert!(
@@ -206,6 +207,7 @@ mod tests {
 
     #[test]
     fn no_fire_on_correct_adj_noun() {
+        let _release_guard = crate::release_guard();
         let engine = crate::engine::LanguageEngine::shared_for_code("de").expect("german engine");
         let matches = engine.check("Kleines Haus am Waldrand steht seit Jahren.");
         assert!(

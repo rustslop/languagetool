@@ -112,6 +112,9 @@ pub struct PatternRuleEngine {
     spelling: Option<std::sync::Arc<crate::spelling_support::SpellingSupport>>,
     synthesizer: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<std::sync::Arc<crate::postponed_adjective::LangSynthesizer>>,
+    language_filters: Option<std::sync::Arc<dyn crate::language_filter::LanguageFilterHook>>,
+    suppress_if_any: Option<std::sync::Arc<dyn crate::suppress_if_any::SuppressIfAnySupport>>,
+    suppress_if_any_tagger: Option<std::sync::Arc<dyn og_tagger::Tagger>>,
 }
 
 impl PatternRuleEngine {
@@ -122,7 +125,28 @@ impl PatternRuleEngine {
             spelling: None,
             synthesizer: None,
             suggestion_synth: None,
+            language_filters: None,
+            suppress_if_any: None,
+            suppress_if_any_tagger: None,
         }
+    }
+
+    pub fn with_suppress_if_any_support(
+        mut self,
+        support: std::sync::Arc<dyn crate::suppress_if_any::SuppressIfAnySupport>,
+        tagger: Option<std::sync::Arc<dyn og_tagger::Tagger>>,
+    ) -> Self {
+        self.suppress_if_any = Some(support);
+        self.suppress_if_any_tagger = tagger;
+        self
+    }
+
+    pub fn with_language_filter_hook(
+        mut self,
+        hook: std::sync::Arc<dyn crate::language_filter::LanguageFilterHook>,
+    ) -> Self {
+        self.language_filters = Some(hook);
+        self
     }
 
     pub fn with_spelling_support(
@@ -2813,6 +2837,24 @@ fn uppercase_first_char(s: &str) -> String {
     out
 }
 
+const MAX_UNDERLINED_LENGTH: usize = 50;
+
+fn is_clearly_unsuitable(s: &str) -> bool {
+    static JAVA_LETTER: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    // Java scans UTF-16 units: an astral char adds 2 to the length, and its
+    // surrogate halves are never Character.isLetter (general category L only).
+    let utf16_len: usize = s.chars().map(char::len_utf16).sum();
+    if utf16_len > MAX_UNDERLINED_LENGTH {
+        return true;
+    }
+    let java_letter = JAVA_LETTER.get_or_init(|| regex::Regex::new(r"\p{L}").unwrap());
+    let letters = java_letter
+        .find_iter(s)
+        .filter(|m| m.as_str().len() <= 3)
+        .count();
+    letters < 2
+}
+
 fn is_sagt(w: &str) -> bool {
     matches!(w, "Sagt" | "sagt" | "Sag" | "sag")
 }
@@ -3114,7 +3156,8 @@ impl PatternRuleEngine {
                 self.apply_valid_word_filter(&filter.args, matched_texts, rm)
             }
             "org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter"
-            | "org.languagetool.rules.nl.DutchSuppressMisspelledSuggestionsFilter" => {
+            | "org.languagetool.rules.nl.DutchSuppressMisspelledSuggestionsFilter"
+            | "org.languagetool.rules.ca.CatalanSuppressMisspelledSuggestionsFilter" => {
                 self.apply_suppress_misspelled_suggestions_filter(&filter.args, matched_texts, rm)
             }
             "org.languagetool.rules.fr.FrenchSuppressMisspelledSuggestionsFilter" => {
@@ -3150,6 +3193,15 @@ impl PatternRuleEngine {
             }
             "org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter" => {
                 self.apply_multitoken_speller_filter(matched_positions, tokens, sentence, rm)
+            }
+            "org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" => {
+                let parsed = self.resolve_java_filter_args(&filter.args, matched_texts);
+                let rule_ids: Vec<&str> = parsed
+                    .get("ruleIDs")
+                    .map(|ids| ids.split(',').collect())
+                    .unwrap_or_default();
+                let fast_only = parsed.get("fastOnly").map(String::as_str) == Some("true");
+                self.apply_suppress_if_any_rule_matches_filter(&rule_ids, fast_only, sentence, rm)
             }
             "org.languagetool.rules.DateRangeChecker" => {
                 if self.apply_date_range_filter(&filter.args, matched_texts) {
@@ -3211,7 +3263,24 @@ impl PatternRuleEngine {
                     synthesizer: self.synthesizer.as_deref(),
                 },
             ),
-            _ => Some(rm),
+            _ => match &self.language_filters {
+                Some(hook) => {
+                    let args = self.resolve_java_filter_args(&filter.args, matched_texts);
+                    hook.apply_filter(
+                        crate::language_filter::LanguageFilterCall {
+                            class: filter.class.as_str(),
+                            args: &args,
+                            matched_texts,
+                            matched_positions,
+                            element_positions,
+                            tokens,
+                            sentence,
+                        },
+                        rm,
+                    )
+                }
+                None => Some(rm),
+            },
         }
     }
 
@@ -4100,35 +4169,32 @@ impl PatternRuleEngine {
             .is_none_or(|v| !v.eq_ignore_ascii_case("false"));
         let suppress_postag = parsed.get("SuppressPostag").cloned();
         let filter_postag = parsed.get("FilterPostag").cloned();
-        let postag_matches = |word: &str, pattern: &str| -> bool {
-            let atr = AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(word, 0, 0))
-                .with_readings(
-                    self.spelling
-                        .as_ref()
-                        .map(|s| s.tag(word))
-                        .unwrap_or_default(),
-                );
-            atr.has_pos_tag_matching(pattern)
-        };
+        let spelling = self.spelling.as_deref();
+        let check_postag = spelling.is_some_and(|s| s.has_tagger())
+            && (suppress_postag.is_some() || filter_postag.is_some());
         let mut kept: Vec<og_core::SuggestedReplacement> = Vec::new();
         for repl in rm.replacements() {
             let value = repl.value();
-            let misspelled = match self.spelling.as_ref() {
-                Some(spelling) => value.split_whitespace().any(|w| spelling.is_misspelled(w)),
-                None => false,
-            };
+            let misspelled =
+                spelling.is_some_and(|s| value.split_whitespace().any(|w| s.is_misspelled(w)));
             if misspelled {
                 continue;
             }
-            if let Some(sp) = suppress_postag.as_deref()
-                && postag_matches(value, sp)
-            {
-                continue;
-            }
-            if let Some(fp) = filter_postag.as_deref()
-                && !postag_matches(value, fp)
-            {
-                continue;
+            if check_postag && let Some(spelling) = spelling {
+                let atr = AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(value, 0, 0))
+                    .with_readings(spelling.tag(value));
+                if suppress_postag
+                    .as_deref()
+                    .is_some_and(|sp| atr.has_pos_tag_matching(sp))
+                {
+                    continue;
+                }
+                if filter_postag
+                    .as_deref()
+                    .is_some_and(|fp| !atr.has_pos_tag_matching(fp))
+                {
+                    continue;
+                }
             }
             kept.push(repl.clone());
         }
@@ -4138,6 +4204,24 @@ impl PatternRuleEngine {
             rm.set_replacements(kept);
             Some(rm)
         }
+    }
+
+    fn apply_suppress_if_any_rule_matches_filter(
+        &self,
+        rule_ids: &[&str],
+        fast_only: bool,
+        sentence: &AnalyzedSentence,
+        rm: RuleMatch,
+    ) -> Option<RuleMatch> {
+        let Some(support) = self.suppress_if_any.as_deref() else {
+            return Some(rm);
+        };
+        let Some(tagger) = self.suppress_if_any_tagger.as_deref() else {
+            return Some(rm);
+        };
+        crate::suppress_if_any::accept_rule_match(
+            support, tagger, rule_ids, fast_only, sentence, rm,
+        )
     }
 
     fn apply_multitoken_speller_filter(
@@ -4154,7 +4238,7 @@ impl PatternRuleEngine {
         let start = rm.offset();
         let end = start + rm.length();
         let underlined_error = text.get(start..end).unwrap_or_default();
-        if underlined_error.is_empty() {
+        if is_clearly_unsuitable(underlined_error) {
             return None;
         }
         let are_tokens_accepted_by_speller = spelling.multitoken_checks_tokens_with_speller()
@@ -7322,6 +7406,122 @@ mod tests {
     }
 
     #[test]
+    fn multitoken_speller_filter_suggests_the_same_sized_phrase() {
+        let engine = engine_with_words(&[], "alpha beta gamma delta\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_SHORT" name="multitoken short">
+                <pattern>
+                    <marker>
+                        <token>alphaa</token>
+                        <token>beta</token>
+                        <token>gamma</token>
+                        <token>delta</token>
+                    </marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let text = "x alphaa beta gamma delta .";
+        let matches = match_with_engine(&engine, xml, text);
+        assert_eq!(matches.len(), 1);
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["Alpha beta gamma delta"]);
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_overlong_underlined_errors() {
+        let engine = engine_with_words(
+            &[],
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa\n",
+        );
+        let words = [
+            "alphaa", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+        ];
+        let tokens: String = words
+            .iter()
+            .map(|w| format!("<token>{w}</token>"))
+            .collect();
+        let xml = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_LONG" name="multitoken long">
+                <pattern>
+                    <marker>{tokens}</marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#
+        );
+        let text = format!("x {} .", words.join(" "));
+        assert_eq!(words.join(" ").chars().count(), 57);
+        let matches = match_with_engine(&engine, &xml, &text);
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_underlined_errors_with_fewer_than_two_letters() {
+        let engine = engine_with_words(&[], "1 2 3 4 5\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_DIGITS" name="multitoken digits">
+                <pattern>
+                    <marker><token>12345</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "x 12345 .");
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn multitoken_speller_filter_drops_letter_number_only_underlined_errors() {
+        let engine = engine_with_words(&[], "Ⅷ Ⅸ\n");
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="MULTITOKEN_ROMAN" name="multitoken roman">
+                <pattern>
+                    <marker><token>Ⅷ</token><token>Ⅷ</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.spelling.multitoken.MultitokenSpellerFilter"/>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "x Ⅷ Ⅷ .");
+        assert!(
+            matches.is_empty(),
+            "Character.isLetter(Ⅷ) is false, so Java drops this match"
+        );
+    }
+
+    #[test]
+    fn is_clearly_unsuitable_matches_java_utf16_units_and_letter_classes() {
+        assert!(is_clearly_unsuitable(""));
+        assert!(is_clearly_unsuitable("😂 😂"));
+        assert!(is_clearly_unsuitable("Ⅷ Ⅷ"));
+        assert!(is_clearly_unsuitable("𐐨𐐩"));
+        assert!(is_clearly_unsuitable("a"));
+        assert!(!is_clearly_unsuitable("a b"));
+        assert!(!is_clearly_unsuitable("ab Ⅷ"));
+        let forty_nine = format!("ab {}", "😂".repeat(23));
+        assert_eq!(forty_nine.chars().map(char::len_utf16).sum::<usize>(), 49);
+        assert!(!is_clearly_unsuitable(&forty_nine));
+        let fifty_one = format!("ab {}", "😂".repeat(24));
+        assert_eq!(fifty_one.chars().map(char::len_utf16).sum::<usize>(), 51);
+        assert!(is_clearly_unsuitable(&fifty_one));
+        assert!(is_clearly_unsuitable(&"a".repeat(51)));
+        assert!(!is_clearly_unsuitable(&"a".repeat(50)));
+    }
+
+    #[test]
     fn ordinal_suffix_filter_builds_the_english_ordinals() {
         let engine = PatternRuleEngine::new();
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -7506,6 +7706,490 @@ mod tests {
         assert_eq!(reps, vec!["well"]);
     }
 
+    struct ContextSensitiveTagger;
+
+    impl og_tagger::Tagger for ContextSensitiveTagger {
+        fn tag(&self, tokens: &[&str]) -> Vec<AnalyzedTokenReadings> {
+            tokens
+                .iter()
+                .map(|&word| {
+                    let tags: &[&str] = if tokens.len() > 1 {
+                        &["CTX"]
+                    } else {
+                        match word.to_lowercase().as_str() {
+                            "good" => &["JJ"],
+                            "well" => &["RB"],
+                            _ => &[],
+                        }
+                    };
+                    let readings = tags
+                        .iter()
+                        .map(|t| {
+                            og_core::AnalyzedToken::new(word, 0, word.len())
+                                .with_lemma(word)
+                                .with_pos_tags(vec![t.to_string()])
+                        })
+                        .collect();
+                    AnalyzedTokenReadings::new(og_core::AnalyzedToken::new(word, 0, word.len()))
+                        .with_readings(readings)
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn suppress_misspelled_suggestions_filter_tags_each_replacement_alone() {
+        use crate::spelling_support::SpellingSupport;
+        let mut dict = og_spell::Dictionary::new();
+        for w in ["good", "well"] {
+            dict.add_word(w);
+        }
+        let support =
+            SpellingSupport::new(dict, "").with_tagger(std::sync::Arc::new(ContextSensitiveTagger));
+        let engine = PatternRuleEngine::new().with_spelling_support(std::sync::Arc::new(support));
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="SUPPRESS_SINGLETON" name="suppress singleton">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter" args="SuppressPostag:CTX"/>
+                <message>m</message>
+                <suggestion>good</suggestion>
+                <suggestion>well</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the good one");
+        assert_eq!(
+            matches.len(),
+            1,
+            "Java tags each surviving replacement alone (tagger.tag(singletonList(replacement)), \
+             AbstractSuppressMisspelledSuggestionsFilter.java:58); whole-list tagging would give \
+             every replacement the CTX tag and suppress the match"
+        );
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["good", "well"]);
+    }
+
+    #[test]
+    fn suppress_misspelled_suggestions_filter_skips_postag_checks_without_tagger() {
+        use crate::spelling_support::SpellingSupport;
+        let mut dict = og_spell::Dictionary::new();
+        dict.add_word("good");
+        let support = SpellingSupport::new(dict, "");
+        let engine = PatternRuleEngine::new().with_spelling_support(std::sync::Arc::new(support));
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="SUPPRESS_NO_TAGGER" name="suppress no tagger">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.en.EnglishSuppressMisspelledSuggestionsFilter" args="FilterPostag:RB"/>
+                <message>m</message>
+                <suggestion>godd</suggestion>
+                <suggestion>good</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the good one");
+        assert_eq!(
+            matches.len(),
+            1,
+            "checkPostag requires a tagger (AbstractSuppressMisspelledSuggestionsFilter.java:51); \
+             FilterPostag must not drop replacements when no tagger is configured"
+        );
+        let reps: Vec<&str> = matches[0]
+            .replacements()
+            .iter()
+            .map(|r| r.value())
+            .collect();
+        assert_eq!(reps, vec!["good"]);
+    }
+
+    struct RecheckTargetRule {
+        compiled: CompiledRule,
+        engine: PatternRuleEngine,
+    }
+
+    impl og_core::rule::Rule for RecheckTargetRule {
+        fn id(&self) -> &str {
+            &self.compiled.id
+        }
+
+        fn match_sentence(&self, sentence: &og_core::AnalyzedSentence) -> Vec<RuleMatch> {
+            self.engine.match_rule(&self.compiled, sentence)
+        }
+    }
+
+    struct RecheckSupport {
+        rules: Vec<std::sync::Arc<dyn og_core::rule::Rule>>,
+    }
+
+    impl crate::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
+        fn analyze_text(&self, text: &str) -> Vec<og_core::AnalyzedSentence> {
+            let mut sentence = make_analyzed_sentence(text);
+            for atr in sentence.tokens_mut() {
+                if atr.token().token() == "well" {
+                    let token = atr.token().clone();
+                    let analysis =
+                        og_core::AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["RBX".to_string()]);
+                    *atr.readings_mut() = vec![analysis];
+                }
+            }
+            vec![sentence]
+        }
+
+        fn rules_for_ids(&self, rule_ids: &[&str]) -> Vec<std::sync::Arc<dyn og_core::rule::Rule>> {
+            self.rules
+                .iter()
+                .filter(|rule| rule_ids.contains(&rule.id()))
+                .cloned()
+                .collect()
+        }
+    }
+
+    fn recheck_engine(target_xml: &str) -> PatternRuleEngine {
+        let compiler = XmlCompiler::new();
+        let rules: Vec<std::sync::Arc<dyn og_core::rule::Rule>> = compiler
+            .compile_file(target_xml)
+            .unwrap()
+            .rules
+            .into_iter()
+            .map(|compiled| {
+                std::sync::Arc::new(RecheckTargetRule {
+                    engine: PatternRuleEngine::new(),
+                    compiled,
+                }) as std::sync::Arc<dyn og_core::rule::Rule>
+            })
+            .collect();
+        PatternRuleEngine::new().with_suppress_if_any_support(
+            std::sync::Arc::new(RecheckSupport { rules }),
+            Some(std::sync::Arc::new(TableTagger)),
+        )
+    }
+
+    #[test]
+    fn suppress_if_any_filter_drops_match_when_target_rule_fires_on_replacement() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER" name="outer">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET"/>
+                <message>m</message>
+                <suggestion>baad</suggestion>
+            </rule>
+        </rules>"#;
+        assert!(
+            match_with_engine(&engine, xml, "the wxyd one").is_empty(),
+            "same-length space-free replacement takes the fast path: the matched token is \
+             re-tagged in place and TARGET fires at an overlapping position, so the whole \
+             match is suppressed (SuppressIfAnyRuleMatchesFilter.java:51-55)"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_keeps_match_when_target_stays_silent() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER" name="outer">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET"/>
+                <message>m</message>
+                <suggestion>good</suggestion>
+            </rule>
+        </rules>"#;
+        let matches = match_with_engine(&engine, xml, "the wxyd one");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "good");
+    }
+
+    #[test]
+    fn suppress_if_any_filter_fast_path_uses_tagger_readings() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET_RB" name="target rb">
+                <pattern><token postag="RB"/></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let outer = |suggestion: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_RB" name="outer rb">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET_RB"/>
+                <message>m</message>
+                <suggestion>{suggestion}</suggestion>
+            </rule>
+        </rules>"#
+            )
+        };
+        assert!(
+            match_with_engine(&engine, &outer("well"), "the wxyd one").is_empty(),
+            "the fast path re-tags the replacement (well -> RB) so the postag target fires"
+        );
+        assert_eq!(
+            match_with_engine(&engine, &outer("good"), "the wxyd one").len(),
+            1,
+            "good tags JJ, the postag target stays silent and the match survives"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_fast_only_skips_the_exact_path() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET_RBX" name="target rbx">
+                <pattern><token postag="RBX"/></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let outer = |fast_only: &str| {
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_FAST_ONLY" name="outer fast only">
+                <pattern>
+                    <token>the</token>
+                    <marker><token regexp="yes">[a-z]+</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET_RBX fastOnly:{fast_only}"/>
+                <message>m</message>
+                <suggestion>well</suggestion>
+            </rule>
+        </rules>"#
+            )
+        };
+        assert_eq!(
+            match_with_engine(&engine, &outer("true"), "the wxyd one").len(),
+            1,
+            "the fast path tags well -> RB, the RBX target stays silent, and with fastOnly \
+             the fast path is authoritative so the exact path never runs and the match fires \
+             (SuppressIfAnyRuleMatchesFilter.java:56-59)"
+        );
+        assert!(
+            match_with_engine(&engine, &outer("false"), "the wxyd one").is_empty(),
+            "without fastOnly the exact path re-analyzes the sentence and the re-analysis \
+             reading RBX makes the target veto the match"
+        );
+    }
+
+    #[test]
+    fn suppress_if_any_filter_falls_back_to_exact_path_when_fast_path_cannot_apply() {
+        let engine = recheck_engine(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="TARGET" name="target">
+                <pattern><token>baad</token></pattern>
+                <message>t</message>
+            </rule>
+        </rules>"#,
+        );
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="OUTER_MULTI" name="outer multi">
+                <pattern>
+                    <marker><token>wxy</token><token>foo</token></marker>
+                </pattern>
+                <filter class="org.languagetool.rules.SuppressIfAnyRuleMatchesFilter" args="ruleIDs:TARGET fastOnly:true"/>
+                <message>m</message>
+                <suggestion>baad ok</suggestion>
+            </rule>
+        </rules>"#;
+        assert!(
+            match_with_engine(&engine, xml, "the wxy foo end").is_empty(),
+            "a space-containing replacement cannot take the fast path, so even fastOnly \
+             falls through to the exact path, which re-analyzes 'the baad ok end' and the \
+             target vetoes the match"
+        );
+    }
+
+    #[test]
+    fn raw_pos_rule_matches_pre_disambiguation_readings() {
+        use og_core::checker::{
+            Checker as CoreChecker, Disambiguator, SentenceRange, SentenceTokenizer, Tagger,
+            WordTokenizer,
+        };
+        use og_core::{AnalyzedToken, AnalyzedTokenReadings};
+        use std::sync::Arc;
+
+        struct OneSentence;
+        impl SentenceTokenizer for OneSentence {
+            fn split(&self, text: &str) -> Vec<SentenceRange> {
+                vec![SentenceRange {
+                    start: 0,
+                    end: text.len(),
+                }]
+            }
+        }
+
+        struct WordAndPunct;
+        impl WordTokenizer for WordAndPunct {
+            fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
+                let mut tokens = Vec::new();
+                let mut word_start: Option<usize> = None;
+                for (i, c) in text.char_indices() {
+                    if c.is_alphanumeric() || c == '\'' {
+                        word_start.get_or_insert(i);
+                    } else {
+                        if let Some(s) = word_start.take() {
+                            tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                                &text[s..i],
+                                offset + s,
+                                offset + i,
+                            )));
+                        }
+                        if !c.is_whitespace() {
+                            let end = i + c.len_utf8();
+                            tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                                &text[i..end],
+                                offset + i,
+                                offset + end,
+                            )));
+                        }
+                    }
+                }
+                if let Some(s) = word_start {
+                    tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                        &text[s..],
+                        offset + s,
+                        offset + text.len(),
+                    )));
+                }
+                tokens
+            }
+        }
+
+        struct DetOrPronTagger;
+        impl Tagger for DetOrPronTagger {
+            fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
+                for atr in tokens.iter_mut() {
+                    if atr.token().token() == "la" {
+                        let token = atr.token().clone();
+                        *atr.readings_mut() = vec![
+                            AnalyzedToken::new(token.token(), token.start(), token.end())
+                                .with_pos_tags(vec!["D0FS0".to_string()]),
+                            AnalyzedToken::new(token.token(), token.start(), token.end())
+                                .with_pos_tags(vec!["PP3FS000".to_string()]),
+                        ];
+                    }
+                }
+            }
+        }
+
+        struct DropDeterminerReadings;
+        impl Disambiguator for DropDeterminerReadings {
+            fn disambiguate(&self, sentence: &mut og_core::AnalyzedSentence) {
+                for atr in sentence.tokens_mut() {
+                    if atr.token().token() == "la" {
+                        atr.readings_mut()
+                            .retain(|r| !r.pos_tags().iter().any(|t| t.starts_with('D')));
+                    }
+                }
+            }
+        }
+
+        let checker = CoreChecker::new()
+            .with_sentence_tokenizer(Arc::new(OneSentence))
+            .with_word_tokenizer(Arc::new(WordAndPunct))
+            .with_tagger(Arc::new(DetOrPronTagger))
+            .with_disambiguator(Arc::new(DropDeterminerReadings));
+        let sentence = checker
+            .analyze("Fue la celebre \"plegariá\".")
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let pattern = |raw_pos: bool| {
+            let raw = if raw_pos { " raw_pos=\"yes\"" } else { "" };
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="es">
+            <rule id="CELEBRES_RAW" name="celebres raw">
+                <pattern{raw}>
+                    <token postag="D.*" postag_regexp="yes"/>
+                    <marker><token regexp="yes">celebres?</token></marker>
+                    <token regexp='yes' spacebefore='yes'>["“‘«']</token>
+                </pattern>
+                <message>m</message>
+            </rule>
+        </rules>"#
+            )
+        };
+        let compiler = XmlCompiler::new();
+        let engine = PatternRuleEngine::new();
+
+        let raw_set = compiler.compile_file(&pattern(true)).unwrap();
+        let raw_matches: Vec<_> = raw_set
+            .rules
+            .iter()
+            .flat_map(|r| engine.match_rule(r, &sentence))
+            .collect();
+        assert_eq!(
+            raw_matches.len(),
+            1,
+            "es grammar.xml CELEBRES shape: raw_pos must see the pre-disambiguation D0FS0 \
+             reading of 'la' that the disambiguator removed in place \
+             (JLanguageTool.java:1769-1777 snapshots tagger output before disambiguation)"
+        );
+        let m = &raw_matches[0];
+        assert_eq!(
+            &sentence.text()[m.offset()..m.offset() + m.length()],
+            "celebre",
+            "the marker covers only the adjective"
+        );
+
+        let live_set = compiler.compile_file(&pattern(false)).unwrap();
+        let live_matches: Vec<_> = live_set
+            .rules
+            .iter()
+            .flat_map(|r| engine.match_rule(r, &sentence))
+            .collect();
+        assert!(
+            live_matches.is_empty(),
+            "without raw_pos the rule reads the disambiguated readings, where the D0FS0 \
+             reading is gone and only PP3FS000 survives"
+        );
+    }
+
     pub(super) fn make_analyzed_sentence(text: &str) -> og_core::AnalyzedSentence {
         use og_core::{AnalyzedToken, AnalyzedTokenReadings};
         let mut sentence = og_core::AnalyzedSentence::new(text, 0, text.len());
@@ -7554,6 +8238,28 @@ mod tests {
         }
         sentence.set_tokens(tokens);
         sentence
+    }
+
+    #[test]
+    fn xml_compiler_token_regex_word_class_is_ascii() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="W_ASCII_PROBE" name="w ascii probe">
+                <pattern>
+                    <marker><token regexp="yes">\w+</token></marker>
+                </pattern>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let compiler = XmlCompiler::new();
+        let rule_set = compiler.compile_file(xml).unwrap();
+        let engine = PatternRuleEngine::new();
+        let matches = engine.match_rule(&rule_set.rules[0], &make_analyzed_sentence("word à ünn"));
+        assert_eq!(
+            matches.len(),
+            1,
+            "ASCII \\w must match only 'word', not accented tokens"
+        );
     }
 
     #[test]
@@ -7742,7 +8448,7 @@ mod tests {
         let prefix = "é".repeat(30);
         let suffix = "é".repeat(30);
         let text = format!("{prefix} cat {suffix}");
-        let matches = compile_and_match(&xml, &text);
+        let matches = compile_and_match(xml, &text);
         assert_eq!(matches.len(), 1);
         let context = matches[0].context();
         assert!(context.text().starts_with('é'), "{}", context.text());
@@ -11137,7 +11843,7 @@ mod unify_tests {
     #[test]
     fn russian_partial_tag_check_uses_the_shared_tagger() {
         let matched = vec!["стол".to_string()];
-        fn make<'a>(args: &'a str) -> HashMap<&'a str, String> {
+        fn make(args: &str) -> HashMap<&str, String> {
             args.split_whitespace()
                 .filter_map(|part| part.split_once(':'))
                 .map(|(k, v)| (k, v.to_string()))

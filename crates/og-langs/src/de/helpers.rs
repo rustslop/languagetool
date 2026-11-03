@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn eq_ignore_case_folds_per_char_like_java() {
-        assert!(eq_ignore_case("Straße", "STRASSE") == false);
+        assert!(!eq_ignore_case("Straße", "STRASSE"));
         assert!(eq_ignore_case("Hallo", "halLO"));
         assert!(eq_ignore_case("", ""));
         assert!(!eq_ignore_case("hallo", "hall"));
@@ -244,10 +244,10 @@ mod tests {
     fn has_no_whitespace_before_looks_at_the_char_before_the_token() {
         let s = sentence("hallo Welt");
         let tokens: Vec<_> = s.non_whitespace_tokens().to_vec();
-        assert!(!has_no_whitespace_before(&s, &tokens[1]));
-        assert!(!has_no_whitespace_before(&s, &tokens[0]));
+        assert!(!has_no_whitespace_before(&s, tokens[1]));
+        assert!(!has_no_whitespace_before(&s, tokens[0]));
         let tight = sentence("A:B");
         let tight_tokens: Vec<_> = tight.non_whitespace_tokens().to_vec();
-        assert!(has_no_whitespace_before(&tight, &tight_tokens[2]));
+        assert!(has_no_whitespace_before(&tight, tight_tokens[2]));
     }
 }

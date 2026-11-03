@@ -1,6 +1,6 @@
 use crate::pl::test_support::PolishPipeline;
 use og_rules::pattern_rule::PatternRuleEngine;
-use og_xml::compiler::{CompiledRule, CompiledRuleSet, XmlCompiler};
+use og_xml::compiler::{CompiledRule, CompiledRuleSet};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -134,9 +134,8 @@ fn evaluate_examples_file(rules_path: &Path, file_label: &str, artifact: &str) {
     let raw_example_count = xml.matches("<example").count();
     let without_comments = strip_xml_comments(xml);
     let comment_example_count = raw_example_count - without_comments.matches("<example").count();
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(xml, rules_path.parent())
-        .expect("compile rules xml");
+    let rule_set =
+        crate::test_util::shared_compiled_rules(rules_path, xml).expect("compile rules xml");
 
     let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();
     let mut groups: Vec<Vec<&CompiledRule>> = Vec::new();
@@ -308,18 +307,9 @@ mod tests {
     use super::*;
 
     fn compiled_rules_from(path: PathBuf) -> std::sync::Arc<CompiledRuleSet> {
-        static GRAMMAR: og_core::releasable::Releasable<CompiledRuleSet> =
-            og_core::releasable::Releasable::new();
-        og_core::releasable::shared_get_or_build(&GRAMMAR, || {
-            let xml = std::fs::read_to_string(&path).unwrap();
-            let xml = crate::pl::normalize_pl_rules_xml(&xml);
-            Some(std::sync::Arc::new(
-                XmlCompiler::new()
-                    .compile_file_with_base(xml.as_ref(), path.parent())
-                    .expect("compile rules xml"),
-            ))
-        })
-        .expect("pl rule set")
+        let xml = std::fs::read_to_string(&path).unwrap();
+        let xml = crate::pl::normalize_pl_rules_xml(&xml);
+        crate::test_util::shared_compiled_rules(&path, xml.as_ref()).expect("pl rule set")
     }
 
     fn rule_matches(rules_path: PathBuf, rule_id: &str, text: &str) -> Vec<(usize, usize)> {

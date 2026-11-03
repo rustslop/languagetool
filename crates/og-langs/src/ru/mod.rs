@@ -84,8 +84,6 @@ pub fn russian_simple_word_repeat_rule() -> WordRepeatRule {
         .with_ignore_single_letter_repeats()
 }
 
-// Java's switch matches the constant names RUSSIAN_SIMPLE_REPLACE_RULE and
-// RUSSIAN_SPECIFIC_CASE, never their values RU_SIMPLE_REPLACE/RU_SPECIFIC_CASE.
 pub fn russian_priority_for_id(id: &str) -> Option<i32> {
     match id {
         "RU_DASH_RULE" => Some(12),
@@ -248,7 +246,7 @@ mod tests {
     #[test]
     fn engine_check_survives_russian_text_with_brackets() {
         let _release_guard = crate::release_guard();
-        let engine = crate::engine::LanguageEngine::for_code("ru").unwrap();
+        let engine = crate::engine::LanguageEngine::shared_for_code("ru").unwrap();
         let result = engine.check("Привет мир (тест).");
         assert!(!result.matches.is_empty());
     }

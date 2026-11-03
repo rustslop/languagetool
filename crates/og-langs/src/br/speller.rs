@@ -228,8 +228,6 @@ impl Rule for BretonSpellerRule {
         IssueType::Misspelling
     }
 
-    // Java keeps suggestions lazy over the 17.7M-form FSA via Morfologik ranking;
-    // this port returns no suggestions for words outside the small extra list.
     fn match_sentence(&self, sentence: &AnalyzedSentence) -> Vec<RuleMatch> {
         let tokens = sentence.non_whitespace_tokens();
         let mut matches = Vec::new();

@@ -227,6 +227,20 @@ fn replace_first_ci(text: &str, from: &str, to: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::add_boundaries;
+    use regex::Regex;
+
+    #[test]
+    fn word_boundaries_are_unicode_aware() {
+        let re = Regex::new(&add_boundaries("pic")).unwrap();
+        assert!(re.is_match("el pic alt"));
+        assert!(
+            !re.is_match("l'arquetípic"),
+            "WrongWordInContextRule.java:281-286 prepends (?U) so \\b stays Unicode-aware \
+             under Java 21; the regex crate's \\b is Unicode-aware by default, so accented \
+             letters count as word characters and 'pic' must not hit inside 'arquetípic'"
+        );
+    }
 
     #[test]
     fn detects_mine_miene_confusion() {

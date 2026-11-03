@@ -1,4 +1,5 @@
 use crate::Category;
+use crate::match_filters::error_span;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,6 +333,102 @@ impl RuleMatch {
     pub fn sentence(&self) -> Option<&str> {
         self.sentence.as_deref()
     }
+
+    pub fn trim_match_ends(&mut self, text: &str) {
+        if self.replacements.is_empty() {
+            return;
+        }
+        let offset = self.offset;
+        let length = self.length;
+        let Some(error_str) = error_span(offset, length, text) else {
+            return;
+        };
+        let mut error_str = error_str;
+        if error_str.chars().all(is_java_whitespace) {
+            return;
+        }
+        let mut from_pos = offset;
+        let mut to_pos = offset + length;
+        let mut replacements: Option<Vec<SuggestedReplacement>> = None;
+        let mut changed = true;
+        while changed {
+            changed = false;
+            if let Some(last_space_idx) = error_str.rfind(' ').filter(|&idx| idx > 0) {
+                let end_suffix = &error_str[last_space_idx..];
+                let end_trim_len = error_str.len() - last_space_idx;
+                let current = replacements.as_deref().unwrap_or(&self.replacements);
+                if current.iter().all(|r| r.value().ends_with(end_suffix))
+                    && to_pos - end_trim_len > from_pos
+                {
+                    replacements = Some(
+                        current
+                            .iter()
+                            .map(|r| {
+                                let mut trimmed = r.clone();
+                                trimmed.set_value(&r.value()[..r.value().len() - end_suffix.len()]);
+                                trimmed
+                            })
+                            .collect(),
+                    );
+                    to_pos -= end_trim_len;
+                    error_str = &error_str[..last_space_idx];
+                    changed = true;
+                }
+            }
+            if let Some(first_space_idx) = error_str.find(' ').filter(|&idx| idx > 0) {
+                let start_prefix = &error_str[..first_space_idx + 1];
+                let start_trim_len = first_space_idx + 1;
+                let current = replacements.as_deref().unwrap_or(&self.replacements);
+                if current.iter().all(|r| r.value().starts_with(start_prefix))
+                    && from_pos + start_trim_len < to_pos
+                {
+                    replacements = Some(
+                        current
+                            .iter()
+                            .map(|r| {
+                                let mut trimmed = r.clone();
+                                trimmed.set_value(&r.value()[start_prefix.len()..]);
+                                trimmed
+                            })
+                            .collect(),
+                    );
+                    from_pos += start_trim_len;
+                    error_str = &error_str[start_trim_len..];
+                    changed = true;
+                }
+            }
+        }
+        if let Some(trimmed) = replacements {
+            self.offset = from_pos;
+            self.length = to_pos - from_pos;
+            self.replacements = trimmed;
+        }
+    }
+}
+
+fn is_java_whitespace(c: char) -> bool {
+    if matches!(c, '\u{0001}' | '\u{0002}') {
+        return false;
+    }
+    if c == '\u{FEFF}' {
+        return true;
+    }
+    if c <= '\u{0020}' {
+        return true;
+    }
+    if matches!(c, '\u{00A0}' | '\u{200B}' | '\u{202F}') {
+        return true;
+    }
+    matches!(
+        c,
+        '\u{1680}'
+            | '\u{2000}'..='\u{2006}'
+            | '\u{2008}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{205F}'
+            | '\u{3000}'
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -637,7 +734,7 @@ mod mutation_tests {
         let json = serde_json::to_value(&m).unwrap();
         assert_eq!(json["contextForSureMatch"], 3);
         assert_eq!(json["ignoreForIncompleteSentence"], true);
-        let bare = serde_json::to_value(&base()).unwrap();
+        let bare = serde_json::to_value(base()).unwrap();
         assert_eq!(bare["contextForSureMatch"], -1);
         assert_eq!(bare["ignoreForIncompleteSentence"], false);
     }
@@ -700,5 +797,148 @@ mod mutation_tests {
         assert_eq!(json["type"]["typeName"], "UnknownWord");
         let back: RuleMatch = serde_json::from_value(json).unwrap();
         assert_eq!(back.message(), "msg");
+    }
+}
+
+#[cfg(test)]
+mod trim_match_ends_tests {
+    use super::*;
+
+    fn match_with(text: &str, offset: usize, length: usize, replacements: &[&str]) -> RuleMatch {
+        RuleMatch::new(
+            "msg",
+            offset,
+            length,
+            RuleMatchRule::new("TEST_RULE", "test rule"),
+            RuleMatchContext::new(
+                text.get(offset..offset + length).unwrap_or(""),
+                offset,
+                length,
+            ),
+        )
+        .with_replacements(
+            replacements
+                .iter()
+                .map(|r| SuggestedReplacement::new(*r))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn keeps_whitespace_only_match() {
+        let text = "0123456789 \u{00A0} tail";
+        let mut m = match_with(text, 10, 4, &[" "]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (10, 4));
+        assert_eq!(m.replacements()[0].value(), " ");
+    }
+
+    #[test]
+    fn still_trims_common_tokens() {
+        let text = "0123456789foo bar baz";
+        let mut m = match_with(text, 10, 11, &["foo qux baz"]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (14, 3));
+        assert_eq!(m.replacements()[0].value(), "qux");
+        assert_eq!(&text[m.offset()..m.offset() + m.length()], "bar");
+    }
+
+    #[test]
+    fn does_not_create_invalid_range_with_extra_whitespace() {
+        let text = "fins  tot";
+        let mut m = match_with(text, 0, 9, &["fins i tot"]);
+        m.trim_match_ends(text);
+        assert!(m.offset() < m.offset() + m.length());
+        assert_eq!((m.offset(), m.length()), (0, 5));
+        assert_eq!(m.replacements()[0].value(), "fins i");
+        assert_eq!(&text[m.offset()..m.offset() + m.length()], "fins ");
+    }
+
+    #[test]
+    fn keeps_match_without_replacements() {
+        let mut m = match_with("foo bar", 0, 7, &[]);
+        m.trim_match_ends("foo bar");
+        assert_eq!((m.offset(), m.length()), (0, 7));
+    }
+
+    #[test]
+    fn keeps_match_with_unresolvable_error_span() {
+        let mut m = match_with("short", 3, 9, &["x"]);
+        m.trim_match_ends("short");
+        assert_eq!((m.offset(), m.length()), (3, 9));
+        assert_eq!(m.replacements()[0].value(), "x");
+    }
+
+    #[test]
+    fn requires_all_replacements_to_share_common_tokens() {
+        let text = "foo bar baz";
+        let mut m = match_with(text, 0, 11, &["foo qux baz", "different"]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (0, 11));
+        assert_eq!(m.replacements()[0].value(), "foo qux baz");
+        assert_eq!(m.replacements()[1].value(), "different");
+    }
+
+    #[test]
+    fn blocks_start_trim_that_would_empty_the_range() {
+        let text = "fins ";
+        let mut m = match_with(text, 0, 5, &["fins x"]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (0, 5));
+        assert_eq!(m.replacements()[0].value(), "fins x");
+    }
+
+    #[test]
+    fn iterates_until_no_common_tokens_remain() {
+        let text = "aa bb ";
+        let mut m = match_with(text, 0, 6, &["aa cc "]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (3, 2));
+        assert_eq!(m.replacements()[0].value(), "cc");
+    }
+
+    #[test]
+    fn handles_multibyte_text_around_the_match() {
+        let text = "ça foo bar baz fin";
+        let start = text.find("foo").unwrap();
+        let mut m = match_with(text, start, "foo bar baz".len(), &["foo qux baz"]);
+        m.trim_match_ends(text);
+        assert_eq!(&text[m.offset()..m.offset() + m.length()], "bar");
+        assert_eq!(m.replacements()[0].value(), "qux");
+        assert_eq!(m.offset(), start + 4);
+    }
+
+    #[test]
+    fn preserves_replacement_metadata() {
+        let text = "foo bar";
+        let mut m = RuleMatch::new(
+            "m",
+            0,
+            7,
+            RuleMatchRule::new("R", "d"),
+            RuleMatchContext::new("foo bar", 0, 7),
+        )
+        .with_replacements(vec![
+            SuggestedReplacement::new("foo qux").with_short_description("verb"),
+        ]);
+        m.trim_match_ends(text);
+        assert_eq!((m.offset(), m.length()), (4, 3));
+        assert_eq!(m.replacements()[0].value(), "qux");
+        assert_eq!(m.replacements()[0].short_description(), Some("verb"));
+    }
+
+    #[test]
+    fn java_whitespace_matches_stringtools_semantics() {
+        for c in [
+            ' ', '\t', '\n', '\u{00A0}', '\u{200B}', '\u{202F}', '\u{FEFF}', '\u{1680}',
+            '\u{2000}', '\u{200A}', '\u{2028}', '\u{2029}', '\u{205F}', '\u{3000}',
+        ] {
+            assert!(is_java_whitespace(c), "{c:?} must be whitespace");
+        }
+        for c in [
+            'a', '1', '\u{0001}', '\u{0002}', '\u{2007}', '\u{0085}', '\u{2060}', '·',
+        ] {
+            assert!(!is_java_whitespace(c), "{c:?} must not be whitespace");
+        }
     }
 }

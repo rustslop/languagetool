@@ -1,6 +1,6 @@
 use crate::pt::test_support::PortuguesePipeline;
 use og_core::AnalyzedSentence;
-use og_xml::compiler::{CompiledRule, CompiledRuleSet, XmlCompiler};
+use og_xml::compiler::{CompiledRule, CompiledRuleSet};
 use std::path::PathBuf;
 
 fn rules_dir() -> PathBuf {
@@ -8,18 +8,9 @@ fn rules_dir() -> PathBuf {
 }
 
 fn compiled_grammar() -> std::sync::Arc<CompiledRuleSet> {
-    static GRAMMAR: og_core::releasable::Releasable<CompiledRuleSet> =
-        og_core::releasable::Releasable::new();
-    og_core::releasable::shared_get_or_build(&GRAMMAR, || {
-        let path = rules_dir().join("grammar.xml");
-        let xml = std::fs::read_to_string(&path).expect("grammar.xml");
-        Some(std::sync::Arc::new(
-            XmlCompiler::new()
-                .compile_file_with_base(&xml, path.parent())
-                .expect("compile rules xml"),
-        ))
-    })
-    .expect("pt grammar")
+    let path = rules_dir().join("grammar.xml");
+    let xml = std::fs::read_to_string(&path).expect("grammar.xml");
+    crate::test_util::shared_compiled_rules(&path, &xml).expect("pt grammar")
 }
 
 fn dump_readings(sentence: &AnalyzedSentence) {
@@ -198,18 +189,9 @@ mod tests {
 }
 
 fn compiled_style() -> std::sync::Arc<CompiledRuleSet> {
-    static STYLE: og_core::releasable::Releasable<CompiledRuleSet> =
-        og_core::releasable::Releasable::new();
-    og_core::releasable::shared_get_or_build(&STYLE, || {
-        let path = rules_dir().join("style.xml");
-        let xml = std::fs::read_to_string(&path).expect("style.xml");
-        Some(std::sync::Arc::new(
-            XmlCompiler::new()
-                .compile_file_with_base(&xml, path.parent())
-                .expect("compile style.xml"),
-        ))
-    })
-    .expect("pt style")
+    let path = rules_dir().join("style.xml");
+    let xml = std::fs::read_to_string(&path).expect("style.xml");
+    crate::test_util::shared_compiled_rules(&path, &xml).expect("pt style")
 }
 
 fn describe_token(t: &og_xml::compiler::CompiledPatternToken) -> String {
@@ -268,7 +250,6 @@ fn describe_element(elem: &og_xml::compiler::CompiledPatternElement) -> String {
 #[cfg(test)]
 mod round1_tests {
     use super::PortuguesePipeline;
-    use super::XmlCompiler;
 
     #[test]
     #[ignore]
@@ -280,9 +261,8 @@ mod round1_tests {
             .expect("pt rules dir")
             .join("style.xml");
         let xml = std::fs::read_to_string(&style).expect("style.xml");
-        let rule_set = XmlCompiler::new()
-            .compile_file_with_base(&xml, style.parent())
-            .expect("compile style.xml");
+        let rule_set =
+            crate::test_util::shared_compiled_rules(&style, &xml).expect("compile style.xml");
         let pipeline = PortuguesePipeline::shared();
         for (id, text) in [
             (

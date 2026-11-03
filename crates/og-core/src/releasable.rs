@@ -30,16 +30,94 @@ impl<T> Default for Releasable<T> {
     }
 }
 
+trait CellReleaser: Send + Sync {
+    fn release(&self, keep_used_since: Option<Instant>) -> usize;
+    fn last_use(&self) -> Option<Instant>;
+    fn has_value(&self) -> bool;
+}
+
+struct StaticCell<T: 'static> {
+    cell: &'static Releasable<T>,
+}
+
+impl<T> CellReleaser for StaticCell<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn release(&self, keep_used_since: Option<Instant>) -> usize {
+        release_cell(self.cell, keep_used_since)
+    }
+
+    fn last_use(&self) -> Option<Instant> {
+        self.cell.state.lock().ok().and_then(|guard| guard.last_use)
+    }
+
+    fn has_value(&self) -> bool {
+        self.cell
+            .state
+            .lock()
+            .is_ok_and(|guard| guard.value.is_some())
+    }
+}
+
+fn registry() -> &'static Mutex<HashMap<usize, Arc<dyn CellReleaser>>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<usize, Arc<dyn CellReleaser>>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static EVICTION_BUDGET: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
+static WAIT_WATERMARK: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
+static FUTILE_EVICTION: Mutex<Option<(usize, Instant)>> = Mutex::new(None);
+const FUTILE_EVICTION_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(60);
+
+pub fn set_eviction_budget_bytes(bytes: usize) {
+    let previous = EVICTION_BUDGET.swap(bytes, std::sync::atomic::Ordering::AcqRel);
+    if previous != bytes
+        && let Ok(mut futile) = FUTILE_EVICTION.lock()
+    {
+        *futile = None;
+    }
+}
+
+pub fn eviction_budget_bytes() -> usize {
+    EVICTION_BUDGET.load(std::sync::atomic::Ordering::Acquire)
+}
+
+pub fn set_wait_watermark_bytes(bytes: usize) {
+    WAIT_WATERMARK.store(bytes, std::sync::atomic::Ordering::Release);
+}
+
+pub fn wait_watermark_bytes() -> usize {
+    WAIT_WATERMARK.load(std::sync::atomic::Ordering::Acquire)
+}
+
 pub type ReleaseFn = std::sync::Arc<dyn Fn(Option<Instant>) -> usize + Send + Sync>;
 
-fn registry() -> &'static Mutex<HashMap<usize, ReleaseFn>> {
-    static REGISTRY: OnceLock<Mutex<HashMap<usize, ReleaseFn>>> = OnceLock::new();
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+struct FnCell {
+    release: ReleaseFn,
+}
+
+impl CellReleaser for FnCell {
+    fn release(&self, keep_used_since: Option<Instant>) -> usize {
+        (self.release)(keep_used_since)
+    }
+
+    fn last_use(&self) -> Option<Instant> {
+        None
+    }
+
+    fn has_value(&self) -> bool {
+        false
+    }
 }
 
 pub fn register_releaser(key: usize, release: ReleaseFn) {
     if let Ok(mut registry) = registry().lock() {
-        registry.entry(key).or_insert(release);
+        registry
+            .entry(key)
+            .or_insert_with(|| Arc::new(FnCell { release }));
     }
 }
 
@@ -51,6 +129,8 @@ where
     let mut guard = cell.state.lock().ok()?;
     let hit = guard.value.clone()?;
     guard.last_use = Some(now);
+    drop(guard);
+    maybe_evict_over_budget();
     Some(hit)
 }
 
@@ -67,6 +147,8 @@ where
     {
         let hit = guard.value.clone();
         guard.last_use = Some(now);
+        drop(guard);
+        maybe_evict_over_budget();
         return hit;
     }
     let _build_guard = cell
@@ -80,6 +162,8 @@ where
         guard.last_use = Some(now);
         return hit;
     }
+    let protect_after = Instant::now().checked_sub(PROBE_EVICT_GRACE);
+    evict_lru_until_rss_below(eviction_budget_bytes(), protect_after);
     let built = build();
     let mut stored = false;
     let outcome = {
@@ -96,9 +180,9 @@ where
     if stored {
         let key = cell as *const Releasable<T> as usize;
         if let Ok(mut registry) = registry().lock() {
-            registry.entry(key).or_insert_with(|| {
-                std::sync::Arc::new(move |keep_used_since| release_cell(cell, keep_used_since))
-            });
+            registry
+                .entry(key)
+                .or_insert_with(|| Arc::new(StaticCell { cell }));
         }
     }
     outcome
@@ -141,14 +225,191 @@ pub fn trim_due(interval: std::time::Duration) -> bool {
 }
 
 fn release_with_filter(keep_used_since: Option<Instant>) -> usize {
-    let releases: Vec<ReleaseFn> = match registry().lock() {
+    let releases: Vec<Arc<dyn CellReleaser>> = match registry().lock() {
         Ok(registry) => registry.values().cloned().collect(),
         Err(_) => return 0,
     };
     releases
         .iter()
-        .map(|release| release(keep_used_since))
+        .map(|release| release.release(keep_used_since))
         .sum()
+}
+
+#[cfg(target_os = "linux")]
+pub fn resident_bytes() -> usize {
+    let Ok(statm) = std::fs::read_to_string("/proc/self/statm") else {
+        return usize::MAX;
+    };
+    let Some(pages) = statm.split_whitespace().nth(1).and_then(|pages| {
+        pages
+            .parse::<usize>()
+            .ok()
+            .map(|pages| pages.saturating_mul(page_size()))
+    }) else {
+        return usize::MAX;
+    };
+    if pages == 0 {
+        return usize::MAX;
+    }
+    pages
+}
+
+#[cfg(target_os = "linux")]
+pub fn available_bytes() -> Option<usize> {
+    let stat = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let line = stat
+        .lines()
+        .find(|line| line.starts_with("MemAvailable:"))?;
+    let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn available_bytes() -> Option<usize> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn page_size() -> usize {
+    static PAGE_SIZE: OnceLock<usize> = OnceLock::new();
+    *PAGE_SIZE.get_or_init(|| {
+        let size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        if size <= 0 { 4096 } else { size as usize }
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn resident_bytes() -> usize {
+    usize::MAX
+}
+
+fn evictable_cells(protect_after: Option<Instant>) -> Vec<Arc<dyn CellReleaser>> {
+    let cells: Vec<Arc<dyn CellReleaser>> = match registry().lock() {
+        Ok(registry) => registry.values().cloned().collect(),
+        Err(_) => return Vec::new(),
+    };
+    let mut cells: Vec<_> = cells
+        .into_iter()
+        .filter(|cell| {
+            cell.has_value()
+                && cell
+                    .last_use()
+                    .is_some_and(|used| protect_after.is_none_or(|protect| used <= protect))
+        })
+        .collect();
+    cells.sort_by_key(|cell| cell.last_use());
+    cells
+}
+
+pub fn evict_lru(protect_after: Option<Instant>) -> bool {
+    match evictable_cells(protect_after).into_iter().next() {
+        Some(victim) => victim.release(protect_after) > 0,
+        None => false,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn trim_released_pages() {
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn trim_released_pages() {}
+
+fn evict_recently_futile(budget_bytes: usize) -> bool {
+    FUTILE_EVICTION.lock().ok().is_some_and(|futile| {
+        futile.is_some_and(|(budget, at)| {
+            budget == budget_bytes && at.elapsed() < FUTILE_EVICTION_COOLDOWN
+        })
+    })
+}
+
+pub fn evict_lru_until_rss_below(budget_bytes: usize, protect_after: Option<Instant>) -> usize {
+    if resident_bytes() <= budget_bytes {
+        return 0;
+    }
+    if evict_recently_futile(budget_bytes) {
+        return 0;
+    }
+    let mut evicted = 0usize;
+    for victim in evictable_cells(protect_after) {
+        if resident_bytes() <= budget_bytes {
+            break;
+        }
+        if victim.release(protect_after) > 0 {
+            trim_released_pages();
+            evicted += 1;
+        }
+    }
+    if protect_after.is_some() && evicted > 0 {
+        let reached_budget = resident_bytes() <= budget_bytes;
+        if let Ok(mut futile) = FUTILE_EVICTION.lock() {
+            *futile = (!reached_budget).then(|| (budget_bytes, Instant::now()));
+        }
+    }
+    evicted
+}
+
+const PROBE_EVICT_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
+const PROBE_EVICT_INTERVAL_MS: u64 = 1000;
+
+const HEADROOM_WAIT_SLICE_MS: u64 = 25;
+const HEADROOM_WAIT_MAX_MS: u64 = 1_000;
+
+fn wait_for_headroom() {
+    let watermark = wait_watermark_bytes();
+    if watermark == usize::MAX
+        || HEAVY_DEPTH.with(|depth| depth.get()) > 0
+        || resident_bytes() <= watermark
+    {
+        return;
+    }
+    let mut waited = 0u64;
+    while waited < HEADROOM_WAIT_MAX_MS {
+        std::thread::sleep(std::time::Duration::from_millis(HEADROOM_WAIT_SLICE_MS));
+        waited += HEADROOM_WAIT_SLICE_MS;
+        if resident_bytes() <= watermark {
+            break;
+        }
+    }
+}
+
+pub fn maybe_evict_over_budget() {
+    static LAST_CHECK_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let budget = eviction_budget_bytes();
+    if budget == usize::MAX {
+        return;
+    }
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_millis() as u64)
+        .unwrap_or(0);
+    let last = LAST_CHECK_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if last != 0 && now_ms.saturating_sub(last) < PROBE_EVICT_INTERVAL_MS {
+        return;
+    }
+    if LAST_CHECK_MS
+        .compare_exchange(
+            last,
+            now_ms,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        )
+        .is_err()
+    {
+        return;
+    }
+    evict_over_budget_with(budget, PROBE_EVICT_GRACE);
+    wait_for_headroom();
+}
+
+fn evict_over_budget_with(budget_bytes: usize, grace: std::time::Duration) {
+    if resident_bytes() > budget_bytes {
+        let protect_after = Instant::now().checked_sub(grace);
+        evict_lru_until_rss_below(budget_bytes, protect_after);
+    }
 }
 
 thread_local! {
@@ -185,7 +446,6 @@ impl Drop for HeavyGuard {
     }
 }
 
-// Reentrant on purpose: heavyweight tests hold this across engine builds on the same thread.
 pub fn heavy_guard() -> HeavyGuard {
     let mut acquired = false;
     if HEAVY_DEPTH.with(|depth| depth.get()) == 0 {
@@ -468,5 +728,118 @@ mod tests {
         .unwrap();
         assert_eq!(BUILDS.load(Ordering::SeqCst), 1);
         assert!(Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
+    fn evict_lru_drops_the_oldest_cell_first() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static OLDEST: Releasable<String> = Releasable::new();
+        static MIDDLE: Releasable<String> = Releasable::new();
+        static NEWEST: Releasable<String> = Releasable::new();
+        release_all();
+        shared_get_or_build(&OLDEST, || Some(Arc::new("oldest".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        shared_get_or_build(&MIDDLE, || Some(Arc::new("middle".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        shared_get_or_build(&NEWEST, || Some(Arc::new("newest".to_string()))).unwrap();
+        assert!(evict_lru(None));
+        assert!(OLDEST.state.lock().unwrap().value.is_none());
+        assert!(MIDDLE.state.lock().unwrap().value.is_some());
+        assert!(NEWEST.state.lock().unwrap().value.is_some());
+        assert!(evict_lru(None));
+        assert!(MIDDLE.state.lock().unwrap().value.is_none());
+        assert!(NEWEST.state.lock().unwrap().value.is_some());
+        assert!(evict_lru(None));
+        assert!(NEWEST.state.lock().unwrap().value.is_none());
+        assert!(!evict_lru(None));
+    }
+
+    #[test]
+    fn evict_lru_until_rss_below_keeps_cells_used_after_the_protect_instant() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static OLD: Releasable<String> = Releasable::new();
+        static FRESH: Releasable<String> = Releasable::new();
+        shared_get_or_build(&OLD, || Some(Arc::new("old".to_string()))).unwrap();
+        let protect = Instant::now();
+        std::thread::sleep(Duration::from_millis(2));
+        let fresh = shared_get_or_build(&FRESH, || Some(Arc::new("fresh".to_string()))).unwrap();
+        let evicted = evict_lru_until_rss_below(0, Some(protect));
+        assert!(evicted >= 1);
+        assert!(
+            OLD.state.lock().unwrap().value.is_none(),
+            "the cell last used before the protect instant must be evicted"
+        );
+        assert!(
+            FRESH.state.lock().unwrap().value.is_some(),
+            "the cell last used after the protect instant must survive"
+        );
+        assert_eq!(*fresh, "fresh");
+    }
+
+    #[test]
+    fn evict_lru_until_rss_below_skips_eviction_under_an_unreachable_budget() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static CELL: Releasable<String> = Releasable::new();
+        shared_get_or_build(&CELL, || Some(Arc::new("kept".to_string()))).unwrap();
+        assert_eq!(evict_lru_until_rss_below(usize::MAX, None), 0);
+        assert!(CELL.state.lock().unwrap().value.is_some());
+    }
+
+    #[test]
+    fn futile_eviction_backs_off_within_the_cooldown() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static A: Releasable<String> = Releasable::new();
+        static B: Releasable<String> = Releasable::new();
+        release_all();
+        set_eviction_budget_bytes(0);
+        shared_get_or_build(&A, || Some(Arc::new("a".to_string()))).unwrap();
+        shared_get_or_build(&B, || Some(Arc::new("b".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        let protect = Instant::now();
+        assert!(evict_lru_until_rss_below(0, Some(protect)) >= 1);
+        assert!(A.state.lock().unwrap().value.is_none());
+        assert!(B.state.lock().unwrap().value.is_none());
+        shared_get_or_build(&A, || Some(Arc::new("a2".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        let protect_again = Instant::now();
+        assert_eq!(
+            evict_lru_until_rss_below(0, Some(protect_again)),
+            0,
+            "a pass that cannot reach its budget must not evict again within the cooldown"
+        );
+        assert!(
+            A.state.lock().unwrap().value.is_some(),
+            "the rebuilt cell must survive the skipped pass"
+        );
+        set_eviction_budget_bytes(usize::MAX);
+    }
+
+    #[test]
+    fn resident_bytes_reports_a_live_process_footprint() {
+        let resident = resident_bytes();
+        assert!(resident > 0);
+        assert!(resident < usize::MAX);
+    }
+
+    #[test]
+    fn evict_over_budget_with_spares_cells_used_within_the_grace() {
+        let _serialized = SERIALIZE.lock().unwrap();
+        static OLD: Releasable<String> = Releasable::new();
+        static FRESH: Releasable<String> = Releasable::new();
+        set_eviction_budget_bytes(0);
+        shared_get_or_build(&OLD, || Some(Arc::new("old".to_string()))).unwrap();
+        std::thread::sleep(Duration::from_millis(4));
+        let fresh = shared_get_or_build(&FRESH, || Some(Arc::new("fresh".to_string()))).unwrap();
+        evict_over_budget_with(0, Duration::from_millis(2));
+        assert!(
+            OLD.state.lock().unwrap().value.is_none(),
+            "a cell idle past the grace must be evicted under budget pressure"
+        );
+        assert!(
+            FRESH.state.lock().unwrap().value.is_some(),
+            "a cell used within the grace must survive"
+        );
+        assert_eq!(*fresh, "fresh");
+        set_eviction_budget_bytes(usize::MAX);
     }
 }

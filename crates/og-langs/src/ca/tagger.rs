@@ -663,8 +663,6 @@ mod tests {
             .iter()
             .any(|(_, t)| t == "AQ0FS0");
         if !stem_known {
-            // data-blocked without ca-ES.dict: the -ment heuristic needs a
-            // VMP00SF/AQ FS reading of the stem in the dictionary
             return;
         }
         let readings = readings_of("ordinàriament");
@@ -732,7 +730,11 @@ mod tests {
     }
 
     fn fixture_tagger() -> CatalanTagger {
-        let base = std::env::temp_dir().join(format!("og-ca-tagger-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!(
+            "og-ca-tagger-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let resource_dir = base.join("resource/ca");
         let rules_dir = base.join("rules/ca");
         std::fs::create_dir_all(&resource_dir).unwrap();

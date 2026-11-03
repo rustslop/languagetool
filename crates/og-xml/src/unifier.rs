@@ -45,7 +45,6 @@ fn java_simple_upper(c: char) -> char {
 }
 
 fn java_simple_lower(c: char) -> char {
-    // Character.toLowerCase(İ) is 'i' (simple mapping); Rust's full mapping is two chars
     if c == '\u{0130}' {
         return 'i';
     }

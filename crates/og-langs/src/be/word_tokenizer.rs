@@ -34,9 +34,6 @@ fn finish(token: Token) -> Token {
     token
 }
 
-// Java BelarusianWordTokenizer drops ' ’ ʼ from the tokenizing characters and
-// rewrites '’' to '\'' only in tokens with length() > 1; the generic splitter
-// emits each apostrophe as its own token, so contiguous word runs merge first.
 impl og_tokenizer::WordTokenizer for BelarusianWordTokenizer {
     fn tokenize(&self, text: &str) -> Vec<Token> {
         let raw = self.inner.tokenize(text);

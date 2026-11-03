@@ -55,6 +55,77 @@ impl XmlPatternRule {
             category,
         }
     }
+
+    pub fn with_language_filter_hook(
+        mut self,
+        hook: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
+    ) -> Self {
+        if let Some(hook) = hook {
+            self.engine = self.engine.with_language_filter_hook(hook);
+        }
+        self
+    }
+
+    pub fn with_rule_recheck(
+        mut self,
+        support: Option<Arc<RecheckSupport>>,
+        tagger: Option<Arc<dyn og_tagger::Tagger>>,
+    ) -> Self {
+        if let Some(support) = support {
+            self.engine = self.engine.with_suppress_if_any_support(support, tagger);
+        }
+        self
+    }
+}
+
+struct RecheckState {
+    analyzer: Option<std::sync::Weak<Checker>>,
+    rules: Vec<std::sync::Weak<dyn Rule>>,
+}
+
+pub struct RecheckSupport {
+    state: std::sync::Mutex<RecheckState>,
+}
+
+impl RecheckSupport {
+    fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new(RecheckState {
+                analyzer: None,
+                rules: Vec::new(),
+            }),
+        }
+    }
+
+    fn update(&self, analyzer: &Arc<Checker>, rules: &[Arc<dyn Rule>]) {
+        let mut state = self.state.lock().unwrap();
+        state.analyzer = Some(std::sync::Arc::downgrade(analyzer));
+        state.rules = rules.iter().map(std::sync::Arc::downgrade).collect();
+    }
+}
+
+impl og_rules::suppress_if_any::SuppressIfAnySupport for RecheckSupport {
+    fn analyze_text(&self, text: &str) -> Vec<AnalyzedSentence> {
+        self.state
+            .lock()
+            .unwrap()
+            .analyzer
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .map(|checker| checker.analyze(text))
+            .unwrap_or_default()
+    }
+
+    fn rules_for_ids(&self, rule_ids: &[&str]) -> Vec<Arc<dyn Rule>> {
+        self.state
+            .lock()
+            .unwrap()
+            .rules
+            .iter()
+            .filter_map(std::sync::Weak::upgrade)
+            .filter(|rule| rule_ids.contains(&rule.id()))
+            .collect()
+    }
 }
 
 impl Rule for XmlPatternRule {
@@ -99,7 +170,10 @@ pub struct LanguageEngine {
     german_speller: Option<Arc<og_spell::GermanSpeller>>,
     synthesizer: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
     suggestion_synth: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
-    checker: Checker,
+    language_filters: Option<Arc<dyn og_rules::language_filter::LanguageFilterHook>>,
+    recheck_support: Arc<RecheckSupport>,
+    recheck_tagger: Option<Arc<dyn og_tagger::Tagger>>,
+    checker: Arc<Checker>,
     language_filter: Arc<dyn og_core::match_filters::LanguageMatchFilter>,
     l2_rules: std::sync::Mutex<HashMap<String, Vec<Arc<dyn Rule>>>>,
     l2_checkers: std::sync::Mutex<HashMap<String, Checker>>,
@@ -107,13 +181,15 @@ pub struct LanguageEngine {
 
 impl LanguageEngine {
     pub fn new(language: Language) -> Self {
-        let checker = Checker::new()
-            .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge(
-                language.short_code().to_string(),
-            )))
-            .with_word_tokenizer(Arc::new(WordTokenizerBridge::for_code(
-                language.short_code(),
-            )));
+        let checker = Arc::new(
+            Checker::new()
+                .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge(
+                    language.short_code().to_string(),
+                )))
+                .with_word_tokenizer(Arc::new(WordTokenizerBridge::for_code(
+                    language.short_code(),
+                ))),
+        );
 
         let language_filter = crate::match_priority::for_code(language.short_code());
         Self {
@@ -127,6 +203,9 @@ impl LanguageEngine {
             german_speller: None,
             synthesizer: None,
             suggestion_synth: None,
+            language_filters: None,
+            recheck_support: Arc::new(RecheckSupport::new()),
+            recheck_tagger: None,
             checker,
             language_filter,
             l2_rules: std::sync::Mutex::new(HashMap::new()),
@@ -150,8 +229,8 @@ impl LanguageEngine {
         if let Some(hit) = og_core::releasable::shared_probe(cell) {
             return Some(hit);
         }
-        let _heavy = og_core::releasable::heavy_guard();
         og_core::releasable::shared_get_or_build(cell, || {
+            let _heavy = og_core::releasable::heavy_guard();
             trim_released_engine_pages();
             match code {
                 "en" => Some(Self::english()),
@@ -189,9 +268,14 @@ impl LanguageEngine {
             german_speller: None,
             synthesizer: None,
             suggestion_synth: None,
-            checker: Checker::new()
-                .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
-                .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
+            language_filters: None,
+            recheck_support: Arc::new(RecheckSupport::new()),
+            recheck_tagger: None,
+            checker: Arc::new(
+                Checker::new()
+                    .with_sentence_tokenizer(Arc::new(SentenceSplitterBridge("en".to_string())))
+                    .with_word_tokenizer(Arc::new(WordTokenizerBridge::Default(true))),
+            ),
             language_filter: crate::match_priority::for_code("en"),
             l2_rules: std::sync::Mutex::new(HashMap::new()),
             l2_checkers: std::sync::Mutex::new(HashMap::new()),
@@ -673,7 +757,7 @@ impl LanguageEngine {
             .as_deref()
             .and_then(shared_german_speller_dictionary)
             .map(|dict| (*dict).clone())
-            .unwrap_or_else(og_spell::Dictionary::new);
+            .unwrap_or_default();
         let mut variant_ignore_words: Vec<String> = Vec::new();
         let mut variant_hunspell: Option<Arc<og_spell::hunspell::HunspellChecker>> = None;
         if let Some(lt_root) = find_lt_resource_dir() {
@@ -984,20 +1068,39 @@ impl LanguageEngine {
                 ));
             }
             if let Some(core_resource_dir) = find_lt_core_resource_dir() {
-                engine.spelling_support = Some(Arc::new(
-                    og_rules::spelling_support::SpellingSupport::new_for_language(
-                        dict,
-                        &core_resource_dir,
-                        &resource_dir,
-                        &short,
-                    ),
-                ));
+                let mut support = og_rules::spelling_support::SpellingSupport::new_for_language(
+                    dict,
+                    &core_resource_dir,
+                    &resource_dir,
+                    &short,
+                );
+                if short == "ca"
+                    && let Some(tagger) = crate::ca::tagger::CatalanTagger::shared_arc()
+                {
+                    support = support.with_tagger(tagger);
+                }
+                engine.spelling_support = Some(Arc::new(support));
             }
         }
         engine.synthesizer =
             og_rules::postponed_adjective::LangSynthesizer::for_language(&resource_dir, &short)
                 .map(Arc::new);
         engine.suggestion_synth = engine.synthesizer.clone();
+        if short == "ca" {
+            engine.language_filters = Some(Arc::new(
+                crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
+                    crate::ca::tagger::CatalanTagger::shared_arc(),
+                    engine.synthesizer.clone(),
+                ),
+            ));
+            engine.recheck_tagger = crate::ca::tagger::CatalanTagger::shared_arc()
+                .map(|tagger| tagger as Arc<dyn og_tagger::Tagger>);
+        }
+        if short == "fr"
+            && let Some(tagger) = crate::fr::tagger::FrenchTagger::shared_arc()
+        {
+            engine.recheck_tagger = Some(tagger);
+        }
 
         let rules_dir = lt_root.join(format!(
             "{short}/src/main/resources/org/languagetool/rules/{short}"
@@ -1612,12 +1715,19 @@ impl LanguageEngine {
         let count = rule_set.rules.len();
         for mut compiled_rule in rule_set.rules {
             compiled_rule.source_file = source_file.map(str::to_string);
-            let rule = Arc::new(XmlPatternRule::with_resources(
-                compiled_rule,
-                self.spelling_support.clone(),
-                self.synthesizer.clone(),
-                self.suggestion_synth.clone(),
-            ));
+            let rule = Arc::new(
+                XmlPatternRule::with_resources(
+                    compiled_rule,
+                    self.spelling_support.clone(),
+                    self.synthesizer.clone(),
+                    self.suggestion_synth.clone(),
+                )
+                .with_language_filter_hook(self.language_filters.clone())
+                .with_rule_recheck(
+                    Some(self.recheck_support.clone()),
+                    self.recheck_tagger.clone(),
+                ),
+            );
             self.rules.push(rule);
         }
 
@@ -1674,6 +1784,8 @@ impl LanguageEngine {
             checker = checker.with_post_chunker(chunker.clone());
         }
 
+        let checker = Arc::new(checker);
+        self.recheck_support.update(&checker, &self.rules);
         self.checker = checker;
     }
 

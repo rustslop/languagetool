@@ -134,7 +134,7 @@ fn module_check(text: &str) -> Vec<RuleMatch> {
     }
     static BASE: BaseLanguageMatchFilter = BaseLanguageMatchFilter;
     og_core::match_filters::same_rule_group_filter(&mut all_matches);
-    BASE.filter_rule_matches(&mut all_matches, text);
+    all_matches = BASE.filter_rule_matches(all_matches, text, &std::collections::HashSet::new());
     clean_overlapping_filter(all_matches, text, &BASE)
 }
 
@@ -266,8 +266,6 @@ fn esperanto_grammar_examples_with_eo_pipeline() {
 }
 
 fn apply_java_add_reading_semantics(sentence: &mut AnalyzedSentence) {
-    // Java's addReading (AnalyzedTokenReadings.java:327-339) drops a trailing null-POS reading
-    // when appending, so setSentEnd leaves an untagged sentence-final token with [SENT_END] only.
     for token in sentence.tokens_mut() {
         if token.is_sentence_end() {
             token.readings_mut().retain(|r| !r.pos_tags().is_empty());

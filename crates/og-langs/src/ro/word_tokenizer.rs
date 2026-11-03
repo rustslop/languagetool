@@ -22,8 +22,6 @@ fn is_ro_delimiter(c: char) -> bool {
     )
 }
 
-// Java's StringTools.isWhitespace counts U+200B and U+FEFF as whitespace (StringTools.java:558-569)
-// but Rust's char::is_whitespace does not, so these delimiters emit no token at all.
 fn is_java_only_whitespace_delimiter(c: char) -> bool {
     matches!(c, '\u{200B}' | '\u{FEFF}')
 }

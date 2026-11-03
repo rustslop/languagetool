@@ -63,8 +63,6 @@ pub fn lenite(input: &str) -> String {
     let (Some(first), Some(second)) = (chars.next(), chars.next()) else {
         return input.to_string();
     };
-    // Java tests Character.isUpperCase(1) ('1' is never uppercase) so the
-    // inserted char is always lowercase 'h' (Utils.java:367).
     let lenitable = is_lower_lenitable(first) || is_upper_lenitable(first);
     let is_s = first == 'S' || first == 's';
     let s_ok = second.to_lowercase().next().is_some_and(is_s_lenitable);

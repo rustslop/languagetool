@@ -1,10 +1,31 @@
+use og_core::RuleMatch;
 use og_core::match_filters::{LanguageMatchFilter, base_priority_for_id};
+use std::collections::HashSet;
 
 pub struct CatalanMatchFilter;
 
 impl LanguageMatchFilter for CatalanMatchFilter {
     fn priority_for_id(&self, id: &str) -> i32 {
         catalan_priority_for_id(id).unwrap_or_else(|| base_priority_for_id(id))
+    }
+
+    fn filter_rule_matches(
+        &self,
+        matches: Vec<RuleMatch>,
+        text: &str,
+        enabled_rules: &HashSet<String>,
+    ) -> Vec<RuleMatch> {
+        crate::ca_post_overlap_pipeline::catalan_filter_rule_matches(matches, text, enabled_rules)
+    }
+
+    fn filter_rule_matches_after_overlapping(
+        &self,
+        matches: Vec<RuleMatch>,
+        text: &str,
+    ) -> Vec<RuleMatch> {
+        crate::ca_post_overlap_pipeline::catalan_filter_rule_matches_after_overlapping(
+            matches, text,
+        )
     }
 }
 
@@ -121,7 +142,7 @@ pub fn catalan_priority_for_id(id: &str) -> Option<i32> {
         "TASCAS_TASQUES" | "PREPOSICIONS_MINUSCULA" | "SUGGERIMENTS_LE" => Some(-97),
         "MORFOLOGIK_RULE_CA_ES" => Some(-100),
         "EXIGEIX_ACCENTUACIO_VALENCIANA" => Some(-120),
-        "PHRASE_REPETITION" | "SUBSTANTIUS_JUNTS" => Some(-150),
+        "PHRASE_REPETITION" | "CATALAN_PHRASE_REPEAT_RULE" | "SUBSTANTIUS_JUNTS" => Some(-150),
         "REPETITION_ADJ_N_ADJ" => Some(-155),
         "FALTA_ELEMENT_ENTRE_VERBS" | "PUNT_FINAL" | "PUNCTUATION_PARAGRAPH_END" => Some(-200),
         "CA_END_PARAGRAPH_PUNCTUATION" | "DICENDI_QUE" => Some(-250),
@@ -287,6 +308,7 @@ mod tests {
         ("MORFOLOGIK_RULE_CA_ES", -100),
         ("EXIGEIX_ACCENTUACIO_VALENCIANA", -120),
         ("PHRASE_REPETITION", -150),
+        ("CATALAN_PHRASE_REPEAT_RULE", -150),
         ("SUBSTANTIUS_JUNTS", -150),
         ("REPETITION_ADJ_N_ADJ", -155),
         ("FALTA_ELEMENT_ENTRE_VERBS", -200),
@@ -301,7 +323,7 @@ mod tests {
 
     #[test]
     fn table_size_pins_the_java_switch() {
-        assert_eq!(JAVA_TABLE.len(), 134);
+        assert_eq!(JAVA_TABLE.len(), 135);
     }
 
     #[test]

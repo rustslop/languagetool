@@ -30,8 +30,6 @@ fn attribute_value_is_yes(tag: &str, attr: &str) -> bool {
     false
 }
 
-// The engine normalizes U+2019 on the test side of exception/token-regexp
-// matching but not on patterns, fast paths, or inflected lemmas.
 pub fn normalize_br_rules_xml(xml: &str) -> Cow<'_, str> {
     if !xml.contains('\u{2019}') && !xml.contains('\u{2018}') {
         return Cow::Borrowed(xml);
@@ -109,8 +107,6 @@ fn utf8_step(s: &str) -> usize {
     s.chars().next().map_or(1, char::len_utf8)
 }
 
-// Java defaults an action-less <disambig> to REPLACE; the shared parser only
-// defaults when a postag attribute is present, so bare elements are dropped.
 pub fn normalize_br_disambiguation_xml(xml: &str) -> Cow<'_, str> {
     if !xml.contains("<disambig>") {
         return Cow::Borrowed(xml);

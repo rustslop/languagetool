@@ -1300,7 +1300,7 @@ mod hybrid_tests {
 
     fn phrase_sentence(first: &str, second: &str) -> AnalyzedSentence {
         let mut sentence = AnalyzedSentence::new(
-            &format!("{first} {second}"),
+            format!("{first} {second}"),
             0,
             first.len() + 1 + second.len(),
         );

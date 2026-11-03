@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn metadata_pins_the_registration() {
-        let rule = CatalanWordRepeatBeginningRule::default();
+        let rule = CatalanWordRepeatBeginningRule;
         assert_eq!(rule.id(), "CATALAN_WORD_REPEAT_BEGINNING_RULE");
         assert_eq!(
             rule.description(),

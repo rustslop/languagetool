@@ -488,17 +488,16 @@ mod tests {
     #[test]
     fn noun_arms_stay_quiet_for_pronoun_subjects_and_verb_readings() {
         let rule = PortugueseAccentuationCheckRule::new();
-        for (text, tags) in [(
+        let (text, tags) = (
             "Ele abobada ontem.",
             &["", "PP3CS000", "VMIS3S0", "RG", ""][..],
-        )] {
-            let mut sentence = make_sentence(text);
-            with_tags(&mut sentence, tags);
-            assert!(
-                rule.match_sentence(&sentence).is_empty(),
-                "{text}: must stay unflagged"
-            );
-        }
+        );
+        let mut sentence = make_sentence(text);
+        with_tags(&mut sentence, tags);
+        assert!(
+            rule.match_sentence(&sentence).is_empty(),
+            "{text}: must stay unflagged"
+        );
     }
 
     #[test]

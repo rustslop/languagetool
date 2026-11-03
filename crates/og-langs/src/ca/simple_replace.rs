@@ -248,16 +248,12 @@ impl Rule for CaSimpleReplaceLemmasRule {
             if token.is_immunized() || token.is_ignored_by_speller() {
                 continue;
             }
-            let mut matched_lemma: Option<&str> = None;
-            for reading in token.readings() {
-                if let Some(lemma) = reading.lemma()
-                    && self.wrong_words.contains_key(lemma)
-                {
-                    matched_lemma = Some(lemma);
-                    break;
-                }
-            }
-            let Some(lemma) = matched_lemma else {
+            let Some((lemma, _postag)) =
+                crate::ca_filter_semantics_delta::simple_replace_lemmas::matched_lemma_and_postag(
+                    token.readings(),
+                    &self.wrong_words,
+                )
+            else {
                 continue;
             };
             let replacement_lemmas = &self.wrong_words[lemma];

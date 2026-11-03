@@ -130,6 +130,7 @@ pub trait Chunker: Send + Sync {
     fn add_chunk_tags(&self, sentence: &mut AnalyzedSentence);
 }
 
+#[derive(Clone)]
 pub struct Checker {
     sentence_tokenizer: Option<Arc<dyn SentenceTokenizer>>,
     word_tokenizer: Option<Arc<dyn WordTokenizer>>,
@@ -230,64 +231,15 @@ impl Checker {
     pub fn check(&self, request: &CheckRequest) -> CheckResult {
         let text = &request.text;
 
-        let sentence_ranges = if let Some(ref tokenizer) = self.sentence_tokenizer {
-            tokenizer.split(text)
-        } else {
-            vec![SentenceRange {
-                start: 0,
-                end: text.len(),
-            }]
-        };
+        let sentence_ranges = self.split_sentences(text);
 
         let mut all_matches: Vec<RuleMatch> = Vec::new();
         let mut analyzed_sentences = Vec::new();
+        let mut enabled_rule_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
         for range in &sentence_ranges {
-            let sentence_text = text[range.start..range.end].to_string();
-            let mut sentence = AnalyzedSentence::new(&sentence_text, range.start, range.end);
-
-            if let Some(ref tokenizer) = self.word_tokenizer {
-                let mut tokens = tokenizer.tokenize(&sentence_text, range.start);
-                let start_token = AnalyzedTokenReadings::new(
-                    AnalyzedToken::new("<S>", range.start, range.start)
-                        .with_pos_tags(vec!["SENT_START".to_string()]),
-                );
-                tokens.insert(0, start_token);
-                sentence.set_tokens(tokens);
-            }
-
-            if let Some(ref tagger) = self.tagger {
-                let tokens = &mut sentence.tokens_mut();
-                tagger.tag(tokens);
-            }
-
-            if let Some(ref chunker) = self.chunker {
-                chunker.add_chunk_tags(&mut sentence);
-            }
-
-            {
-                let tokens = sentence.tokens_mut();
-                for i in (0..tokens.len()).rev() {
-                    if !tokens[i].is_whitespace() && !tokens[i].has_pos_tag("SENT_START") {
-                        if !tokens[i].has_pos_tag("SENT_END") {
-                            tokens[i].add_sent_end();
-                        }
-                        break;
-                    }
-                }
-            }
-
-            if self.disambiguator.is_some() {
-                sentence.set_pre_disambiguation_tokens(sentence.tokens().to_vec());
-            }
-
-            if let Some(ref disambiguator) = self.disambiguator {
-                disambiguator.disambiguate(&mut sentence);
-            }
-
-            if let Some(ref chunker) = self.post_chunker {
-                chunker.add_chunk_tags(&mut sentence);
-            }
+            let sentence = self.analyze_range(text, range);
 
             let has_cat_filters = request.has_category_filters();
             for rule in &self.rules {
@@ -307,6 +259,7 @@ impl Checker {
                 ) {
                     continue;
                 }
+                enabled_rule_ids.insert(rule.id().to_string());
                 let matches = rule.match_sentence(&sentence);
                 all_matches.extend(matches);
             }
@@ -329,25 +282,22 @@ impl Checker {
             {
                 continue;
             }
+            enabled_rule_ids.insert(rule.id().to_string());
             let matches = rule.match_text(text, &analyzed_sentences);
             all_matches.extend(matches);
         }
 
         crate::match_filters::same_rule_group_filter(&mut all_matches);
-        if self.clean_overlapping_matches || self.language_filter.is_some() {
-            static BASE: crate::match_filters::BaseLanguageMatchFilter =
-                crate::match_filters::BaseLanguageMatchFilter;
-            let language_filter: &dyn LanguageMatchFilter =
-                self.language_filter.as_deref().unwrap_or(&BASE);
-            language_filter.filter_rule_matches(&mut all_matches, text);
-            if self.clean_overlapping_matches {
-                all_matches = crate::match_filters::clean_overlapping_filter(
-                    all_matches,
-                    text,
-                    language_filter,
-                );
-            }
+        static BASE: crate::match_filters::BaseLanguageMatchFilter =
+            crate::match_filters::BaseLanguageMatchFilter;
+        let language_filter: &dyn LanguageMatchFilter =
+            self.language_filter.as_deref().unwrap_or(&BASE);
+        all_matches = language_filter.filter_rule_matches(all_matches, text, &enabled_rule_ids);
+        if self.clean_overlapping_matches {
+            all_matches =
+                crate::match_filters::clean_overlapping_filter(all_matches, text, language_filter);
         }
+        all_matches = language_filter.filter_rule_matches_after_overlapping(all_matches, text);
 
         let sentence_ranges_json: Vec<Vec<usize>> = sentence_ranges
             .iter()
@@ -398,6 +348,75 @@ impl Checker {
             sentence_ranges: sentence_ranges_json,
             extended_sentence_ranges,
         }
+    }
+
+    pub fn analyze(&self, text: &str) -> Vec<AnalyzedSentence> {
+        let sentence_ranges = self.split_sentences(text);
+        sentence_ranges
+            .iter()
+            .map(|range| self.analyze_range(text, range))
+            .collect()
+    }
+
+    fn split_sentences(&self, text: &str) -> Vec<SentenceRange> {
+        if let Some(ref tokenizer) = self.sentence_tokenizer {
+            tokenizer.split(text)
+        } else {
+            vec![SentenceRange {
+                start: 0,
+                end: text.len(),
+            }]
+        }
+    }
+
+    fn analyze_range(&self, text: &str, range: &SentenceRange) -> AnalyzedSentence {
+        let sentence_text = text[range.start..range.end].to_string();
+        let mut sentence = AnalyzedSentence::new(&sentence_text, range.start, range.end);
+
+        if let Some(ref tokenizer) = self.word_tokenizer {
+            let mut tokens = tokenizer.tokenize(&sentence_text, range.start);
+            let start_token = AnalyzedTokenReadings::new(
+                AnalyzedToken::new("<S>", range.start, range.start)
+                    .with_pos_tags(vec!["SENT_START".to_string()]),
+            );
+            tokens.insert(0, start_token);
+            sentence.set_tokens(tokens);
+        }
+
+        if let Some(ref tagger) = self.tagger {
+            let tokens = &mut sentence.tokens_mut();
+            tagger.tag(tokens);
+        }
+
+        if let Some(ref chunker) = self.chunker {
+            chunker.add_chunk_tags(&mut sentence);
+        }
+
+        {
+            let tokens = sentence.tokens_mut();
+            for i in (0..tokens.len()).rev() {
+                if !tokens[i].is_whitespace() && !tokens[i].has_pos_tag("SENT_START") {
+                    if !tokens[i].has_pos_tag("SENT_END") {
+                        tokens[i].add_sent_end();
+                    }
+                    break;
+                }
+            }
+        }
+
+        if self.disambiguator.is_some() {
+            sentence.set_pre_disambiguation_tokens(sentence.tokens().to_vec());
+        }
+
+        if let Some(ref disambiguator) = self.disambiguator {
+            disambiguator.disambiguate(&mut sentence);
+        }
+
+        if let Some(ref chunker) = self.post_chunker {
+            chunker.add_chunk_tags(&mut sentence);
+        }
+
+        sentence
     }
 }
 
@@ -604,6 +623,93 @@ mod pipeline_order_tests {
         let result = checker.check(&request);
         assert!(result.matches.is_empty());
     }
+
+    struct SpaceSplit;
+    impl WordTokenizer for SpaceSplit {
+        fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
+            let mut tokens = Vec::new();
+            let mut pos = offset;
+            for word in text.split(' ') {
+                if word.is_empty() {
+                    pos += 1;
+                    continue;
+                }
+                tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                    word,
+                    pos,
+                    pos + word.len(),
+                )));
+                pos += word.len() + 1;
+            }
+            tokens
+        }
+    }
+
+    struct DeterminerOrPronounTagger;
+    impl Tagger for DeterminerOrPronounTagger {
+        fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
+            for atr in tokens.iter_mut() {
+                if atr.token().token() == "la" {
+                    let token = atr.token().clone();
+                    *atr.readings_mut() = vec![
+                        AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["D0FS0".to_string()]),
+                        AnalyzedToken::new(token.token(), token.start(), token.end())
+                            .with_pos_tags(vec!["PP3FS000".to_string()]),
+                    ];
+                }
+            }
+        }
+    }
+
+    struct DropDeterminerReadings;
+    impl Disambiguator for DropDeterminerReadings {
+        fn disambiguate(&self, sentence: &mut AnalyzedSentence) {
+            for atr in sentence.tokens_mut() {
+                if atr.token().token() == "la" {
+                    atr.readings_mut()
+                        .retain(|r| !r.pos_tags().iter().any(|t| t.starts_with('D')));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn analyze_snapshots_readings_before_the_disambiguator_mutates_them() {
+        let checker = Checker::new()
+            .with_sentence_tokenizer(Arc::new(NoSplit))
+            .with_word_tokenizer(Arc::new(SpaceSplit))
+            .with_tagger(Arc::new(DeterminerOrPronounTagger))
+            .with_disambiguator(Arc::new(DropDeterminerReadings));
+        let sentences = checker.analyze("la celebre");
+        assert_eq!(sentences.len(), 1);
+        let sentence = &sentences[0];
+        let pre = sentence
+            .pre_disambiguation_tokens()
+            .iter()
+            .find(|t| t.token().token() == "la")
+            .expect("snapshot keeps the token");
+        assert!(
+            pre.readings()
+                .iter()
+                .any(|r| r.pos_tags().iter().any(|t| t == "D0FS0")),
+            "upstream JLanguageTool.java:1772-1777 deep-copies tagger output (copyReadings) \
+             because the disambiguator mutates readings in place; the Rust snapshot must keep \
+             the determiner reading after in-place mutation"
+        );
+        let post = sentence
+            .tokens()
+            .iter()
+            .find(|t| t.token().token() == "la")
+            .expect("live token present");
+        assert!(
+            !post
+                .readings()
+                .iter()
+                .any(|r| r.pos_tags().iter().any(|t| t.starts_with('D'))),
+            "the live tokens must show the disambiguated readings"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -742,8 +848,7 @@ mod check_flow_tests {
             );
             let last_word = tokens
                 .iter()
-                .filter(|t| !t.is_whitespace() && t.token().token() != "<S>")
-                .next_back()
+                .rfind(|t| !t.is_whitespace() && t.token().token() != "<S>")
                 .expect("at least one word token");
             assert!(last_word.is_sentence_end());
             Vec::new()
@@ -825,10 +930,16 @@ mod check_flow_tests {
 
     struct SuffixFilter;
     impl LanguageMatchFilter for SuffixFilter {
-        fn filter_rule_matches(&self, matches: &mut [RuleMatch], _text: &str) {
-            for m in matches {
+        fn filter_rule_matches(
+            &self,
+            mut matches: Vec<RuleMatch>,
+            _text: &str,
+            _enabled_rules: &std::collections::HashSet<String>,
+        ) -> Vec<RuleMatch> {
+            for m in &mut matches {
                 m.set_message(format!("{}-filtered", m.message()));
             }
+            matches
         }
     }
 
@@ -1052,6 +1163,66 @@ mod check_flow_tests {
                 .iter()
                 .all(|m| m.message().ends_with("-filtered"))
         );
+    }
+
+    #[test]
+    fn check_runs_after_overlapping_hook_regardless_of_clean_filter() {
+        struct AfterFilter;
+        impl LanguageMatchFilter for AfterFilter {
+            fn filter_rule_matches_after_overlapping(
+                &self,
+                mut matches: Vec<RuleMatch>,
+                _text: &str,
+            ) -> Vec<RuleMatch> {
+                for m in &mut matches {
+                    m.set_message(format!("{}-after", m.message()));
+                }
+                matches
+            }
+        }
+        for clean in [true, false] {
+            let checker = Checker::new()
+                .with_word_tokenizer(Arc::new(WordSplit))
+                .with_clean_overlapping_matches(clean)
+                .with_language_filter(Arc::new(AfterFilter))
+                .add_rule(FixedRule::on("R"));
+            let result = checker.check(&CheckRequest::new("word", Language::English));
+            assert!(
+                result
+                    .matches
+                    .iter()
+                    .all(|m| m.message().ends_with("-after")),
+                "JLanguageTool.java:1197 calls filterRuleMatchesAfterOverlapping unconditionally"
+            );
+        }
+    }
+
+    #[test]
+    fn check_passes_enabled_rule_ids_to_the_language_filter() {
+        struct RecordingFilter(std::sync::Mutex<Vec<String>>);
+        impl LanguageMatchFilter for RecordingFilter {
+            fn filter_rule_matches(
+                &self,
+                matches: Vec<RuleMatch>,
+                _text: &str,
+                enabled_rules: &std::collections::HashSet<String>,
+            ) -> Vec<RuleMatch> {
+                let mut seen = self.0.lock().unwrap();
+                seen.extend(enabled_rules.iter().cloned());
+                matches
+            }
+        }
+        let recorder = Arc::new(RecordingFilter(std::sync::Mutex::new(Vec::new())));
+        let checker = Checker::new()
+            .with_word_tokenizer(Arc::new(WordSplit))
+            .with_clean_overlapping_matches(false)
+            .with_language_filter(recorder.clone())
+            .add_rule(FixedRule::on("ON"))
+            .add_rule(FixedRule::off("OFF"));
+        checker.check(&CheckRequest::new("word", Language::English));
+        let mut seen = recorder.0.lock().unwrap().clone();
+        seen.sort_unstable();
+        assert_eq!(seen, vec!["ON"]);
     }
 
     #[test]

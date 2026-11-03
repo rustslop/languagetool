@@ -3515,7 +3515,7 @@ mod tests {
     fn test_parse_strips_doctype_and_expands_internal_entities() {
         let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE rules [\n<!ENTITY greet \"hello\">\n]>\n<rules lang=\"en\"><category id=\"C\" name=\"c\"><rule id=\"D\" name=\"d\"><pattern><token>&greet;</token></pattern><message>m</message><url/><weird/></rule></category></rules>";
 
-        let result = XmlRuleParser::default().parse(xml).unwrap();
+        let result = XmlRuleParser::new().parse(xml).unwrap();
 
         assert_eq!(
             result.rules[0].pattern.tokens[0].text.as_deref(),

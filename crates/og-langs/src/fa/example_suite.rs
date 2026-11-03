@@ -137,7 +137,7 @@ fn module_check(text: &str) -> Vec<RuleMatch> {
     }
     static BASE: BaseLanguageMatchFilter = BaseLanguageMatchFilter;
     og_core::match_filters::same_rule_group_filter(&mut all_matches);
-    BASE.filter_rule_matches(&mut all_matches, text);
+    all_matches = BASE.filter_rule_matches(all_matches, text, &std::collections::HashSet::new());
     clean_overlapping_filter(all_matches, text, &BASE)
 }
 

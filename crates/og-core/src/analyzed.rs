@@ -247,7 +247,6 @@ impl AnalyzedTokenReadings {
         self.chunks = chunks;
     }
 
-    // Java keeps the typographic-apostrophe marker as a dedicated ATR flag; we encode it as a chunk tag.
     pub fn mark_typographic_apostrophe(&mut self) {
         if !self.has_chunk(TYPOGRAPHIC_APOSTROPHE_CHUNK) {
             self.chunks.push(TYPOGRAPHIC_APOSTROPHE_CHUNK.to_string());

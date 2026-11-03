@@ -1911,6 +1911,13 @@ mod tests {
 
     fn agreement_family(text: &str) -> Vec<(String, usize, Vec<String>)> {
         let engine = LanguageEngine::shared_for_code("de").expect("german engine");
+        agreement_family_with(&engine, text)
+    }
+
+    fn agreement_family_with(
+        engine: &LanguageEngine,
+        text: &str,
+    ) -> Vec<(String, usize, Vec<String>)> {
         engine
             .check(text)
             .matches
@@ -1933,7 +1940,9 @@ mod tests {
 
     #[test]
     fn java_good_sentences_stay_clean() {
+        let _release_guard = crate::release_guard();
         use rayon::prelude::*;
+        let engine = LanguageEngine::shared_for_code("de").expect("german engine");
         let offenders: Vec<String> = [
             "Bis zur Anfang Juni geplanten Eröffnung gebe es noch einiges zu tun.",
             "Der fließend Französisch sprechende Präsident dankt stilvoll ab.",
@@ -1991,7 +2000,7 @@ mod tests {
         ]
         .into_par_iter()
         .filter_map(|text| {
-            let matches = agreement_family(text);
+            let matches = agreement_family_with(&engine, text);
             (!matches.is_empty()).then(|| format!("{text}: got {matches:?}"))
         })
         .collect();
@@ -2000,6 +2009,7 @@ mod tests {
 
     #[test]
     fn java_bad_sentences_flag_the_nominal_phrase() {
+        let _release_guard = crate::release_guard();
         for text in [
             "Ein Buch mit einem ganz ähnlichem Titel.",
             "Meiner Chef raucht.",
@@ -2022,6 +2032,7 @@ mod tests {
 
     #[test]
     fn java_bad_sentences_pin_the_suggestion_lists() {
+        let _release_guard = crate::release_guard();
         for (text, expected) in [
             (
                 "Es sind die Tisch.",
@@ -2095,6 +2106,7 @@ mod tests {
 
     #[test]
     fn java_compound_matches_suggest_the_closed_forms() {
+        let _release_guard = crate::release_guard();
         for (text, expected) in [
             (
                 "Wir gehen ins Fitness Studio",
@@ -2124,6 +2136,7 @@ mod tests {
 
     #[test]
     fn compound_det_adj_noun_suggests_the_closed_forms() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Wir gehen in dem neuen Fitness Studio.");
         assert_eq!(
             matches,
@@ -2152,6 +2165,7 @@ mod tests {
 
     #[test]
     fn compound_det_adj_adj_noun_suggests_the_closed_forms() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Wir gehen in dem neuen großen Fitness Studio.");
         assert_eq!(
             matches,
@@ -2181,6 +2195,7 @@ mod tests {
 
     #[test]
     fn zur_contraction_rewrites_the_article_leads() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Wir fahren zur großen Städten.");
         assert_eq!(
             matches,
@@ -2206,6 +2221,7 @@ mod tests {
 
     #[test]
     fn ins_contraction_keeps_only_article_led_suggestions() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Wir gehen ins großen Fitness Studio.");
         assert_eq!(
             matches,
@@ -2216,6 +2232,7 @@ mod tests {
 
     #[test]
     fn derselben_and_welcher_lead_the_determiner_synthesis() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Derselbe alten Fehler passiert heute.");
         assert_eq!(
             matches,
@@ -2238,6 +2255,7 @@ mod tests {
 
     #[test]
     fn java_divergences_pin_the_current_residue() {
+        let _release_guard = crate::release_guard();
         let matches = agreement_family("Der Ende der 1960er Jahre umgestaltete Garten ist schön.");
         assert_eq!(
             matches,
@@ -2307,6 +2325,7 @@ mod tests {
 
     #[test]
     fn fires_on_der_haus() {
+        let _release_guard = crate::release_guard();
         let engine = crate::engine::LanguageEngine::shared_for_code("de").expect("german engine");
         let matches = engine.check("Der Haus wurde letztes Jahr gebaut.");
         let rule_ids: Vec<&str> = matches.matches.iter().map(|m| m.rule().id()).collect();
@@ -2328,6 +2347,7 @@ mod tests {
 
     #[test]
     fn no_fire_on_correct_phrase() {
+        let _release_guard = crate::release_guard();
         let engine = crate::engine::LanguageEngine::shared_for_code("de").expect("german engine");
         let matches = engine.check("Das Haus wurde letztes Jahr gebaut.");
         assert!(
@@ -2340,6 +2360,7 @@ mod tests {
 
     #[test]
     fn no_fire_on_relative_clause() {
+        let _release_guard = crate::release_guard();
         let engine = crate::engine::LanguageEngine::shared_for_code("de").expect("german engine");
         let matches = engine.check("Das Wahlrecht, das Frauen zugesprochen bekamen, ist wichtig.");
         assert!(

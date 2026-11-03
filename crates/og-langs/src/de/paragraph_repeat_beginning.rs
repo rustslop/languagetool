@@ -215,7 +215,7 @@ mod tests {
         use og_core::rule::TextLevelRule as _;
         use og_core::{AnalyzedSentence, AnalyzedToken, AnalyzedTokenReadings};
 
-        let rule = super::GermanParagraphRepeatBeginningRule::default();
+        let rule = super::GermanParagraphRepeatBeginningRule;
         assert!(rule.match_text("", &[]).is_empty());
 
         let mut first = AnalyzedSentence::new("Hallo.\n\n", 0, 8);
@@ -235,7 +235,7 @@ mod tests {
     fn metadata_pins_the_registration() {
         use og_core::rule::TextLevelRule as _;
 
-        let rule = super::GermanParagraphRepeatBeginningRule::default();
+        let rule = super::GermanParagraphRepeatBeginningRule;
         assert_eq!(rule.id(), "GERMAN_PARAGRAPH_REPEAT_BEGINNING_RULE");
         assert_eq!(
             rule.description(),

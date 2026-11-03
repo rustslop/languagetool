@@ -39,9 +39,7 @@ pub fn dump(text: &str) {
 
 pub fn run_rule(rule_id: &str, text: &str) {
     let xml = std::fs::read_to_string(grammar_path()).expect("grammar.xml");
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, grammar_path().parent())
-        .expect("compile");
+    let rule_set = crate::test_util::shared_compiled_rules(&grammar_path(), &xml).expect("compile");
     let engine = PatternRuleEngine::new();
     let pipeline = SpanishPipeline::shared();
     let mut found = false;
@@ -400,9 +398,7 @@ fn probe_comillas_apostrofo_quote_equality_divergence() {
 fn probe_postponed_antipattern_suppression() {
     let _release_guard = crate::release_guard();
     let xml = std::fs::read_to_string(grammar_path()).expect("grammar.xml");
-    let rule_set = XmlCompiler::new()
-        .compile_file_with_base(&xml, grammar_path().parent())
-        .expect("compile");
+    let rule_set = crate::test_util::shared_compiled_rules(&grammar_path(), &xml).expect("compile");
     for r in rule_set
         .rules
         .iter()

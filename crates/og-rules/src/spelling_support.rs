@@ -165,6 +165,10 @@ impl SpellingSupport {
         }
     }
 
+    pub fn has_tagger(&self) -> bool {
+        self.tagger.is_some()
+    }
+
     pub fn multitoken_suggestions(&self, word: &str, accepted_by_speller: bool) -> Vec<String> {
         self.multitoken
             .get_suggestions(word, accepted_by_speller, &self.dictionary)
@@ -271,17 +275,13 @@ impl MultitokenSpeller {
                 .by_first_char
                 .get(&normalized.chars().next().unwrap_or(' '))
         {
+            let word_len = word.chars().count();
             for (normalized_candidate, candidates) in bucket {
+                if normalized_candidate.chars().count().abs_diff(word_len) > MAX_LENGTH_DIFF {
+                    continue;
+                }
                 if stop_searching(candidates, original_word, self.variant) {
                     return Vec::new();
-                }
-                if normalized_candidate
-                    .chars()
-                    .count()
-                    .abs_diff(word.chars().count())
-                    > MAX_LENGTH_DIFF
-                {
-                    continue;
                 }
                 let candidate_parts: Vec<&str> = normalized_candidate.split(' ').collect();
                 let word_parts: Vec<&str> = normalized.split(' ').collect();
@@ -842,7 +842,7 @@ mod tests {
         );
         let dict = std::sync::Arc::new(Dictionary::new());
         let en_support = SpellingSupport::new_for_language(dict, core, en, "en");
-        assert!(!en_support.multitoken_suggestions("zzz", false).is_empty() || true);
+        let _ = en_support.multitoken_suggestions("zzz", false);
         let base = SpellingSupport::new_for_language(
             std::sync::Arc::new(Dictionary::new()),
             core,
@@ -974,5 +974,16 @@ mod tests {
         let ms = MultitokenSpeller::from_data("new york\n");
         let dict = Dictionary::new();
         assert!(ms.get_suggestions("New York", false, &dict).is_empty());
+    }
+
+    #[test]
+    fn length_filter_skips_out_of_range_candidates_before_stop_searching() {
+        let ms = MultitokenSpeller::from_data_with(
+            "A - B - C - D - E\nA B C D E\n",
+            SpellerVariant::German,
+        );
+        let dict = Dictionary::new();
+        let got = ms.get_suggestions("A - B - C - D - Es", false, &dict);
+        assert!(got.iter().any(|c| c == "A B C D E"), "got {got:?}");
     }
 }

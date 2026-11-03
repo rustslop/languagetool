@@ -203,7 +203,6 @@ fn catalan_grammar_examples_with_ca_pipeline() {
             let rule = group[0];
             let (clean_text, marker_range) = extract_marker(&example.text);
             let mut matches = Vec::new();
-            // Java tests ca incorrect examples unsplit (PatternRuleTest.java:617-620)
             let unsplit_incorrect =
                 example.example_type == og_xml::types::XmlExampleType::Incorrect;
             for aux in group.iter() {
@@ -337,17 +336,17 @@ fn suite_covers_every_live_grammar_example() {
     let rule_set = compiled_rules();
     assert_eq!(
         rule_set.rules.len(),
-        9610,
-        "ca grammar.xml carries exactly 9610 <rule> elements (1742 rulegroups + standalone) and \
+        9651,
+        "ca grammar.xml carries exactly 9651 <rule> elements (1748 rulegroups + standalone) and \
          the compiler must keep them all"
     );
     let total_examples: usize = rule_set.rules.iter().map(|r| r.examples.len()).sum();
     assert_eq!(
-        total_examples, 25598,
-        "the suite denominator must stay the full live example set: of the 27098 '<example' \
-         occurrences in grammar.xml, 410 sit inside XML comments and 1090 inside <antipattern> \
+        total_examples, 25732,
+        "the suite denominator must stay the full live example set: of the 27239 '<example' \
+         occurrences in grammar.xml, 406 sit inside XML comments and 1101 inside <antipattern> \
          elements (Java routes those to antiPatternExample, PatternRuleHandler.java:342-348, \
-         and never tests them as rule examples), leaving 25598 live rule examples - any drop \
+         and never tests them as rule examples), leaving 25732 live rule examples - any drop \
          here is a silent og-xml parser/compiler regression"
     );
     let mut keys = std::collections::HashSet::with_capacity(rule_set.rules.len());
