@@ -418,7 +418,7 @@ impl XmlCompiler {
         let raw_pattern = if token.regexp.as_deref() == Some("yes") {
             token.text.clone()
         } else {
-            token.regexp.clone()
+            token.regexp.clone().filter(|r| r != "no")
         };
         let decoded_pattern: Option<String> = raw_pattern
             .as_deref()
@@ -446,7 +446,7 @@ impl XmlCompiler {
         let postag_source = if token.postag_regexp.as_deref() == Some("yes") {
             token.postag.clone()
         } else {
-            token.postag_regexp.clone()
+            None
         };
         let postag_re = postag_source
             .as_ref()
@@ -546,7 +546,7 @@ impl XmlCompiler {
         let exception_regex_source = if exc.regexp.as_deref() == Some("yes") {
             exc.text.as_deref()
         } else {
-            exc.regexp.as_deref()
+            None
         };
         let compiled_re = exception_regex_source.and_then(|t| {
             let anchored = Self::anchor_regex(t);
@@ -598,7 +598,7 @@ impl XmlCompiler {
         let pattern = if token.regexp.as_deref() == Some("yes") {
             token.text.clone()
         } else {
-            token.regexp.clone()
+            token.regexp.clone().filter(|r| r != "no")
         }?;
         let anchored = Self::anchor_regex(&pattern);
         let final_pattern = if token.case_sensitive {
@@ -620,7 +620,7 @@ impl XmlCompiler {
         let pattern = if exc.regexp.as_deref() == Some("yes") {
             exc.text.clone()
         } else {
-            exc.regexp.clone()
+            exc.regexp.clone().filter(|r| r != "no")
         }?;
         let anchored = Self::anchor_regex(&pattern);
         let final_pattern = if exc.case_sensitive {
@@ -1147,6 +1147,87 @@ mod tests {
     }
 
     #[test]
+    fn regexp_no_and_postag_regexp_no_compile_as_exact_match() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="pt">
+            <category id="GRAMMAR" name="Grammar">
+                <rule id="NO_REGEX" name="no regex">
+                    <pattern>
+                        <token regexp="no">deve</token>
+                        <token postag="VMN0000" postag_regexp="no">de</token>
+                        <token> fim
+                            <exception regexp="no">fim</exception>
+                        </token>
+                    </pattern>
+                    <message>Use <suggestion>x</suggestion></message>
+                </rule>
+            </category>
+        </rules>"#;
+
+        let compiler = XmlCompiler::new();
+        let result = compiler.compile_file(xml).unwrap();
+        let tokens = &result.rules[0].pattern.tokens;
+
+        assert_eq!(tokens[0].text.as_deref(), Some("deve"));
+        assert!(tokens[0].compiled_regexp.is_none());
+        assert!(tokens[0].compiled_regexp_fancy.is_none());
+        assert!(!tokens[0].is_regexp);
+
+        assert_eq!(tokens[1].postag.as_deref(), Some("VMN0000"));
+        assert!(tokens[1].compiled_postag_regexp.is_none());
+        assert!(tokens[1].compiled_postag_regexp_fancy.is_none());
+
+        let exc = &tokens[2].exceptions[0];
+        assert_eq!(exc.text.as_deref(), Some("fim"));
+        assert!(exc.compiled_regexp.is_none());
+        assert!(exc.compiled_regexp_fancy.is_none());
+    }
+
+    #[test]
+    fn pt_subjunctive_entity_regex_has_no_interior_newline() {
+        let base = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/pt/src/main/resources/org/languagetool/rules/pt",
+        );
+        let alt = std::path::Path::new(
+            "languagetool/languagetool-language-modules/pt/src/main/resources/org/languagetool/rules/pt",
+        );
+        let dir = if base.join("grammar.xml").is_file() {
+            base
+        } else if alt.join("grammar.xml").is_file() {
+            alt
+        } else {
+            eprintln!("Skipping: pt grammar.xml not present");
+            return;
+        };
+        let xml = std::fs::read_to_string(dir.join("grammar.xml")).expect("read grammar.xml");
+        let rule_set = XmlCompiler::new()
+            .compile_file_with_base(&xml, Some(dir))
+            .expect("compile pt grammar.xml");
+        let espera = rule_set
+            .rules
+            .iter()
+            .find(|r| r.id.contains("ESPERA"))
+            .expect("ESPERA_QUE_INDICATIVO rule");
+        let subjectives: Vec<&str> = espera
+            .pattern
+            .tokens
+            .iter()
+            .filter_map(|t| t.compiled_regexp.as_ref().map(|re| re.as_str()))
+            .filter(|re| re.contains("propor"))
+            .collect();
+        assert!(
+            !subjectives.is_empty(),
+            "the &subjunctive_verbs; token must compile to a regex"
+        );
+        assert!(
+            subjectives
+                .iter()
+                .all(|re| !re.contains('\n') && !re.contains('\r') && !re.contains('\t')),
+            "multi-line entity values must be whitespace-normalized: {subjectives:?}"
+        );
+    }
+
+    #[test]
     fn test_compile_simple_rule() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rules lang="en">
@@ -1576,7 +1657,7 @@ mod tests {
             <category id="GRAMMAR" name="Grammar">
                 <rule id="EXC" name="Exception">
                     <pattern>
-                        <token>word<exception regexp="skip_\w+" negate="yes" scope="next"/></token>
+                        <token>word<exception regexp="yes" negate="yes" scope="next">skip_\w+</exception></token>
                     </pattern>
                     <message>Msg</message>
                 </rule>

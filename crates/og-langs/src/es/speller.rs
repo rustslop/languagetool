@@ -195,46 +195,6 @@ pub fn find_similar_words(word: &str) -> Vec<String> {
     exact.into_iter().map(str::to_string).collect()
 }
 
-fn is_all_uppercase(chars: &[char]) -> bool {
-    chars
-        .iter()
-        .all(|c| !(c.is_alphabetic() && c.is_lowercase()))
-}
-
-fn is_not_all_lowercase(chars: &[char]) -> bool {
-    chars.iter().any(|c| c.is_alphabetic() && !c.is_lowercase())
-}
-
-fn is_not_capitalized_word(chars: &[char]) -> bool {
-    match chars.first() {
-        Some(&first) if first.is_uppercase() => chars[1..]
-            .iter()
-            .any(|c| c.is_alphabetic() && !c.is_lowercase()),
-        _ => true,
-    }
-}
-
-fn is_mixed_case(chars: &[char]) -> bool {
-    !is_all_uppercase(chars) && is_not_capitalized_word(chars) && is_not_all_lowercase(chars)
-}
-
-fn is_camel_case(chars: &[char]) -> bool {
-    !chars.is_empty()
-        && !is_all_uppercase(chars)
-        && is_not_capitalized_word(chars)
-        && chars[0].is_uppercase()
-        && (chars.len() <= 1 || chars[1].is_lowercase())
-        && is_not_all_lowercase(chars)
-}
-
-fn uppercase_first_char(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
-}
-
 pub fn is_misspelled(word: &str) -> bool {
     let Some(oracle) = es_speller_oracle() else {
         return false;
@@ -249,24 +209,11 @@ pub fn is_misspelled(word: &str) -> bool {
     if chars.iter().any(|c| c.is_numeric()) {
         return false;
     }
-    if is_camel_case(&chars) || is_all_uppercase(&chars) {
-        return false;
-    }
     if oracle.dictionary.contains_exact(word) {
         return false;
     }
-    if !is_mixed_case(&chars) {
-        let lower = word.to_lowercase();
-        if oracle.dictionary.contains_exact(&lower) {
-            return false;
-        }
-        if is_all_uppercase(&chars)
-            && oracle
-                .dictionary
-                .contains_exact(&uppercase_first_char(&lower))
-        {
-            return false;
-        }
+    if oracle.dictionary.contains_exact(&word.to_lowercase()) {
+        return false;
     }
     true
 }
@@ -329,12 +276,19 @@ mod tests {
             "convert-case accepts the lowercase form"
         );
         assert!(
-            !is_misspelled("DÁ"),
-            "all-uppercase words are never misspelled"
+            is_misspelled("DÁ"),
+            "'dá' is not a Spanish dictionary form: convert-case only lowercases the query, \
+             and Java's suppress path calls MorfologikSpellerRule.isMisspelled directly \
+             (AbstractSuppressMisspelledSuggestionsFilter.java:90) with no all-uppercase skip"
         );
         assert!(
-            !is_misspelled("McDonald"),
-            "camel case words are never misspelled"
+            is_misspelled("Autorrízase"),
+            "the suppress filter runs after RuleMatch's lazy suggestion casing \
+             (PatternRuleMatcher.java:211-215 -> getSuggestedReplacements -> RuleMatch.java:\
+             193-199 uppercaseFirstChar), so Java checks the cased form and must find it \
+             unknown via convert-case lookup - pinned by the R_RR correct example \
+             'Autorízase el ingreso de agente.' (grammar.xml:14440) whose match Java drops \
+             through AbstractSuppressMisspelledSuggestionsFilter.java:54/:90"
         );
         assert!(
             !is_misspelled("a1b2"),
@@ -342,7 +296,7 @@ mod tests {
         );
         assert!(!is_misspelled("!"));
         assert!(!is_misspelled(""));
-        assert!(is_misspelled("imporntate"));
+        assert!(is_misspelled("imporntante"));
         assert!(is_misspelled("asldkfg"));
         assert!(
             !is_misspelled("a fin de cuentas"),

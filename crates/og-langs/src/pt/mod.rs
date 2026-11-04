@@ -32,6 +32,16 @@ impl og_core::checker::Disambiguator for PtDisambiguatorChain {
     fn disambiguate(&self, sentence: &mut og_core::AnalyzedSentence) {
         self.hybrid.disambiguate(sentence);
         self.global_xml.disambiguate(sentence);
+        for token in sentence.tokens_mut().iter_mut().rev() {
+            if !token.is_whitespace()
+                && !token.token().pos_tags().contains(&"SENT_START".to_string())
+            {
+                if !token.has_pos_tag("SENT_END") {
+                    token.add_sent_end();
+                }
+                break;
+            }
+        }
     }
 }
 

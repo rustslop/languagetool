@@ -241,30 +241,16 @@ fn slovenian_grammar_examples_with_sl_pipeline() {
     let live: Vec<&str> = all_failures.iter().map(String::as_str).collect();
     assert_eq!(
         live, PINNED_RESIDUE,
-        "the sl residue is pinned: the 2 TROPIČJE entries need og-xml to stop trimming the \
-         correction attribute (parser.rs trims ' ...' to '...' while Java compares the raw \
-         attribute against the equally untrimmed suggestion), the other 10 need the shared-engine \
-         suggestion case propagation of PatternRuleMatcher.java:160-174 (upper-case the static \
-         suggestion when the matched token starts uppercase and the rule adjusts suggestion \
-         case); anything else is a regression"
+        "the sl residue is empty since the shared-engine fixes landed: og-xml no longer \
+         trims the correction attribute (Java compares the raw attribute against the \
+         equally untrimmed suggestion) and the suggestion casing reads the marker-corrected \
+         first token like PatternRuleMatcher.java:160-184/RuleMatch.java:198-199; anything \
+         that reappears is a regression"
     );
 }
 
 const PINNED_TOTAL: usize = 104;
-const PINNED_RESIDUE: &[&str] = &[
-    "CORRECTION: [TROPIČJETRI]: 'Bilo je nekoč...' expected '...' got [\" ...\"]",
-    "CORRECTION: [TROPIČJEENO]: 'Bilo je nekoč…' expected '…' got [\" …\"]",
-    "CORRECTION: [PREDLOG_K]: 'K klobasam so ponudili kislo zelje.' expected 'H' got [\"h\"]",
-    "CORRECTION: [PREDLOG_H]: 'H vsemu temu nimam kaj dodati.' expected 'K' got [\"k\"]",
-    "CORRECTION: [PREDLOG_Z]: 'Z tem nisem bil seznanjen.' expected 'S' got [\"s\"]",
-    "CORRECTION: [PREDLOG_S]: 'S izvijačem je potolkel po motorju.' expected 'Z' got [\"z\"]",
-    "CORRECTION: [REKLA_STE]: 'Rekla ste, da je živ.' expected 'Rekli' got [\"rekli\"]",
-    "CORRECTION: [PTUJ]: 'V Ptuju so pogostili pisatelje.' expected 'Na' got [\"na\"]",
-    "CORRECTION: [BLED]: 'V Bledu sva jedla kremne rezine.' expected 'Na' got [\"na\"]",
-    "CORRECTION: [IZ_KJE]: 'Iz kje je ta jadrnica?' expected 'Odkod' got [\"odkod\"]",
-    "CORRECTION: [V_SLUCAJU]: 'V slučaju reklamacije ne pozabite izpolniti obrazca.' expected 'Ob' got [\"ob\"]",
-    "CORRECTION: [Z_OZIROM]: 'Z ozirom na vse težave se je dobro končalo.' expected 'Glede' got [\"glede\"]",
-];
+const PINNED_RESIDUE: &[&str] = &[];
 
 #[test]
 fn grammar_rules_compile_the_java_inventory() {

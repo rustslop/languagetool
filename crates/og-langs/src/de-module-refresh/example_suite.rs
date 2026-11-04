@@ -331,11 +331,8 @@ fn evaluate_all() -> Vec<ExampleRecord> {
 }
 
 const PINNED_EVALUATED: usize = 10_500;
-const PINNED_PASSED: usize = 10_499;
-const PINNED_RESIDUES: &[(&str, &str)] = &[(
-    "ZUSAMMENSCHREIBUNG_HINTER",
-    "Er hat ihr hinterher spioniert.",
-)];
+const PINNED_PASSED: usize = 10_500;
+const PINNED_RESIDUES: &[(&str, &str)] = &[];
 
 fn strip_xml_comments(xml: &str) -> String {
     let mut out = String::with_capacity(xml.len());
@@ -455,10 +452,11 @@ fn german_refresh_example_suite_is_green_over_accepted_residues() {
     );
     assert_eq!(
         failures, PINNED_RESIDUES,
-        "every failing example must be the explicitly accepted-excluded Java-parity residue: \
-         the compound 'hinterherspioniert' is rejected by the hunspell data Java itself ships \
-         (only the bare lemma exists, no accept list carries it), so \
-         RemoveUnknownCompoundsFilter drops the match in Java too — pinned identically by \
-         og-test-runner's test_real_german_grammar_examples"
+        "every example must pass: the former ZUSAMMENSCHREIBUNG_HINTER residue \
+         ('Er hat ihr hinterher spioniert.') now matches because speller accept-list lines like \
+         spelling.txt's 'hinterher_spionieren' expand to their synthesized conjugations \
+         (hinterherspioniert, hinterherzuspionieren, ...), so RemoveUnknownCompoundsFilter no \
+         longer drops the compound — pinned identically by og-test-runner's \
+         test_real_german_grammar_examples"
     );
 }

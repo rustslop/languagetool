@@ -512,6 +512,9 @@ impl PatternRuleEngine {
 
             let message = resolve_regexp_message(&rule.message, &group_texts);
 
+            let starts_upper = base == 0
+                && match_start == 0
+                && starts_with_uppercase(&text[match_start..match_end]);
             let replacements: Vec<SuggestedReplacement> = rule
                 .suggestions
                 .iter()
@@ -542,9 +545,18 @@ impl PatternRuleEngine {
                                 }
                             }
                         }
-                        SuggestedReplacement::new(&resolved)
+                        SuggestedReplacement::new(if starts_upper {
+                            uppercase_first_char(&resolved)
+                        } else {
+                            resolved
+                        })
                     } else {
-                        SuggestedReplacement::new(resolve_regexp_message(&s.text, &group_texts))
+                        let resolved = resolve_regexp_message(&s.text, &group_texts);
+                        SuggestedReplacement::new(if starts_upper {
+                            uppercase_first_char(&resolved)
+                        } else {
+                            resolved
+                        })
                     }
                 })
                 .collect();
@@ -727,21 +739,30 @@ impl PatternRuleEngine {
         let context_text = text[context_start..context_end].to_string();
 
         let mut replacements: Vec<SuggestedReplacement> = Vec::new();
+        let starts_upper = self.match_starts_uppercase(tokens, match_start);
         for s in &rule.suggestions {
             let alternatives = self.suggestion_alternatives(s, tokens, &match_result);
             let strippable = rule.suppress_misspelled || s.suppress_misspelled;
             let kept: Vec<String> = if strippable {
                 alternatives
                     .into_iter()
-                    .filter(|a| !is_suppress_junk(a))
+                    .filter(|a| !is_suppress_junk(a) && !self.oracle_misspelled(a))
                     .collect()
             } else {
                 alternatives
             };
-            replacements.extend(
-                kept.into_iter()
-                    .map(|text| SuggestedReplacement::new(&text)),
+            let preserves_case = matches!(
+                s.parts.first(),
+                Some(og_xml::types::SuggestionPart::Match(m)) if m.case_conversion.is_some()
             );
+            replacements.extend(kept.into_iter().map(|text| {
+                let text = if starts_upper && !preserves_case {
+                    uppercase_first_char(&text)
+                } else {
+                    text
+                };
+                SuggestedReplacement::new(&text)
+            }));
         }
         if rule.suppress_misspelled && replacements.is_empty() {
             return None;
@@ -807,6 +828,44 @@ impl PatternRuleEngine {
         }
 
         Some(rm)
+    }
+
+    fn match_starts_uppercase(
+        &self,
+        tokens: &[&AnalyzedTokenReadings],
+        match_start: usize,
+    ) -> bool {
+        let Some(first_pos) = tokens
+            .iter()
+            .position(|t| !t.is_whitespace() && t.token().end() > match_start)
+        else {
+            return false;
+        };
+        let first_token = tokens[first_pos];
+        if first_token.is_sentence_start() {
+            return tokens
+                .get(first_pos + 1)
+                .is_some_and(|next| starts_with_uppercase(next.token().token()));
+        }
+        starts_with_uppercase(first_token.token().token())
+    }
+
+    fn oracle_misspelled(&self, alternative: &str) -> bool {
+        let Some(spelling) = self.spelling.as_deref() else {
+            return false;
+        };
+        if spelling.has_tagger() {
+            return alternative.split_whitespace().any(|w| {
+                let readings = spelling.tag(w);
+                match readings.first() {
+                    Some(first) => first.lemma().is_none() && first.pos_tags().is_empty(),
+                    None => true,
+                }
+            });
+        }
+        alternative
+            .split_whitespace()
+            .any(|w| spelling.is_misspelled(w))
     }
 
     fn match_pattern_tokens(
@@ -1190,32 +1249,75 @@ impl PatternRuleEngine {
                 .synthesizer
                 .as_deref()
                 .or(self.suggestion_synth.as_deref());
-            let Some(synth) = synth else {
+            let raw_text_fallback = || {
                 let raw = match pattern_token.match_no_case_conversion.as_deref() {
                     Some(cc) => apply_case_conversion(&entry.text, cc),
                     None => entry.text.clone(),
                 };
                 let composed = compose(&raw);
-                let matches = eval_targets(&[composed]);
-                return Some(if pattern_token.negate {
-                    !matches
-                } else {
-                    matches
-                });
+                eval_targets(&[composed])
             };
-            let mut forms: Vec<String> = Vec::new();
-            for reading in ref_token.readings() {
-                if let Some(lemma) = reading.lemma() {
-                    for form in synth.synthesize_exact(lemma, postag) {
-                        if !forms.contains(&form) {
-                            forms.push(form);
+            let transformed_forms =
+                |synth: &crate::postponed_adjective::LangSynthesizer| -> Option<Vec<String>> {
+                    let filter = whole_match_regex(postag, pattern_token.match_no_postag_regexp)?;
+                    let mut pos_tags: Vec<&str> = Vec::new();
+                    for reading in ref_token.readings() {
+                        for tag in reading.pos_tags() {
+                            if !tag.is_empty()
+                                && filter.is_match(tag)
+                                && !pos_tags.contains(&tag.as_str())
+                            {
+                                pos_tags.push(tag);
+                            }
                         }
                     }
+                    let mut target = synth.target_postag(&pos_tags).unwrap_or(postag).to_string();
+                    if let Some(replace) = pattern_token.match_no_postag_replace.as_deref() {
+                        let unanchored_body = if pattern_token.match_no_postag_regexp {
+                            postag.to_string()
+                        } else {
+                            regex::escape(postag)
+                        };
+                        let unanchored = og_xml::compiler::shared_cached_regex(&unanchored_body)?;
+                        let mut replaced: Vec<String> = if pos_tags.is_empty() {
+                            vec![target]
+                        } else {
+                            pos_tags.iter().map(|t| t.to_string()).collect()
+                        };
+                        for t in &mut replaced {
+                            *t = unanchored
+                                .replace_all(t, java_replacement(replace).as_ref())
+                                .into_owned();
+                        }
+                        target = replaced.join("|");
+                    }
+                    let mut forms: Vec<String> = Vec::new();
+                    for reading in ref_token.readings() {
+                        if let Some(lemma) = reading.lemma() {
+                            for form in synth.synthesize_full_for(
+                                lemma,
+                                reading.pos_tags().first().map(String::as_str),
+                                &target,
+                            ) {
+                                if !forms.contains(&form) {
+                                    forms.push(form);
+                                }
+                            }
+                        }
+                    }
+                    Some(forms)
+                };
+            let mut forms: Vec<String> = match synth.map(transformed_forms) {
+                Some(Some(formed)) if !formed.is_empty() => formed,
+                Some(Some(_)) => vec![format!("({})", ref_text)],
+                Some(None) | None => {
+                    return Some(if pattern_token.negate {
+                        !raw_text_fallback()
+                    } else {
+                        raw_text_fallback()
+                    });
                 }
-            }
-            if forms.is_empty() {
-                forms.push(ref_text.clone());
-            }
+            };
             if let Some(cc) = pattern_token.match_no_case_conversion.as_deref() {
                 for form in &mut forms {
                     *form = apply_case_conversion(form, cc);
@@ -2018,8 +2120,7 @@ impl PatternRuleEngine {
             return false;
         };
         let prev_skip = element_prev_skip(elements, element_idx);
-        if let og_xml::compiler::CompiledPatternElement::Token(t) = element
-            && t.min == Some(0)
+        if element_min_occurrence_zero(element)
             && self.later_element_matches_at(
                 elements,
                 tokens,
@@ -2128,8 +2229,7 @@ impl PatternRuleEngine {
             if matched {
                 return true;
             }
-            let optional = matches!(element, og_xml::compiler::CompiledPatternElement::Token(t) if t.min.unwrap_or(1) == 0);
-            if !optional {
+            if !element_min_occurrence_zero(element) {
                 return false;
             }
         }
@@ -2827,6 +2927,20 @@ fn unify_group_matches(
     eval_unify_plans(&plans, 0, last_elem, group.negate, &mut uni)
 }
 
+fn element_min_occurrence_zero(element: &og_xml::compiler::CompiledPatternElement) -> bool {
+    match element {
+        og_xml::compiler::CompiledPatternElement::Token(t) => t.min.unwrap_or(1) == 0,
+        og_xml::compiler::CompiledPatternElement::OrGroup(alts) => {
+            alts.first().is_some_and(|t| t.min.unwrap_or(1) == 0)
+        }
+        og_xml::compiler::CompiledPatternElement::AndGroup(_) => false,
+    }
+}
+
+fn starts_with_uppercase(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| c.is_uppercase())
+}
+
 fn uppercase_first_char(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars();
@@ -3160,6 +3274,13 @@ impl PatternRuleEngine {
             | "org.languagetool.rules.ca.CatalanSuppressMisspelledSuggestionsFilter" => {
                 self.apply_suppress_misspelled_suggestions_filter(&filter.args, matched_texts, rm)
             }
+            "org.languagetool.rules.AddCommasFilter" => crate::add_commas::add_commas_filter(
+                tokens,
+                sentence.start(),
+                sentence.text(),
+                rm,
+                &filter.args,
+            ),
             "org.languagetool.rules.fr.FrenchSuppressMisspelledSuggestionsFilter" => {
                 crate::fr_suppress::accept_rule_match(rm, &filter.args, matched_texts)
             }
@@ -3232,6 +3353,15 @@ impl PatternRuleEngine {
             }
             "org.languagetool.rules.es.PostponedAdjectiveConcordanceFilter" => {
                 crate::postponed_adjective::accept_es(
+                    self.synthesizer.as_deref(),
+                    &filter.args,
+                    matched_positions,
+                    tokens,
+                    rm,
+                )
+            }
+            "org.languagetool.rules.ca.PostponedAdjectiveConcordanceFilter" => {
+                crate::postponed_adjective::accept_ca(
                     self.synthesizer.as_deref(),
                     &filter.args,
                     matched_positions,
@@ -9126,7 +9256,14 @@ mod tests {
             .iter()
             .map(|r| r.value())
             .collect();
-        assert_eq!(reps, vec!["größer"]);
+        assert_eq!(
+            reps,
+            vec!["größer"],
+            "the marker narrows the match to 'groß', and Java keys the uppercase-start \
+             adjustment off the marker-corrected first token (PatternRuleMatcher.java: \
+             idx = firstMatchToken + correctedStPos), so 'groß' stays lowercase - the same \
+             marker semantics the sl OTROKI oracle pins (correction='otroci')"
+        );
     }
 
     #[test]
@@ -9816,8 +9953,8 @@ mod tests {
             .collect();
         assert_eq!(
             matches.len(),
-            1,
-            "unsynthesizable postags fall back to the reference text"
+            0,
+            "unsynthesizable postags compose Java's '(token)' placeholder, which never equals a real token"
         );
     }
 
@@ -12145,5 +12282,255 @@ mod unify_tests {
         assert!(compile_and_match(&xml_oob, "don’t go").is_empty());
         let xml_no_from = xml.replace("wordFrom:1 ", "");
         assert_eq!(compile_and_match(&xml_no_from, "don’t go").len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod shared_engine_semantics_tests {
+    use super::*;
+    use og_core::{AnalyzedSentence, AnalyzedToken, AnalyzedTokenReadings};
+    use og_xml::compiler::XmlCompiler;
+
+    fn tagged_sentence(words: &[(&str, &str, &str)]) -> AnalyzedSentence {
+        let text = words.iter().map(|w| w.0).collect::<Vec<_>>().join(" ");
+        let mut tokens = vec![AnalyzedTokenReadings::new(
+            AnalyzedToken::new("<S>", 0, 0).with_pos_tags(vec!["SENT_START".to_string()]),
+        )];
+        let mut offset = 0;
+        for (surface, lemma, postag) in words {
+            let reading = AnalyzedToken::new(*surface, offset, offset + surface.len())
+                .with_lemma((*lemma).to_string())
+                .with_pos_tags(vec![postag.to_string()]);
+            tokens.push(AnalyzedTokenReadings::new(reading));
+            offset += surface.len() + 1;
+        }
+        let mut s = AnalyzedSentence::new(&text, 0, text.len());
+        s.set_tokens(tokens);
+        s
+    }
+
+    fn compile(xml: &str) -> CompiledRule {
+        let rules = XmlCompiler::new().compile_file(xml).expect("compile");
+        rules.rules.into_iter().next().expect("one rule")
+    }
+
+    #[test]
+    fn or_group_with_min_zero_is_conditionally_skippable() {
+        let xml = r#"<rules lang="pt"><rule id="OUVE" name="ouve"><pattern><token>ouve</token><or><token min="0" regexp="yes">nenhum|pouco</token><token postag_regexp="yes" postag="Z.+"/></or><token postag_regexp="yes" postag="NC.+000"/></pattern><message>m</message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+
+        let skipped = tagged_sentence(&[
+            ("ouve", "ouvir", "VMN3S000"),
+            ("aumento", "aumento", "NCMS000"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &skipped).len(),
+            1,
+            "or-position carrying min=0 is skipped when the next element matches in place"
+        );
+
+        let consumed = tagged_sentence(&[
+            ("ouve", "ouvir", "VMN3S000"),
+            ("alguns", "algum", "Z."),
+            ("problemas", "problema", "NCMP000"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &consumed).len(),
+            1,
+            "or-position still matches when an alternative fits"
+        );
+
+        let stalled = tagged_sentence(&[
+            ("ouve", "ouvir", "VMN3S000"),
+            ("música", "música", "VMN3S000"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &stalled).len(),
+            0,
+            "skip only applies when a later element matches"
+        );
+    }
+
+    #[test]
+    fn suggestions_follow_uppercase_match_start() {
+        let xml = r#"<rules lang="sv"><rule id="CASE" name="case"><pattern><marker><token regexp="yes">förra|förre</token></marker></pattern><message>Använd <suggestion>föregående</suggestion></message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+
+        let sentence_upper = tagged_sentence(&[("Den", "den", "DT"), ("Förre", "förre", "JJ")]);
+        let matches = engine.match_rule(&rule, &sentence_upper);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "Föregående");
+
+        let lower = tagged_sentence(&[("den", "den", "DT"), ("förre", "förre", "JJ")]);
+        let matches = engine.match_rule(&rule, &lower);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "föregående");
+    }
+
+    #[test]
+    fn sentence_start_uses_next_token_for_suggestion_case() {
+        let xml = r#"<rules lang="sv"><rule id="SS" name="ss"><pattern><token postag="SENT_START"/><marker><token>chefen</token></marker></pattern><message>Använd <suggestion>den tidigare chefen</suggestion></message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+        let sentence = tagged_sentence(&[("Chefen", "chef", "NC"), ("kom", "komma", "VB")]);
+        let matches = engine.match_rule(&rule, &sentence);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "Den tidigare chefen");
+    }
+
+    #[test]
+    fn case_converting_leading_match_preserves_case() {
+        let xml = r#"<rules lang="sv"><rule id="PRESERVE" name="preserve"><pattern><marker><token regexp="yes">Måndag|måndag</token></marker></pattern><message>Använd <suggestion><match no="1" case_conversion="startlower"/>dag</suggestion></message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+        let sentence = tagged_sentence(&[("På", "på", "PR"), ("Måndag", "måndag", "NN")]);
+        let matches = engine.match_rule(&rule, &sentence);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacements()[0].value(),
+            "måndagdag",
+            "suggestion led by a case-converting match keeps its converted case"
+        );
+    }
+
+    #[test]
+    fn regexp_rule_uppercases_suggestions_at_text_start_only() {
+        let xml = r#"<rules lang="de"><rule id="RE" name="re"><regexp case_sensitive="yes">Fehler</regexp><message>Meintest du <suggestion>fehler</suggestion>?</message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+
+        let at_start = tagged_sentence(&[("Fehler", "Fehler", "NN")]);
+        let matches = engine.match_rule(&rule, &at_start);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "Fehler");
+
+        let mid = tagged_sentence(&[("Ein", "ein", "ART"), ("Fehler", "Fehler", "NN")]);
+        let matches = engine.match_rule(&rule, &mid);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].replacements()[0].value(), "fehler");
+    }
+
+    #[test]
+    fn suppress_misspelled_oracle_drops_unknown_suggestions() {
+        let xml = r#"<rules lang="ca"><rule id="SUP" name="sup"><pattern><marker><token>tinc</token></marker></pattern><message suppress_misspelled="yes">Use <suggestion>xxqzyv</suggestion></message></rule></rules>"#;
+        let rule = compile(xml);
+        let sentence = tagged_sentence(&[("tinc", "tenir", "VMIP1S0")]);
+
+        let plain = PatternRuleEngine::new();
+        assert_eq!(
+            plain.match_rule(&rule, &sentence).len(),
+            1,
+            "without an oracle the gate cannot fire"
+        );
+
+        let support = std::sync::Arc::new(crate::spelling_support::SpellingSupport::new(
+            og_spell::dictionary::Dictionary::from_words(&["tinc"]),
+            "",
+        ));
+        let oracle_engine = PatternRuleEngine::new().with_spelling_support(support);
+        assert_eq!(
+            oracle_engine.match_rule(&rule, &sentence).len(),
+            0,
+            "misspelled suggestion suppresses the match"
+        );
+
+        let xml_known = xml.replace("xxqzyv", "tinc");
+        let rule_known = compile(&xml_known);
+        assert_eq!(
+            oracle_engine.match_rule(&rule_known, &sentence).len(),
+            1,
+            "known suggestion survives the oracle"
+        );
+    }
+
+    #[test]
+    fn postag_backreference_matches_synthesized_transformed_form() {
+        let dir = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/it/src/main/resources/org/languagetool/resource/it",
+        );
+        let Some(synth) = crate::postponed_adjective::LangSynthesizer::for_language(dir, "it")
+        else {
+            eprintln!("Skipping: Italian synth dictionary not present");
+            return;
+        };
+        let xml = r#"<rules lang="it"><rule id="BACKREF" name="backref"><pattern><token postag_regexp="yes" postag="NOUN-M:s"/><token>e</token><token><match no='0' postag="(NOUN-M):s" postag_regexp="yes" postag_replace="$1:p"/></token></pattern><message>m</message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new().with_synthesizer(std::sync::Arc::new(synth));
+        let sentence = tagged_sentence(&[
+            ("libro", "libro", "NOUN-M:s"),
+            ("e", "e", "CONJ"),
+            ("libri", "libro", "NOUN-M:p"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &sentence).len(),
+            1,
+            "postag-transform backreference matches the synthesized surface form"
+        );
+
+        let wrong_surface = tagged_sentence(&[
+            ("libro", "libro", "NOUN-M:s"),
+            ("e", "e", "CONJ"),
+            ("libro", "libro", "NOUN-M:p"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &wrong_surface).len(),
+            0,
+            "the synthesized form, not the referenced surface text, must match"
+        );
+    }
+
+    #[test]
+    fn add_commas_filter_shared_arm_rebuilds_span() {
+        let xml = r#"<rules lang="ca"><rule id="COMMA" name="comma"><filter class="org.languagetool.rules.AddCommasFilter" args="none:none"/><pattern><token>per</token><token>exemple</token></pattern><message>m</message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+
+        let open = tagged_sentence(&[
+            ("compraren", "comprar", "VMN0000"),
+            ("per", "per", "SPS00"),
+            ("exemple", "exemple", "NCMS000"),
+            ("pomes", "poma", "NCFP000"),
+        ]);
+        let matches = engine.match_rule(&rule, &open);
+        assert_eq!(matches.len(), 1);
+        let rm = &matches[0];
+        assert_eq!(rm.offset(), 9);
+        assert_eq!(rm.length(), 12);
+        assert_eq!(rm.replacements()[0].value(), ", per exemple,");
+
+        let delimited = tagged_sentence(&[
+            ("Compraren", "comprar", "VMN0000"),
+            (",", ",", "PUNCT"),
+            ("per", "per", "SPS00"),
+            ("exemple", "exemple", "NCMS000"),
+            (",", ",", "PUNCT"),
+            ("pomes", "poma", "NCFP000"),
+        ]);
+        assert_eq!(
+            engine.match_rule(&rule, &delimited).len(),
+            0,
+            "both sides already delimited: match suppressed"
+        );
+    }
+
+    #[test]
+    fn uppercase_first_word_of_sentence_keys_off_itself_not_the_next_token() {
+        let xml = r#"<rules lang="sv"><rule id="FORRE" name="förre"><pattern><token>förra</token><token>chefen</token><token>på</token></pattern><message>Använd <suggestion>förre chefen på</suggestion></message></rule></rules>"#;
+        let rule = compile(xml);
+        let engine = PatternRuleEngine::new();
+        let sentence = tagged_sentence(&[
+            ("Förra", "förra", "DT"),
+            ("chefen", "chef", "NN"),
+            ("på", "på", "PP"),
+        ]);
+        let matches = engine.match_rule(&rule, &sentence);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].replacements()[0].value(),
+            "Förre chefen på",
+            "the first real token carries no SENT_START reading in Java, so its own case decides"
+        );
     }
 }

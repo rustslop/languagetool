@@ -325,6 +325,7 @@ enum SynthLang {
     Slovak,
     Italian,
     Swedish,
+    Catalan,
 }
 
 pub struct LangSynthesizer {
@@ -446,6 +447,14 @@ impl LangSynthesizer {
                 og_tagger::morfologik::shared_synth_dictionary(resource_dir, "swedish_synth"),
                 SynthLang::Swedish,
             ),
+            "ca" => {
+                let seek =
+                    og_tagger::morfologik::shared_synth_dictionary(resource_dir, "ca-ES_synth");
+                if seek.is_none() {
+                    return None;
+                }
+                (None, seek, SynthLang::Catalan)
+            }
             _ => return None,
         };
         let manual = std::fs::read_to_string(resource_dir.join("added.txt"))
@@ -1260,6 +1269,445 @@ fn update_apparitions_es(token: &AnalyzedTokenReadings, apparitions: &mut Appari
     apparitions.punctuation |= mp(Some(token), &t.puntuacio) || token.token().token() == ",";
 }
 
+fn ca_tags() -> &'static TagSet {
+    static TAGS: OnceLock<TagSet> = OnceLock::new();
+    TAGS.get_or_init(|| TagSet {
+        nom: full_match("N.*"),
+        nom_ms: full_match("N.MS.*"),
+        nom_fs: full_match("N.FS.*"),
+        nom_mp: full_match("N.MP.*"),
+        nom_mn: full_match("N.MN.*"),
+        nom_fp: full_match("N.FP.*"),
+        nom_cs: full_match("N.CS.*"),
+        nom_cp: full_match("N.CP.*"),
+        nom_det: full_match("N.*|D[NDA0I].*"),
+        gn_any: full_match("_GN_.*"),
+        gn_ms_tag: full_match("_GN_MS"),
+        gn_fs_tag: full_match("_GN_FS"),
+        gn_mp_tag: full_match("_GN_MP"),
+        gn_fp_tag: full_match("_GN_FP"),
+        gn_cs_tag: full_match("_GN_[MF]S"),
+        gn_cp_tag: full_match("_GN_[MF]P"),
+        det: full_match("D[NDA0IP].*"),
+        det_cs: full_match("D[NDA0IP]0CS0"),
+        det_ms: full_match("D[NDA0IP]0MS0"),
+        det_fs: full_match("D[NDA0IP]0FS0"),
+        det_mp: full_match("D[NDA0IP]0MP0"),
+        det_fp: full_match("D[NDA0IP]0FP0"),
+        gn_ms: full_match("N.[MC][SN].*|A..[MC][SN].*|V.P..SM.?|PX.MS.*|D[NDA0I]0MS0|PI0MS000"),
+        gn_fs: full_match("N.[FC][SN].*|A..[FC][SN].*|V.P..SF.?|PX.FS.*|D[NDA0I]0FS0|PI0FS000"),
+        gn_mp: full_match("N.[MC][PN].*|A..[MC][PN].*|V.P..PM.?|PX.MP.*|D[NDA0I]0MP0"),
+        gn_fp: full_match("N.[FC][PN].*|A..[FC][PN].*|V.P..PF.?|PX.FP.*|D[NDA0I]0FP0"),
+        gn_cp: full_match("N.[FMC][PN].*|A..[FMC][PN].*|D[NDA0I]0[FM]P0"),
+        gn_cs: full_match("N.[FMC][SN].*|A..[FMC][SN].*|D[NDA0I]0[FM]S0"),
+        adjectiu: full_match("AQ.*|V.P.*|PX.*|.*LOC_ADJ.*"),
+        adjectiu_ms: full_match("A..[MC][SN].*|V.P..SM.?|PX.MS.*"),
+        adjectiu_fs: full_match("A..[FC][SN].*|V.P..SF.?|PX.FS.*"),
+        adjectiu_mp: full_match("A..[MC][PN].*|V.P..PM.?|PX.MP.*"),
+        adjectiu_fp: full_match("A..[FC][PN].*|V.P..PF.?|PX.FP.*"),
+        adjectiu_cp: full_match("A..C[PN].*"),
+        adjectiu_cs: full_match("A..C[SN].*"),
+        adjectiu_s: full_match("A...[SN].*|V.P..S..?|PX..S.*"),
+        adjectiu_p: full_match("A...[PN].*|V.P..P..?|PX..P.*"),
+        adverbi: full_match("R.|.*LOC_ADV.*"),
+        conjuncio: full_match("C.|.*LOC_CONJ.*"),
+        puntuacio: full_match("_PUNCT"),
+        loc_adv: full_match(".*LOC_ADV.*"),
+        adverbis_acceptats: full_match("RG_anteposat"),
+        coord_ioni: full_match("i|o|ni"),
+        keep_count: full_match(
+            "A.*|N.*|D[NAIDP].*|SPS.*|.*LOC_ADV.*|V.P.*|_PUNCT.*|.*LOC_ADJ.*|PX.*|PI0.S000|UNKNOWN",
+        ),
+        keep_count2: full_match(",|i|o|ni"),
+        stop_count: full_match("[;:]"),
+        preposicions: full_match("SPS.*"),
+        prepo_nivell: full_match("de|d'|en|sobre|a|entre|per|pe|amb|sense|contra|com|envers"),
+        verb: full_match("V.[^P].*|_GV_"),
+        gv: full_match("_GV_"),
+        synth_cs: full_match("A..CP."),
+        synth_cp: full_match("A..CS."),
+        synth_common_plural: full_match("A...P.|V.P..P..|PX..P.*"),
+        synth_ms: full_match("A..MS.|V.P..SM.|PX.MS.*"),
+        synth_fs: full_match("A..FS.|V.P..SF.|PX.FS.*"),
+        synth_mp: full_match("A..MP.|V.P..PM.|PX.MP.*"),
+        synth_fp: full_match("A..FP.|V.P..PF.|PX.FP.*"),
+    })
+}
+
+fn token_has_lemma(token: Option<&AnalyzedTokenReadings>, lemma: &str) -> bool {
+    token.is_some_and(|atr| atr.readings().iter().any(|r| r.lemma() == Some(lemma)))
+}
+
+fn update_j_value_ca(tokens: &[&AnalyzedTokenReadings], i: usize, j: usize, t: &TagSet) -> usize {
+    let current = tokens.get(i - j);
+    let text = current.map(|c| c.token().token()).unwrap_or_default();
+    if mr(text, &t.coord_ioni)
+        && i > j + 1
+        && i - j + 1 < tokens.len()
+        && mp(tokens.get(i - j - 1).copied(), &t.det)
+        && current.map(|c| c.token().token()) == Some("més")
+    {
+        return j + 1;
+    }
+    j
+}
+
+fn keep_counting_ca(
+    token: Option<&AnalyzedTokenReadings>,
+    apparitions: &Apparitions,
+    t: &TagSet,
+) -> bool {
+    let Some(a) = token else {
+        return false;
+    };
+    let text = a.token().token();
+    if mr(text, &t.prepo_nivell) || text == "." {
+        return true;
+    }
+    keep_counting_es(token, apparitions, t)
+}
+
+fn update_apparitions_ca(token: &AnalyzedTokenReadings, apparitions: &mut Apparitions, t: &TagSet) {
+    apparitions.conjunction |= mp(Some(token), &t.conjuncio);
+    if token.token().token() == "com" {
+        return;
+    }
+    if mp(Some(token), &t.nom) || mp(Some(token), &t.adjectiu) {
+        *apparitions = Apparitions::default();
+        return;
+    }
+    apparitions.adverb |= mp(Some(token), &t.adverbi);
+    apparitions.punctuation |= mp(Some(token), &t.puntuacio) || token.token().token() == ",";
+}
+
+pub(crate) fn accept_ca(
+    synthesizer: Option<&LangSynthesizer>,
+    args: &str,
+    matched_positions: &[usize],
+    tokens: &[&AnalyzedTokenReadings],
+    mut rm: RuleMatch,
+) -> Option<RuleMatch> {
+    let t = ca_tags();
+    let add_comma = arg_is_true(args, "addComma");
+    let i = *matched_positions.first()?;
+    let token_at = |idx: usize| tokens.get(idx).copied();
+    let adjective = token_at(i);
+
+    let mut is_plural = true;
+    let mut is_prev_noun = false;
+    let mut can_be_ms = false;
+    let mut can_be_fs = false;
+    let mut can_be_mp = false;
+    let mut can_be_fp = false;
+    let mut can_be_p = false;
+    let mut lv = Levels::default();
+    let mut apparitions = Apparitions::default();
+    let mut level = 0usize;
+    let mut j = 1usize;
+
+    while i > j && keep_counting_ca(token_at(i - j), &apparitions, t) && level < MAX_LEVELS {
+        let cur = i - j;
+        let current = token_at(cur);
+        if !is_prev_noun {
+            if mp(current, &t.nom)
+                || (cur > 1
+                    && !mp(current, &t.nom)
+                    && mp(current, &t.adjectiu)
+                    && mp(token_at(cur - 1), &t.det))
+            {
+                if mp(current, &t.gn_ms_tag) {
+                    lv.nms[level] += 1;
+                    can_be_ms = true;
+                }
+                if mp(current, &t.gn_fs_tag) {
+                    lv.nfs[level] += 1;
+                    can_be_fs = true;
+                }
+                if mp(current, &t.gn_mp_tag) {
+                    lv.nmp[level] += 1;
+                    can_be_mp = true;
+                }
+                if mp(current, &t.gn_fp_tag) {
+                    lv.nfp[level] += 1;
+                    can_be_fp = true;
+                }
+            }
+            if !mp(current, &t.gn_any) {
+                if mp(current, &t.nom_ms) {
+                    lv.nms[level] += 1;
+                    can_be_ms = true;
+                } else if mp(current, &t.nom_fs) {
+                    lv.nfs[level] += 1;
+                    can_be_fs = true;
+                } else if mp(current, &t.nom_mp) {
+                    lv.nmp[level] += 1;
+                    can_be_mp = true;
+                } else if mp(current, &t.nom_mn) {
+                    lv.nmn[level] += 1;
+                    can_be_ms = true;
+                    can_be_mp = true;
+                } else if mp(current, &t.nom_fp) {
+                    lv.nfp[level] += 1;
+                    can_be_fp = true;
+                } else if mp(current, &t.nom_cs) {
+                    lv.ncs[level] += 1;
+                    can_be_ms = true;
+                    can_be_fs = true;
+                } else if mp(current, &t.nom_cp) {
+                    lv.ncp[level] += 1;
+                    can_be_fp = true;
+                    can_be_mp = true;
+                }
+            }
+        }
+        if mp(current, &t.nom) {
+            lv.nt[level] += 1;
+            is_prev_noun = true;
+        } else {
+            is_prev_noun = false;
+        }
+        if mp(current, &t.det_cs) {
+            if mp(token_at(cur + 1), &t.nom_ms) {
+                lv.dms[level] += 1;
+                can_be_ms = true;
+            }
+            if mp(token_at(cur + 1), &t.nom_fs) {
+                lv.dfs[level] += 1;
+                can_be_fs = true;
+            }
+        }
+        if !mp(current, &t.adverbi)
+            && !(token_has_lemma(current, "tot") && token_has_lemma(token_at(cur + 1), "el"))
+        {
+            if mp(current, &t.det_ms) {
+                lv.dms[level] += 1;
+                can_be_ms = true;
+            }
+            if mp(current, &t.det_fs) {
+                lv.dfs[level] += 1;
+                can_be_fs = true;
+            }
+            if mp(current, &t.det_mp) {
+                lv.dmp[level] += 1;
+                can_be_mp = true;
+            }
+            if mp(current, &t.det_fp) {
+                lv.dfp[level] += 1;
+                can_be_fp = true;
+            }
+        }
+        if i > j + 1 {
+            let text = current.map(|c| c.token().token()).unwrap_or_default();
+            if mr(text, &t.prepo_nivell)
+                && !mp(current, &t.conjuncio)
+                && !mr(
+                    token_at(cur - 1)
+                        .map(|c| c.token().token())
+                        .unwrap_or_default(),
+                    &t.coord_ioni,
+                )
+                && !mp(token_at(cur + 1), &t.adverbi)
+            {
+                level += 1;
+            }
+        }
+        j = update_j_value_ca(tokens, i, j, t);
+        if let Some(current) = token_at(i - j) {
+            update_apparitions_ca(current, &mut apparitions, t);
+        }
+        j += 1;
+    }
+
+    level += 1;
+    if level > MAX_LEVELS {
+        level = MAX_LEVELS;
+    }
+    let mut c_n = [0u32; MAX_LEVELS];
+    let mut c_d = [0u32; MAX_LEVELS];
+    let mut c_ntotal = 0u32;
+    let mut c_dtotal = 0u32;
+    for jj in 0..level {
+        c_n[jj] = lv.nms[jj]
+            + lv.nfs[jj]
+            + lv.nmp[jj]
+            + lv.nfp[jj]
+            + lv.ncs[jj]
+            + lv.ncp[jj]
+            + lv.nmn[jj];
+        c_d[jj] = lv.dms[jj] + lv.dfs[jj] + lv.dmp[jj] + lv.dfp[jj];
+        c_ntotal += c_n[jj];
+        c_dtotal += c_d[jj];
+        if mp(adjective, &t.adjectiu_mp)
+            && (c_n[jj] > 1 || c_d[jj] > 1)
+            && (lv.nms[jj]
+                + lv.nmn[jj]
+                + lv.nmp[jj]
+                + lv.ncs[jj]
+                + lv.ncp[jj]
+                + lv.dms[jj]
+                + lv.dmp[jj])
+                > 0
+            && lv.nfs[jj] + lv.nfp[jj] <= lv.nt[jj]
+        {
+            return None;
+        }
+        if mp(adjective, &t.adjectiu_fp)
+            && (c_n[jj] > 1 || c_d[jj] > 1)
+            && ((lv.nms[jj] + lv.nmp[jj] + lv.nmn[jj] + lv.dms[jj] + lv.dmp[jj]) == 0
+                || (lv.nt[jj] > 0 && lv.nfs[jj] + lv.nfp[jj] >= lv.nt[jj]))
+        {
+            return None;
+        }
+        if c_n[jj] + c_d[jj] > 0 {
+            is_plural = is_plural && c_d[jj] > 1;
+            can_be_p = can_be_p || c_n[jj] > 1;
+        }
+    }
+    is_plural = is_plural
+        || (i > 2
+            && lv.nmp[0] + lv.nfp[0] + lv.ncp[0] > 0
+            && token_at(i - 2).map(|c| c.token().token()) == Some(","));
+
+    if c_ntotal == 0 && c_dtotal == 0 {
+        return None;
+    }
+
+    let (subst, adj, gn): (&Regex, &Regex, &Regex) = if mp(adjective, &t.adjectiu_cs) {
+        (&t.gn_cs, &t.adjectiu_s, &t.gn_cs_tag)
+    } else if mp(adjective, &t.adjectiu_cp) {
+        (&t.gn_cp, &t.adjectiu_p, &t.gn_cp_tag)
+    } else if mp(adjective, &t.adjectiu_ms) {
+        (&t.gn_ms, &t.adjectiu_ms, &t.gn_ms_tag)
+    } else if mp(adjective, &t.adjectiu_fs) {
+        (&t.gn_fs, &t.adjectiu_fs, &t.gn_fs_tag)
+    } else if mp(adjective, &t.adjectiu_mp) {
+        (&t.gn_mp, &t.adjectiu_mp, &t.gn_mp_tag)
+    } else if mp(adjective, &t.adjectiu_fp) {
+        (&t.gn_fp, &t.adjectiu_fp, &t.gn_fp_tag)
+    } else {
+        return None;
+    };
+
+    let mut j = 1usize;
+    let mut keep = true;
+    while i > j && keep {
+        let cur = i - j;
+        let current = token_at(cur);
+        if (mp(current, &t.nom_det) && mp(current, gn))
+            || (!mp(current, &t.gn_any) && mp(current, subst))
+        {
+            return None;
+        }
+        keep = !mp(current, &t.nom_det);
+        j += 1;
+    }
+
+    let prev = token_at(i - 1);
+    let necessary = (mp(prev, &t.nom) && !mp(prev, subst))
+        || (mp(prev, &t.adjectiu) && !mp(prev, gn))
+        || (mp(prev, &t.adjectiu) && !mp(prev, adj))
+        || (i > 2
+            && mp(prev, &t.adverbis_acceptats)
+            && !mp(token_at(i - 2), &t.verb)
+            && !mp(token_at(i - 2), &t.preposicions))
+        || (i > 3
+            && mp(prev, &t.loc_adv)
+            && mp(token_at(i - 2), &t.loc_adv)
+            && !mp(token_at(i - 3), &t.verb)
+            && !mp(token_at(i - 3), &t.preposicions));
+    if !necessary {
+        return None;
+    }
+
+    if !(is_plural && mp(adjective, &t.adjectiu_s)) {
+        let mut j = 1usize;
+        apparitions = Apparitions::default();
+        while i > j && keep_counting_ca(token_at(i - j), &apparitions, t) {
+            let cur = i - j;
+            let current = token_at(cur);
+            if (!mp(current, &t.gn_any) && mp(current, &t.nom_det) && mp(current, subst))
+                || mp(current, gn)
+            {
+                return None;
+            }
+            j = update_j_value_ca(tokens, i, j, t);
+            if let Some(current) = token_at(i - j) {
+                update_apparitions_ca(current, &mut apparitions, t);
+            }
+            j += 1;
+        }
+    }
+
+    let Some(synth) = synthesizer else {
+        return Some(rm);
+    };
+    let Some(adjective) = adjective else {
+        return Some(rm);
+    };
+    let mut suggestions: Vec<String> = Vec::new();
+    if let Some(lemma) = matching_reading(adjective, &t.adjectiu_cs).and_then(|r| r.lemma()) {
+        suggestions.extend(synth.synthesize(lemma, &t.synth_cs));
+    }
+    if suggestions.is_empty()
+        && let Some(lemma) = matching_reading(adjective, &t.adjectiu_cp).and_then(|r| r.lemma())
+    {
+        suggestions.extend(synth.synthesize(lemma, &t.synth_cp));
+    }
+    if suggestions.is_empty()
+        && is_plural
+        && let Some(lemma) = matching_reading(adjective, &t.adjectiu_p).and_then(|r| r.lemma())
+    {
+        suggestions.extend(synth.synthesize(lemma, &t.synth_common_plural));
+    }
+    if suggestions.is_empty()
+        && let Some(at) = matching_reading(adjective, &t.adjectiu)
+        && let Some(lemma) = at.lemma()
+    {
+        if can_be_ms && !is_plural {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_ms));
+        }
+        if can_be_fs && !is_plural {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_fs));
+        }
+        if can_be_mp {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_mp));
+        }
+        if can_be_fp {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_fp));
+        }
+        if can_be_ms && (is_plural || can_be_p) {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_mp));
+        }
+        if can_be_fs && !can_be_ms && (is_plural || can_be_p) {
+            suggestions.extend(synth.synthesize(lemma, &t.synth_fp));
+        }
+    }
+    let surface = adjective.token().token();
+    let lower = surface.to_lowercase();
+    if let Some(pos) = suggestions.iter().position(|s| *s == lower) {
+        suggestions.remove(pos);
+    }
+    if suggestions.is_empty() {
+        return None;
+    }
+    let definitive = if add_comma {
+        rm.set_offset_length(rm.offset().saturating_sub(1), rm.length() + 1);
+        let mut out = Vec::with_capacity(suggestions.len() + 1);
+        out.push(format!(", {surface}"));
+        out.extend(suggestions.iter().map(|s| format!(" {s}")));
+        out
+    } else {
+        suggestions
+    };
+    rm.set_replacements(
+        dedup_preserving_order(definitive)
+            .into_iter()
+            .map(SuggestedReplacement::new)
+            .collect(),
+    );
+    Some(rm)
+}
+
 pub(crate) fn accept_fr(
     synthesizer: Option<&LangSynthesizer>,
     _args: &str,
@@ -1669,6 +2117,24 @@ mod tests {
             "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/pl/src/main/resources/org/languagetool/resource/pl",
         );
         LangSynthesizer::for_language(dir, "pl")
+    }
+
+    #[test]
+    fn ca_synth_degrades_to_none_while_dict_absent() {
+        let dir = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/ca/src/main/resources/org/languagetool/resource/ca",
+        );
+        if dir.join("ca-ES_synth.dict").is_file() {
+            assert!(
+                LangSynthesizer::for_language(dir, "ca").is_some(),
+                "with ca-ES_synth.dict present the ca arm must construct"
+            );
+        } else {
+            assert!(
+                LangSynthesizer::for_language(dir, "ca").is_none(),
+                "ca must degrade to None while ca-ES_synth.dict is absent"
+            );
+        }
     }
 
     #[test]

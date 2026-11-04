@@ -141,8 +141,23 @@ fn compiled_rules() -> std::sync::Arc<CompiledRuleSet> {
     .expect("sv grammar")
 }
 
+fn sv_synth() -> Option<Arc<og_rules::postponed_adjective::LangSynthesizer>> {
+    static CACHE: og_core::releasable::Releasable<og_rules::postponed_adjective::LangSynthesizer> =
+        og_core::releasable::Releasable::new();
+    og_core::releasable::shared_get_or_build(&CACHE, || {
+        og_rules::postponed_adjective::LangSynthesizer::for_language(&sv_resource_dir(), "sv")
+            .map(Arc::new)
+    })
+}
+
 pub(crate) fn suite_engine() -> PatternRuleEngine {
-    PatternRuleEngine::new()
+    let mut engine = PatternRuleEngine::new();
+    if let Some(synth) = sv_synth() {
+        engine = engine
+            .with_synthesizer(synth.clone())
+            .with_suggestion_synthesizer(synth);
+    }
+    engine
 }
 
 pub(crate) fn module_checker() -> std::sync::Arc<og_core::checker::Checker> {
@@ -151,10 +166,14 @@ pub(crate) fn module_checker() -> std::sync::Arc<og_core::checker::Checker> {
     og_core::releasable::shared_get_or_build(&CHECKER, || {
         let natives = super::swedish_native_rules();
         let mut rules = natives.rules;
+        let synth = sv_synth();
         for compiled in compiled_rules().rules.clone() {
             if compiled.default_on && !compiled.deprecated {
                 rules.push(Arc::new(crate::engine::XmlPatternRule::with_resources(
-                    compiled, None, None, None,
+                    compiled,
+                    None,
+                    synth.clone(),
+                    synth.clone(),
                 )));
             }
         }
@@ -317,23 +336,16 @@ fn swedish_grammar_examples_with_sv_pipeline() {
         "/tmp/test_failures_sv_module.txt",
         all_failures.join("\n") + "\n",
     );
-    assert_eq!(total, 45, "all sv grammar.xml examples must be evaluated");
+    assert_eq!(total, 53, "all sv grammar.xml examples must be evaluated");
     let live: Vec<&str> = all_failures.iter().map(String::as_str).collect();
     assert_eq!(
         live, PINNED_RESIDUE,
-        "the sv residue is pinned: the ART_VB_NN corrections need a Swedish LangSynthesizer arm \
-         (swedish_synth.dict) in og-rules postponed_adjective, which shared crates must provide; \
-         anything else is a regression"
+        "the sv residue is pinned: every grammar.xml example passes, so any failure line is a \
+         regression"
     );
 }
 
-const PINNED_RESIDUE: &[&str] = &[
-    "CORRECTION: [ART_VB_NN.n-ord]: 'Det var en urholkat sten.' expected 'en urholkad sten' got [\"en urholkat sten\"]",
-    "CORRECTION: [ART_VB_NN.t-ord]: 'Det var ett urladdad batteri.' expected 'ett urladdat batteri' got [\"ett urladdad batteri\"]",
-    "CORRECTION: [LOS]: 'Los Foobar' expected 'Loss' got [\"loss\"]",
-    "CORRECTION: [NEG_MELLAN_SYD_TILL_NORD]: 'Mellan Stockholm till Skara finns inget intressant.' expected 'Mellan Stockholm och Skara' got [\"mellan Stockholm och Skara\", \"från Stockholm till Skara\"]",
-    "CORRECTION: [FORRE_FORE_TITEL]: 'Förra chefen på Arla var en trevlig prick.' expected 'Förre chefen på' got [\"förre chefen på\"]",
-];
+const PINNED_RESIDUE: &[&str] = &[];
 
 #[test]
 fn grammar_file_compiles_the_java_rule_inventory() {
@@ -348,7 +360,7 @@ fn grammar_file_compiles_the_java_rule_inventory() {
         .filter_map(|g| g.first())
         .flat_map(|r| r.examples.iter())
         .count();
-    assert_eq!(example_count, 45, "grammar.xml example inventory");
+    assert_eq!(example_count, 53, "grammar.xml example inventory");
 }
 
 #[test]

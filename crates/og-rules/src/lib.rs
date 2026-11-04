@@ -1,3 +1,4 @@
+pub mod add_commas;
 pub mod de_comma_tagger;
 pub mod en_article;
 pub mod fr_suppress;

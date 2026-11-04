@@ -25,6 +25,12 @@ impl CatalanPipeline {
             let resource_dir = super::tagger::ca_resource_dir().expect("ca resource dir");
             let disambiguator = std::fs::read_to_string(resource_dir.join("disambiguation.xml"))
                 .ok()
+                .map(|xml| {
+                    og_xml::parser::XmlRuleParser::expand_entities_with_base(
+                        &xml,
+                        Some(&resource_dir),
+                    )
+                })
                 .and_then(|xml| og_tagger::XmlDisambiguator::from_xml(&xml).ok())
                 .and_then(|xml| {
                     crate::engine::find_lt_core_resource_dir().map(|core| {
@@ -81,14 +87,19 @@ impl CatalanPipeline {
             if token_idx >= tokens_mut.len() {
                 continue;
             }
+            let typographic_apostrophe = atr.has_typographic_apostrophe();
             let readings = atr.into_readings();
             if !readings.is_empty() {
                 let primary = tokens_mut[token_idx].token().clone();
                 let updated_primary =
                     AnalyzedToken::new(primary.token(), primary.start(), primary.end())
                         .with_lemma(readings[0].lemma().unwrap_or(primary.token()).to_string());
-                tokens_mut[token_idx] =
+                let mut updated =
                     AnalyzedTokenReadings::new(updated_primary).with_readings(readings);
+                if typographic_apostrophe {
+                    updated.set_chunks(vec![og_core::TYPOGRAPHIC_APOSTROPHE_CHUNK.to_string()]);
+                }
+                tokens_mut[token_idx] = updated;
             }
         }
         for token in sentence.tokens_mut().iter_mut().rev() {
@@ -186,8 +197,20 @@ fn catalan_grammar_examples_with_ca_pipeline() {
     let _release_guard = crate::release_guard();
     let rule_set = compiled_rules();
     let groups = rule_groups(&rule_set);
-    let engine = PatternRuleEngine::new();
+    let resource_dir = super::tagger::ca_resource_dir().expect("ca resource dir");
     let pipeline = CatalanPipeline::shared();
+    let pipeline_for_engine = Arc::clone(&pipeline);
+    let engine = crate::ca_module_refresh::example_suite::ca_suite_engine(
+        &rule_set,
+        &resource_dir,
+        move |text| {
+            pipeline_for_engine
+                .analyze_offset_text(text)
+                .into_iter()
+                .map(|(sentence, _)| sentence)
+                .collect()
+        },
+    );
     og_rules::pattern_rule::set_test_date_hack(true);
     let started = std::time::Instant::now();
 
@@ -336,17 +359,17 @@ fn suite_covers_every_live_grammar_example() {
     let rule_set = compiled_rules();
     assert_eq!(
         rule_set.rules.len(),
-        9651,
-        "ca grammar.xml carries exactly 9651 <rule> elements (1748 rulegroups + standalone) and \
+        9656,
+        "ca grammar.xml carries exactly 9656 <rule> elements (1748 rulegroups + standalone) and \
          the compiler must keep them all"
     );
     let total_examples: usize = rule_set.rules.iter().map(|r| r.examples.len()).sum();
     assert_eq!(
-        total_examples, 25732,
-        "the suite denominator must stay the full live example set: of the 27239 '<example' \
+        total_examples, 25745,
+        "the suite denominator must stay the full live example set: of the 27252 '<example' \
          occurrences in grammar.xml, 406 sit inside XML comments and 1101 inside <antipattern> \
          elements (Java routes those to antiPatternExample, PatternRuleHandler.java:342-348, \
-         and never tests them as rule examples), leaving 25732 live rule examples - any drop \
+         and never tests them as rule examples), leaving 25745 live rule examples - any drop \
          here is a silent og-xml parser/compiler regression"
     );
     let mut keys = std::collections::HashSet::with_capacity(rule_set.rules.len());
@@ -525,7 +548,7 @@ fn sentence_with_readings_helper_is_exported() {
 }
 
 #[test]
-fn pipeline_gv_chunking_stays_dict_starved_on_our_data() {
+fn pipeline_gv_chunking_fires_with_the_binary_dictionary() {
     let pipeline = CatalanPipeline::shared();
     let sentences = pipeline.analyze_offset_text("S'ha de fer.");
     let tokens: Vec<&og_core::AnalyzedTokenReadings> = sentences[0]
@@ -536,9 +559,16 @@ fn pipeline_gv_chunking_stays_dict_starved_on_our_data() {
         .collect();
     let surfaces: Vec<&str> = tokens.iter().map(|t| t.token().token()).collect();
     assert_eq!(surfaces, vec!["S'", "ha", "de", "fer", "."]);
-    assert!(
-        tokens.iter().all(|t| !t.has_chunk("GV")),
-        "added.txt carries no haver/de/fer verb readings, so the GV chunker cannot fire on our data"
+    let gv: Vec<&str> = tokens
+        .iter()
+        .filter(|t| t.has_chunk("GV"))
+        .map(|t| t.token().token())
+        .collect();
+    assert_eq!(
+        gv,
+        vec!["ha", "de", "fer"],
+        "with ca-ES.dict loaded the tagger emits the haver/de/fer verb readings and the GV \
+         chunker covers the verb group like Java's CatalanChunker"
     );
 }
 
@@ -549,9 +579,21 @@ fn pronom_feble_duplicate_stays_dict_starved_through_the_pipeline() {
     let text = "S'ha de fer-se";
     let sentences = pipeline.analyze_offset_text(text);
     let matches = rule.match_sentence(&sentences[0].0);
-    assert!(
-        matches.is_empty(),
-        "our-data outcome: without ca-ES.dict the tagger emits no pronom-feble or verb readings, so PRONOMS_FEBLES_DUPLICATS stays dormant (algorithm-level pins live in pronom_feble_duplicate::tests)"
+    assert_eq!(
+        matches.len(),
+        1,
+        "with ca-ES.dict loaded the tagger emits the pronom-feble and verb readings, so PRONOMS_FEBLES_DUPLICATS fires on the duplicated reflexive like Java (algorithm-level pins live in pronom_feble_duplicate::tests)"
+    );
+    assert_eq!(matches[0].offset(), 0);
+    assert_eq!(matches[0].length(), 14);
+    let values: Vec<String> = matches[0]
+        .replacements()
+        .iter()
+        .map(|r| r.value().to_string())
+        .collect();
+    assert_eq!(
+        values,
+        vec!["Ha de fer-se".to_string(), "S'ha de fer".to_string()]
     );
 }
 

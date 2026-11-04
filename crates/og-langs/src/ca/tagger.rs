@@ -121,26 +121,14 @@ impl ManualDictionary {
         }
     }
 
-    fn lookup(&self, word: &str) -> Vec<(String, String)> {
-        let mut readings: Vec<(String, String)> =
-            self.entries.get(word).cloned().unwrap_or_default();
-        if let Some(removals) = self.removals.get(word) {
-            readings.retain(|(lemma, tag)| {
-                !removals
-                    .iter()
-                    .any(|(r_lemma, r_tag)| r_lemma == lemma && r_tag == tag)
-            });
-        }
-        readings
-    }
-
-    fn is_tagged(&self, word: &str) -> bool {
-        !self.lookup(word).is_empty()
+    fn removals_for(&self, word: &str) -> Option<&Readings> {
+        self.removals.get(word)
     }
 }
 
 pub struct CatalanTagger {
     dict: ManualDictionary,
+    binary_dict: Option<Arc<og_tagger::morfologik::MorfologikDictionary>>,
     wrong_verbs: HashSet<String>,
     adj_part_fs: Regex,
     verb: Regex,
@@ -176,6 +164,11 @@ impl CatalanTagger {
         }
         Self {
             dict: ManualDictionary::load(resource_dir),
+            binary_dict: og_tagger::morfologik::MorfologikDictionary::load(
+                &resource_dir.join("ca-ES.dict"),
+                &resource_dir.join("ca-ES.info"),
+            )
+            .map(Arc::new),
             wrong_verbs,
             adj_part_fs: Regex::new("^(VMP00SF.|A[QO].[FC]S.)$").unwrap(),
             verb: Regex::new("^V.+$").unwrap(),
@@ -196,7 +189,31 @@ impl CatalanTagger {
     }
 
     pub fn is_word_tagged(&self, word: &str) -> bool {
-        self.dict.is_tagged(word)
+        let (readings, _, _) = self.analyze_token(word, 0, 0);
+        readings
+            .iter()
+            .any(|reading| !reading.pos_tags().is_empty())
+    }
+
+    fn combined_readings(&self, word: &str) -> Vec<(String, String)> {
+        let mut readings: Vec<(String, String)> =
+            self.dict.entries.get(word).cloned().unwrap_or_default();
+        if let Some(binary) = &self.binary_dict {
+            readings.extend(
+                binary
+                    .lookup(word)
+                    .into_iter()
+                    .map(|(lemma, tag)| (lemma.to_string(), tag.to_string())),
+            );
+        }
+        if let Some(removals) = self.dict.removals_for(word) {
+            readings.retain(|(lemma, tag)| {
+                !removals
+                    .iter()
+                    .any(|(r_lemma, r_tag)| r_lemma == lemma && r_tag == tag)
+            });
+        }
+        readings
     }
 
     fn readings_for(
@@ -206,8 +223,7 @@ impl CatalanTagger {
         start: usize,
         end: usize,
     ) -> Vec<AnalyzedToken> {
-        self.dict
-            .lookup(probe)
+        self.combined_readings(probe)
             .into_iter()
             .map(|(lemma, tag)| {
                 AnalyzedToken::new(display, start, end)
@@ -218,8 +234,7 @@ impl CatalanTagger {
     }
 
     fn wordform_has_postag(&self, wordform: &str, postag: &str) -> bool {
-        self.dict
-            .lookup(wordform)
+        self.combined_readings(wordform)
             .iter()
             .any(|(_, tag)| tag == postag)
     }
@@ -238,7 +253,7 @@ impl CatalanTagger {
                 Some(0) | None => lower_word.clone(),
                 Some(cut) => lower_word[..cut].to_string(),
             };
-            for (_, tag) in self.dict.lookup(&possible_adj) {
+            for (_, tag) in self.combined_readings(&possible_adj) {
                 if self.adj_part_fs.is_match(&tag) {
                     return vec![
                         AnalyzedToken::new(word, start, end)
@@ -251,7 +266,7 @@ impl CatalanTagger {
         if let Some(caps) = self.prefixes_for_verbs.captures(word) {
             let possible_verb = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
             let mut out = Vec::new();
-            for (lemma, tag) in self.dict.lookup(possible_verb) {
+            for (lemma, tag) in self.combined_readings(possible_verb) {
                 if lemma != "nòmer" && self.verb.is_match(&tag) {
                     out.push(
                         AnalyzedToken::new(word, start, end)
@@ -274,7 +289,7 @@ impl CatalanTagger {
                     .map(|m| m.as_str())
                     .unwrap_or_default()
                     .to_lowercase();
-                for (lemma, tag) in self.dict.lookup(&adj2) {
+                for (lemma, tag) in self.combined_readings(&adj2) {
                     if tag.starts_with('A') {
                         return vec![
                             AnalyzedToken::new(word, start, end)
@@ -302,7 +317,7 @@ impl CatalanTagger {
                     .map(|m| m.as_str())
                     .unwrap_or_default()
                     .to_lowercase();
-                for (lemma, tag) in self.dict.lookup(&adj3) {
+                for (lemma, tag) in self.combined_readings(&adj3) {
                     if tag.starts_with('A') {
                         return vec![
                             AnalyzedToken::new(word, start, end)
@@ -331,8 +346,7 @@ impl CatalanTagger {
         if !self.wrong_verbs.contains(infinitive) {
             return Vec::new();
         }
-        self.dict
-            .lookup(conjugated)
+        self.combined_readings(conjugated)
             .into_iter()
             .filter(|(_, tag)| tag.starts_with('V'))
             .map(|(_, tag)| {
@@ -368,7 +382,7 @@ impl CatalanTagger {
         if let Some(stem) = lower_word.strip_prefix("en") {
             let mut selected: Vec<(String, String)> = Vec::new();
             let mut lemma = String::new();
-            for (candidate_lemma, tag) in self.dict.lookup(stem) {
+            for (candidate_lemma, tag) in self.combined_readings(stem) {
                 if tag.starts_with('V') {
                     lemma = format!("en{candidate_lemma}");
                     selected.push((lemma.clone(), tag));
@@ -616,12 +630,11 @@ mod tests {
         let tagger = tagger();
         assert!(
             tagger
-                .dict
-                .lookup("AICLE")
+                .combined_readings("AICLE")
                 .iter()
                 .any(|(l, t)| l == "AICLE" && t == "NCMS000"),
             "added.txt AICLE entry must resolve: {:?}",
-            tagger.dict.lookup("AICLE")
+            tagger.combined_readings("AICLE")
         );
         assert!(tagger.is_word_tagged("Aarne-Thompson"));
     }
@@ -658,8 +671,7 @@ mod tests {
     fn ment_adverbs_get_the_java_rg_tag_when_the_adjective_is_known() {
         let tagger = tagger();
         let stem_known = tagger
-            .dict
-            .lookup("ordinària")
+            .combined_readings("ordinària")
             .iter()
             .any(|(_, t)| t == "AQ0FS0");
         if !stem_known {
@@ -871,5 +883,52 @@ mod tests {
         let tagger = fixture_tagger();
         assert!(!tagger.is_word_tagged("caca"));
         assert!(tagger.is_word_tagged("abusar"));
+    }
+
+    #[test]
+    fn binary_dict_readings_append_and_removals_subtract_from_the_combined_set() {
+        let tagger = tagger();
+        let binary = tagger.binary_dict.as_ref().expect("ca-ES.dict loads");
+        assert!(
+            binary
+                .lookup("Calcutta")
+                .iter()
+                .any(|(l, t)| *l == "Calcutta" && *t == "NPCN000"),
+            "Calcutta/NPCN000 must come from the binary dict"
+        );
+        assert!(
+            !tagger
+                .combined_readings("Calcutta")
+                .iter()
+                .any(|(l, t)| *l == "Calcutta" && *t == "NPCN000"),
+            "removed.txt must subtract readings from the combined set: {:?}",
+            tagger.combined_readings("Calcutta")
+        );
+        let combined = tagger.combined_readings("menjar");
+        let manual_len = tagger
+            .dict
+            .entries
+            .get("menjar")
+            .map(|v| v.len())
+            .unwrap_or(0);
+        let binary_len = binary.lookup("menjar").len();
+        assert_eq!(combined.len(), manual_len + binary_len);
+    }
+
+    #[test]
+    fn tokenizer_gate_dictionary_words_match_the_java_oracle() {
+        let tagger = tagger();
+        assert!(tagger.is_word_tagged("vint-i-quatre"));
+        assert!(tagger.is_word_tagged("dues-centes"));
+        assert!(tagger.is_word_tagged("dos-cents"));
+        assert!(tagger.is_word_tagged("Figaró-Montmany"));
+        assert!(tagger.is_word_tagged("al-Àndalus"));
+        assert!(tagger.is_word_tagged("cotó-en-pèl"));
+        assert!(tagger.is_word_tagged("Mont-ras"));
+        assert!(tagger.is_word_tagged("Trenta-dues"));
+        assert!(tagger.is_word_tagged("Dues-centes"));
+        assert!(tagger.is_word_tagged("Dos-centes"));
+        assert!(!tagger.is_word_tagged("publico-privada"));
+        assert!(!tagger.is_word_tagged("Sud-Est"));
     }
 }
