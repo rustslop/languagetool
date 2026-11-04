@@ -869,7 +869,7 @@ impl XmlDisambiguator {
                                         )
                                     })
                                     .collect();
-                                if indexed_unify.len() != end - start && !spec.negate {
+                                if indexed_unify.is_empty() && !spec.negate {
                                     continue;
                                 }
                                 let mut plans: Vec<og_xml::unifier::UnifyElemPlan> =

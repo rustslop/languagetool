@@ -49,6 +49,12 @@ impl RefreshPipeline {
             let resource_dir = ca_resource_dir().expect("ca resource dir");
             let disambiguator = std::fs::read_to_string(resource_dir.join("disambiguation.xml"))
                 .ok()
+                .map(|xml| {
+                    og_xml::parser::XmlRuleParser::expand_entities_with_base(
+                        &xml,
+                        Some(&resource_dir),
+                    )
+                })
                 .and_then(|xml| og_tagger::XmlDisambiguator::from_xml(&xml).ok())
                 .and_then(|xml| {
                     crate::engine::find_lt_core_resource_dir().map(|core| {
@@ -157,8 +163,8 @@ enum Outcome {
 
 type ExampleRecord = (String, String, Option<(Outcome, String)>, bool);
 
-const PINNED_PASSED: usize = 24760;
-const PINNED_DICT_EXCLUDED: usize = 977;
+const PINNED_PASSED: usize = 25091;
+const PINNED_DICT_EXCLUDED: usize = 646;
 const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
     (
         "MOTS_NO_SEPARATS",

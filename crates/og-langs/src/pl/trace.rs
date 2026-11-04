@@ -653,7 +653,7 @@ mod tests {
             }
         }
         assert_eq!(
-            matches, 0,
+            matches, 1,
             "the ZDANIA_ZLOZONE no_match family (12 of the 16 residues): on this sentence the \
              engine trace stops exploring element 1 candidates after 'wa\u{17c}n\u{105}' because \
              every landing candidate whose (token_idx+1)..=after window (pattern_rule.rs:\
@@ -662,7 +662,8 @@ mod tests {
              [pcon:imperf] is never reached; Java matches this example via \
              AbstractPatternRulePerformer.java:169-193, whose prevMatched logic (reset per \
              element at :106, accumulated at :181-191, sticky across the candidate loop) is the \
-             reference the shared engine must reproduce - this pin flips to >0 when it does"
+             reference the shared engine must reproduce - flipped to 1 when the disambiguator's \
+             unify guard stopped over-skipping optional unify-ignore elements (xml_disambiguator.rs)"
         );
     }
 

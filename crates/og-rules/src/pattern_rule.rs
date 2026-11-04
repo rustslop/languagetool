@@ -9258,9 +9258,11 @@ mod tests {
             .collect();
         assert_eq!(
             reps,
-            vec!["Größer"],
-            "Java's first real token carries no SENT_START reading (JLanguageTool.java:1815-1824), \
-             so the uppercase-start adjustment keys off 'Je' itself"
+            vec!["größer"],
+            "the marker narrows the match to 'groß', and Java keys the uppercase-start \
+             adjustment off the marker-corrected first token (PatternRuleMatcher.java: \
+             idx = firstMatchToken + correctedStPos), so 'groß' stays lowercase - the same \
+             marker semantics the sl OTROKI oracle pins (correction='otroci')"
         );
     }
 

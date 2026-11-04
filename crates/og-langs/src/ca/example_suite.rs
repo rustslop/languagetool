@@ -25,6 +25,12 @@ impl CatalanPipeline {
             let resource_dir = super::tagger::ca_resource_dir().expect("ca resource dir");
             let disambiguator = std::fs::read_to_string(resource_dir.join("disambiguation.xml"))
                 .ok()
+                .map(|xml| {
+                    og_xml::parser::XmlRuleParser::expand_entities_with_base(
+                        &xml,
+                        Some(&resource_dir),
+                    )
+                })
                 .and_then(|xml| og_tagger::XmlDisambiguator::from_xml(&xml).ok())
                 .and_then(|xml| {
                     crate::engine::find_lt_core_resource_dir().map(|core| {
@@ -573,9 +579,21 @@ fn pronom_feble_duplicate_stays_dict_starved_through_the_pipeline() {
     let text = "S'ha de fer-se";
     let sentences = pipeline.analyze_offset_text(text);
     let matches = rule.match_sentence(&sentences[0].0);
-    assert!(
-        matches.is_empty(),
-        "our-data outcome: without ca-ES.dict the tagger emits no pronom-feble or verb readings, so PRONOMS_FEBLES_DUPLICATS stays dormant (algorithm-level pins live in pronom_feble_duplicate::tests)"
+    assert_eq!(
+        matches.len(),
+        1,
+        "with ca-ES.dict loaded the tagger emits the pronom-feble and verb readings, so PRONOMS_FEBLES_DUPLICATS fires on the duplicated reflexive like Java (algorithm-level pins live in pronom_feble_duplicate::tests)"
+    );
+    assert_eq!(matches[0].offset(), 0);
+    assert_eq!(matches[0].length(), 14);
+    let values: Vec<String> = matches[0]
+        .replacements()
+        .iter()
+        .map(|r| r.value().to_string())
+        .collect();
+    assert_eq!(
+        values,
+        vec!["Ha de fer-se".to_string(), "S'ha de fer".to_string()]
     );
 }
 
