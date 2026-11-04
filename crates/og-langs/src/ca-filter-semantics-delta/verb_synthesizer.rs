@@ -296,6 +296,17 @@ impl<'a> VerbSynthesizer<'a> {
         }
     }
 
+    pub fn get_first_verb_persona_number_imperative(&self) -> String {
+        if self.i_first_verb < 0 || self.i_first_verb >= self.tokens.len() as isize {
+            return String::new();
+        }
+        match reading_and_tag_matching(self.tokens[self.i_first_verb as usize], &P_IMPERATIVE_VERB)
+        {
+            Some((_, tag)) => substring(tag, 4, 6),
+            None => String::new(),
+        }
+    }
+
     pub fn get_first_verb_is_postag(&self) -> Option<String> {
         if self.i_first_verb == -1 || self.i_first_verb >= self.tokens.len() as isize {
             return None;

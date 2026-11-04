@@ -5,6 +5,7 @@ use std::sync::Arc;
 use og_core::{AnalyzedSentence, RuleMatch};
 use og_rules::language_filter::{LanguageFilterCall, LanguageFilterHook};
 
+use super::adjust_pronouns::accept_rule_match as adjust_pronouns_accept;
 use super::adjust_verb_suggestions::{
     AdjustArgs, AdjustServices, accept_rule_match as adjust_verb_accept,
 };
@@ -13,6 +14,7 @@ use super::convert_gender_number::{ConvertArgs, accept_rule_match as convert_acc
 use super::en_no_infinitiu::accept_rule_match as en_no_infinitiu_accept;
 use super::oblidarse_suggestions::accept_rule_match as oblidarse_accept;
 use super::portar_gerundi::accept_rule_match as portar_gerundi_accept;
+use super::portar_temps::accept_rule_match as adjust_portar_temps_accept;
 use super::possessius_redundants::accept_rule_match as possessius_accept;
 use super::que_inici::accept_rule_match as que_inici_accept;
 
@@ -113,6 +115,11 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                     &|s| adapt_suggestion_ca(s, ""),
                 )
             }
+            "org.languagetool.rules.ca.PortarTempsSuggestionsFilter" => {
+                adjust_portar_temps_accept(&rm, rm.offset(), call.tokens, &|lemma, postag| {
+                    self.synth_regexp(lemma, postag)
+                })
+            }
             "org.languagetool.rules.ca.PortarGerundiSuggestionsFilter" => portar_gerundi_accept(
                 &rm,
                 rm.offset(),
@@ -120,6 +127,42 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                 arg(call.args, "newLemma"),
                 &|lemma, postag| self.synth_regexp(lemma, postag),
             ),
+            "org.languagetool.rules.AdaptSuggestionsFilter" => {
+                let sentence_text = offset_aligned_sentence_text(call.sentence);
+                let original = sentence_text
+                    .get(rm.offset()..rm.offset() + rm.length())
+                    .unwrap_or("")
+                    .to_string();
+                let adapted: Vec<og_core::SuggestedReplacement> = rm
+                    .replacements()
+                    .iter()
+                    .map(|r| {
+                        og_core::SuggestedReplacement::new(&adapt_suggestion_ca(
+                            r.value(),
+                            &original,
+                        ))
+                    })
+                    .collect();
+                let mut out = rm;
+                out.set_replacements(adapted);
+                Some(out)
+            }
+            "org.languagetool.rules.ca.AdjustPronounsFilter" => {
+                let services = AdjustServices {
+                    tagger: &|word| self.tag(word),
+                    synth: &|lemma, postag| self.synth_regexp(lemma, postag),
+                };
+                let _ = &services;
+                adjust_pronouns_accept(
+                    &rm,
+                    rm.offset(),
+                    call.tokens,
+                    arg(call.args, "actions"),
+                    arg(call.args, "newLemma"),
+                    arg(call.args, "newOnlyLemma"),
+                    &|lemma, postag| self.synth_regexp(lemma, postag),
+                )
+            }
             "org.languagetool.rules.ca.AdjustVerbSuggestionsFilter" => {
                 let sentence_text = offset_aligned_sentence_text(call.sentence);
                 let services = AdjustServices {

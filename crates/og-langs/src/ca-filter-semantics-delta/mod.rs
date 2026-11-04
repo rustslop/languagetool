@@ -1,3 +1,4 @@
+pub mod adjust_pronouns;
 pub mod adjust_verb_suggestions;
 pub mod apostophation;
 pub mod ca_adapt;
@@ -9,6 +10,7 @@ pub mod dispatch;
 pub mod en_no_infinitiu;
 pub mod oblidarse_suggestions;
 pub mod portar_gerundi;
+pub mod portar_temps;
 pub mod possessius_redundants;
 pub mod pronoms_actions;
 pub mod pronoms_davant;

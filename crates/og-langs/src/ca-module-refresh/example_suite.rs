@@ -163,8 +163,8 @@ enum Outcome {
 
 type ExampleRecord = (String, String, Option<(Outcome, String)>, bool);
 
-const PINNED_PASSED: usize = 25091;
-const PINNED_DICT_EXCLUDED: usize = 646;
+const PINNED_PASSED: usize = 25189;
+const PINNED_DICT_EXCLUDED: usize = 548;
 const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
     (
         "MOTS_NO_SEPARATS",
