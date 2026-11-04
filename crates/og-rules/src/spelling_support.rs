@@ -424,7 +424,48 @@ pub fn prepare_line_for_speller(variant: SpellerVariant, line_original: &str) ->
     }
 }
 
+fn german_verb_dictionary() -> Option<std::sync::Arc<og_tagger::morfologik::MorfologikDictionary>> {
+    static DIR: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        [
+            "languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/resource/de",
+            "../languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/resource/de",
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/de/src/main/resources/org/languagetool/resource/de",
+        ]
+        .iter()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.join("german.dict").is_file())
+    });
+    dir.as_ref()
+        .and_then(|d| og_tagger::german_tagger::shared_german_dictionary(d))
+}
+
+fn expand_german_underscore_line(stripped: &str) -> Option<Vec<String>> {
+    let underscore_idx = stripped.find('_')?;
+    if underscore_idx == 0 || stripped.as_bytes()[underscore_idx - 1] == b'\\' {
+        return None;
+    }
+    let cleaned = stripped.replace('\\', "");
+    let parts: Vec<&str> = cleaned.split('_').collect();
+    if parts.len() != 2 || parts[0].contains('/') || parts[1].contains('/') {
+        return None;
+    }
+    let (prefix, base) = (parts[0], parts[1]);
+    if base == "in" {
+        return None;
+    }
+    let dictionary = german_verb_dictionary()?;
+    Some(og_tagger::german_tagger::expand_verb_prefix_line(
+        dictionary.as_ref(),
+        prefix,
+        base,
+    ))
+}
+
 fn prepare_line_german(stripped: &str) -> Vec<String> {
+    if let Some(expanded) = expand_german_underscore_line(stripped) {
+        return expanded;
+    }
     let form_tag: Vec<&str> = stripped.split('/').collect();
     let Some(form) = form_tag.first() else {
         return vec![String::new()];

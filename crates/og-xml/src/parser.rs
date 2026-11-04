@@ -738,9 +738,9 @@ impl XmlRuleParser {
                                     phrase_run_elements.push(XmlPatternElement::Token(copy));
                                 }
                             } else if let Some(pattern) = &mut current_pattern {
-                                let trimmed = current_text.trim();
+                                let trimmed = java_trim_whitespace(&current_text);
                                 if !trimmed.is_empty() {
-                                    token.text = Some(trimmed.to_string());
+                                    token.text = Some(trimmed);
                                 }
                                 if in_unify_ignore {
                                     token.unify_neutral = true;
@@ -1126,7 +1126,10 @@ impl XmlRuleParser {
                             in_exception = false;
                             if let Some(mut exc) = current_exception.take() {
                                 if !exception_text.is_empty() {
-                                    exc.text = Some(exception_text.trim().to_string());
+                                    let normalized = java_trim_whitespace(&exception_text);
+                                    if !normalized.is_empty() {
+                                        exc.text = Some(normalized);
+                                    }
                                 }
                                 if let Some(ref mut token) = current_token {
                                     token.exceptions.push(exc);
@@ -1135,9 +1138,9 @@ impl XmlRuleParser {
                         }
                         "token" => {
                             if let Some(mut token) = current_token.take() {
-                                let trimmed = current_text.trim();
+                                let trimmed = java_trim_whitespace(&current_text);
                                 if !trimmed.is_empty() {
-                                    token.text = Some(trimmed.to_string());
+                                    token.text = Some(trimmed);
                                 }
                                 if current_unification.is_some() && current_pattern.is_none() {
                                     if let Some(uni) = current_unification.as_mut()
@@ -1497,9 +1500,85 @@ impl Default for XmlRuleParser {
     }
 }
 
+pub(crate) fn java_trim_whitespace(s: &str) -> String {
+    let trimmed = s.trim_matches(|c: char| c <= ' ');
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut filtered = String::with_capacity(trimmed.len());
+    let mut i = 0usize;
+    while i < chars.len() {
+        while i < chars.len()
+            && chars[i] <= ' '
+            && (chars.get(i + 1).is_some_and(|c| *c <= ' ') || i > 1 && chars[i - 1] <= ' ')
+        {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+        let c = chars[i];
+        if c != '\n' && c != '\t' && c != '\r' {
+            filtered.push(c);
+        }
+        i += 1;
+    }
+    if filtered.chars().count() == chars.len() {
+        trimmed.to_string()
+    } else {
+        filtered
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn java_trim_whitespace_matches_string_tools_semantics() {
+        assert_eq!(java_trim_whitespace("a  b"), "ab");
+        assert_eq!(java_trim_whitespace("a b"), "a b");
+        assert_eq!(java_trim_whitespace("a\tb"), "ab");
+        assert_eq!(java_trim_whitespace("a\nb"), "ab");
+        assert_eq!(java_trim_whitespace("a \n b"), "ab");
+        assert_eq!(java_trim_whitespace("  a  "), "a");
+        assert_eq!(java_trim_whitespace("\n\ta\n\n"), "a");
+        assert_eq!(java_trim_whitespace("a\n   propor"), "apropor");
+        assert_eq!(
+            java_trim_whitespace("esperar|\n                            propor"),
+            "esperar|propor"
+        );
+        assert_eq!(java_trim_whitespace(""), "");
+        assert_eq!(java_trim_whitespace("   "), "");
+    }
+
+    #[test]
+    fn multiline_entity_regex_text_is_normalized_like_java() {
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<!DOCTYPE rules [\n<!ENTITY subj \"aceitar|\n                            propor\">\n]>\n\
+        <rules lang=\"pt\">\n\
+            <category id=\"GRAMMAR\" name=\"Grammar\">\n\
+                <rule id=\"ENT\" name=\"ent\">\n\
+                    <pattern>\n\
+                        <token regexp=\"yes\">&subj;</token>\n\
+                        <token>verbo\n\
+                            <exception regexp=\"yes\">&subj;</exception>\n\
+                        </token>\n\
+                    </pattern>\n\
+                    <message>Use <suggestion>x</suggestion></message>\n\
+                </rule>\n\
+            </category>\n\
+        </rules>";
+
+        let parser = XmlRuleParser::new();
+        let result = parser.parse(xml).unwrap();
+        assert_eq!(
+            result.rules[0].pattern.tokens[0].text.as_deref(),
+            Some("aceitar|propor")
+        );
+        assert_eq!(
+            result.rules[0].pattern.tokens[1].exceptions[0].text.as_deref(),
+            Some("aceitar|propor")
+        );
+    }
 
     #[test]
     fn test_expand_internal_entities_allows_whitespace_before_gt() {

@@ -791,7 +791,7 @@ mod tests {
         );
         assert_eq!(
             texts("N'hi ha vint-i-quatre"),
-            vec!["N'", "hi", " ", "ha", " ", "vint", "-", "i", "-", "quatre"]
+            vec!["N'", "hi", " ", "ha", " ", "vint-i-quatre"]
         );
     }
 
@@ -827,10 +827,10 @@ mod tests {
         assert_eq!(texts("S\u{e0}sser-l'Alguer").len(), 4);
         assert_eq!(
             texts("Em\u{ed}lia-Romanya"),
-            vec!["Em\u{ed}lia", "-", "Romanya"]
+            vec!["Em\u{ed}lia-Romanya"]
         );
-        assert_eq!(texts("abans-d'ahir").len(), 3);
-        assert_eq!(texts("Qui-sap-lo temps").len(), 7);
+        assert_eq!(texts("abans-d'ahir").len(), 1);
+        assert_eq!(texts("Qui-sap-lo temps").len(), 3);
     }
 
     #[test]

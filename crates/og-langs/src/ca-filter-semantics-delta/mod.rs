@@ -1,7 +1,9 @@
 pub mod adjust_verb_suggestions;
 pub mod apostophation;
 pub mod ca_adapt;
+pub mod ca_synthesizer;
 pub mod consumers;
+pub mod diacritics_check;
 pub mod convert_gender_number;
 pub mod dispatch;
 pub mod en_no_infinitiu;

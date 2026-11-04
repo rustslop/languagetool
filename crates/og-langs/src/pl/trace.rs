@@ -704,17 +704,14 @@ mod tests {
             }
         }
         assert_eq!(
-            matches, 1,
-            "the WLADCE fp (1 of the 16 residues): the exact-case Surowiec/depr:pl:nom:m2 \
-             reading survives the whole module pipeline and no normalized disambiguation.xml \
-             rule touches it even applied individually (probe_round18_wladce_individual_rule_\
-             effects), so the Java-side drop must live in an og-tagger matcher path our engine \
-             does not reproduce - the count-guard family is a proven divergence in both \
-             directions (DisambiguationPatternRuleReplacer.java:171-173 no-ops unify_adj_subst \
-             sub-rule 4, whose 2 unified elements face 3 matched elements, while our engine \
-             applies it and drops zawieraj\u{105}ce's pact:sg reading), and the 90 scope=next \
-             exceptions plus filterall matched-readings semantics are the other unverified \
-             families - this pin flips to 0 when the shared engine reproduces the Java drop"
+            matches, 0,
+            "the WLADCE fp dropped to the Java-side outcome (0 matches) when the shared-engine \
+             semantics batch landed (regexp='no' exact-match, or-group min=0 skipping, Java \
+             trimWhitespace on entity text): the exact-case Surowiec/depr:pl:nom:m2 reading no \
+             longer survives the module pipeline, matching Java, which the pre-batch pin was \
+             waiting for ('this pin flips to 0 when the shared engine reproduces the Java \
+             drop'); the mechanism inside the batch was not individually bisected - the \
+             direction is verified by this count, the specific fix is not"
         );
     }
 

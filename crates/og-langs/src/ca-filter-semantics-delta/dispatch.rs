@@ -18,7 +18,7 @@ use super::que_inici::accept_rule_match as que_inici_accept;
 
 pub struct CatalanPatternFilterHook {
     tagger: Option<Arc<crate::ca::tagger::CatalanTagger>>,
-    synthesizer: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
+    ca_synth: Option<Arc<super::ca_synthesizer::CaSynthesizer>>,
 }
 
 fn arg<'a>(args: &'a HashMap<&'a str, String>, key: &str) -> &'a str {
@@ -38,10 +38,12 @@ impl CatalanPatternFilterHook {
         tagger: Option<Arc<crate::ca::tagger::CatalanTagger>>,
         synthesizer: Option<Arc<og_rules::postponed_adjective::LangSynthesizer>>,
     ) -> Self {
-        Self {
-            tagger,
-            synthesizer,
-        }
+        let ca_synth = synthesizer.as_ref().map(|synth| {
+            let dir = crate::ca::tagger::ca_resource_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("ca-resource-missing"));
+            Arc::new(super::ca_synthesizer::CaSynthesizer::build(&dir, synth.clone()))
+        });
+        Self { tagger, ca_synth }
     }
 
     fn tag(&self, word: &str) -> Vec<og_core::AnalyzedTokenReadings> {
@@ -51,10 +53,17 @@ impl CatalanPatternFilterHook {
             .unwrap_or_default()
     }
 
-    fn synth(&self, lemma: &str, postag: &str) -> Vec<String> {
-        self.synthesizer
+    fn synth_regexp(&self, lemma: &str, postag: &str) -> Vec<String> {
+        self.ca_synth
             .as_ref()
-            .map(|synth| synth.synthesize_exact(lemma, postag))
+            .map(|synth| synth.synthesize_regexp(lemma, postag))
+            .unwrap_or_default()
+    }
+
+    fn synth_plain(&self, lemma: &str, postag: &str) -> Vec<String> {
+        self.ca_synth
+            .as_ref()
+            .map(|synth| synth.synthesize_plain(lemma, postag))
             .unwrap_or_default()
     }
 }
@@ -86,7 +95,7 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                     call.tokens,
                     &args,
                     &|word| self.tag(word),
-                    &|lemma, postag| self.synth(lemma, postag),
+                    &|lemma, postag| self.synth_regexp(lemma, postag),
                 )
             }
             "org.languagetool.rules.ca.EnNoInfinitiuSuggestionFilter" => {
@@ -97,7 +106,7 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                     rm.offset(),
                     rm.offset() + rm.length(),
                     call.tokens,
-                    &|lemma, postag| self.synth(lemma, postag),
+                    &|lemma, postag| self.synth_plain(lemma, postag),
                     &|s| adapt_suggestion_ca(s, ""),
                 )
             }
@@ -106,13 +115,13 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                 rm.offset(),
                 call.tokens,
                 arg(call.args, "newLemma"),
-                &|lemma, postag| self.synth(lemma, postag),
+                &|lemma, postag| self.synth_regexp(lemma, postag),
             ),
             "org.languagetool.rules.ca.AdjustVerbSuggestionsFilter" => {
                 let sentence_text = offset_aligned_sentence_text(call.sentence);
                 let services = AdjustServices {
                     tagger: &|word| self.tag(word),
-                    synth: &|lemma, postag| self.synth(lemma, postag),
+                    synth: &|lemma, postag| self.synth_plain(lemma, postag),
                 };
                 adjust_verb_accept(
                     &rm,
@@ -131,13 +140,16 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
             }
             "org.languagetool.rules.ca.OblidarseSugestionsFilter" => {
                 oblidarse_accept(&rm, rm.offset(), call.tokens, &|lemma, postag| {
-                    self.synth(lemma, postag)
+                    self.synth_plain(lemma, postag)
                 })
             }
             "org.languagetool.rules.ca.PossessiusRedundantsFilter" => {
                 let pattern_token_pos = call.matched_positions.first().copied().unwrap_or(0);
                 let mut rm = rm;
                 possessius_accept(&mut rm, pattern_token_pos, call.tokens).map(|()| rm)
+            }
+            "org.languagetool.rules.ca.DiacriticsCheckFilter" => {
+                super::diacritics_check::accept_rule_match(&rm, call.args, call.tokens, call.matched_positions)
             }
             _ => Some(rm),
         }

@@ -62,13 +62,13 @@ fn grammar_totals_pin_the_refreshed_file() {
     let rule_set = compiled_rules();
     assert_eq!(
         rule_set.rules.len(),
-        9651,
-        "the 4cff7008 grammar.xml must compile exactly its 9651 live <rule> elements"
+        9656,
+        "the 2c9b51e grammar.xml must compile exactly its 9656 live <rule> elements"
     );
     let total_examples: usize = rule_set.rules.iter().map(|r| r.examples.len()).sum();
     assert_eq!(
-        total_examples, 25732,
-        "26833 non-comment <example> occurrences minus the 1101 inside <antipattern> elements"
+        total_examples, 25745,
+        "26846 non-comment <example> occurrences minus the 1101 inside <antipattern> elements"
     );
 }
 
@@ -281,12 +281,17 @@ fn compounds_refresh_joins_trenca_closques_and_drops_baby_boom() {
     let rule = crate::ca::compound_rule::CompoundRule::new();
     let pipeline = RefreshPipeline::shared();
     let sentences = pipeline.analyze_offset_text("Era un joc trenca closques.");
-    assert!(
-        rule.match_sentence(&sentences[0].0).is_empty(),
-        "Java CompoundRule only offers a merge the speller knows: 'trencaclosques' is not in \
-         added.txt, so without ca-ES.dict the suggestion is filtered as misspelled and the \
-         rule stays dormant (accepted-excluded under the dict umbrella)"
+    let matches = rule.match_sentence(&sentences[0].0);
+    assert_eq!(
+        matches.len(),
+        1,
+        "with ca-ES.dict loaded the speller knows 'trencaclosques' and the CompoundRule \
+         offers the merge like Java"
     );
+    assert!(matches[0]
+        .replacements()
+        .iter()
+        .any(|r| r.value() == "trencaclosques"));
     let sentences = pipeline.analyze_offset_text("El baby boom va ser llarg.");
     assert!(
         rule.match_sentence(&sentences[0].0).is_empty(),
@@ -325,10 +330,10 @@ fn replace_txt_refresh_maps_the_new_entries() {
 fn inert_data_files_pin_the_refreshed_sizes() {
     let resource_dir = ca_resource_dir().expect("ca resource dir");
     let pins: [(&str, usize); 6] = [
-        ("added.txt", 5338),
-        ("spelling.txt", 4238),
-        ("removed.txt", 902),
-        ("multiwords.txt", 15632),
+        ("added.txt", 5342),
+        ("spelling.txt", 4242),
+        ("removed.txt", 906),
+        ("multiwords.txt", 15638),
         ("hyphenated_words.txt", 10715),
         ("compounds.txt", 1809),
     ];
@@ -342,11 +347,11 @@ fn inert_data_files_pin_the_refreshed_sizes() {
     }
     let rules_dir = ca_rules_dir().expect("ca rules dir");
     let pins: [(&str, usize); 5] = [
-        ("replace.txt", 3668),
-        ("replace_multiwords.txt", 996),
+        ("replace.txt", 3672),
+        ("replace_multiwords.txt", 998),
         ("replace_verbs.txt", 458),
         ("replace_anglicism.txt", 511),
-        ("check_case.txt", 2591),
+        ("check_case.txt", 2592),
     ];
     for (file, expected) in pins {
         let text = std::fs::read_to_string(rules_dir.join(file)).expect(file);

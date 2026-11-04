@@ -435,11 +435,11 @@ mod tests {
             ),
             (
                 "Lata 1900. charakteryzowa\u{142}y si\u{119} historycznymi zmianami.",
-                "pierwsza dekada XX w.",
+                "Pierwsza dekada XX w.",
             ),
             (
                 "Lata 1910. charakteryzowa\u{142}y si\u{119} historycznymi zmianami.",
-                "druga dekada XX w.",
+                "Druga dekada XX w.",
             ),
         ] {
             let matches = filtered_rule_matches(

@@ -1552,10 +1552,7 @@ mod tests {
 
     #[test]
     fn test_real_german_grammar_examples() {
-        const PINNED_RESIDUE: &[(&str, &str)] = &[(
-            "ZUSAMMENSCHREIBUNG_HINTER",
-            "Expected match on incorrect example but got none: 'Er hat ihr hinterher spioniert.'",
-        )];
+        const PINNED_RESIDUE: &[(&str, &str)] = &[];
 
         if !test_support::german_grammar_available() {
             eprintln!("Skipping: German grammar.xml not found");
@@ -1618,15 +1615,12 @@ mod tests {
             .collect();
         assert_eq!(
             residue, expected,
-            "the German residue must stay pinned: the one ZUSAMMENSCHREIBUNG_HINTER example \
-             dies in RemoveUnknownCompoundsFilter exactly as it does in Java on this data — \
-             LT's own de_DE.dic carries 'hinterher' with no compound flags and only the bare \
-             lemma 'hinterherspionieren', so hunspell 1.7 (the libhunspell-1.7.so bundled by \
-             com.gitlab.dumonts:hunspell:2.1.2, verified: it flags 'hinterherspioniert' and \
-             even suggests splitting it) rejects the compound, it appears in no accept list \
-             (ignore.txt/spelling*.txt), so isMisspelled is true and the filter drops the \
-             match; making it pass would require engine behavior or data Java itself does \
-             not have; new or changed failures mean an engine regression"
+            "the German residue must stay empty: the formerly pinned ZUSAMMENSCHREIBUNG_HINTER \
+             example ('Er hat ihr hinterher spioniert.') now matches because speller \
+             accept-list lines like spelling.txt's 'hinterher_spionieren' expand to their \
+             synthesized conjugations (hinterherspioniert, hinterherzuspionieren, ...) via the \
+             tagged verb dictionary, so isMisspelled is false and RemoveUnknownCompoundsFilter \
+             keeps the match; any failure here means an engine regression"
         );
         eprintln!("Summary: {}/{} passed", summary.passed, summary.total);
     }

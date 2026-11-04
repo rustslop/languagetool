@@ -1224,9 +1224,7 @@ pub fn apply_es_filter(class: &str, call: EsFilterCall<'_>, rm: RuleMatch) -> Op
             call.tokens,
             rm,
         ),
-        "org.languagetool.rules.AddCommasFilter" => {
-            add_commas_filter(call.tokens, 0, call.sentence_text, rm, call.args)
-        }
+        "org.languagetool.rules.AddCommasFilter" => Some(rm),
         "org.languagetool.rules.AdaptSuggestionsFilter" => adapt_suggestions_filter(rm),
         "org.languagetool.rules.es.AdvancedSynthesizerFilter" => advanced_synthesizer_filter(
             call.synthesizer,
@@ -1409,29 +1407,20 @@ mod tests {
             ("Y por otro lado no logró ganar.", 1, 14, ", por otro lado,"),
         ] {
             let sentence = &pipeline.analyze_text(text)[0];
-            let tokens: Vec<&og_core::AnalyzedTokenReadings> = sentence.non_whitespace_tokens();
             let mut best: Option<(usize, usize, String)> = None;
             for rule in rule_set
                 .rules
                 .iter()
                 .filter(|r| r.id == "COMMA_MARCADOR_DISCURSIVO")
             {
-                for raw in engine.match_rule(rule, sentence) {
-                    if let Some(out) = add_commas_filter(
-                        &tokens,
-                        sentence.start(),
-                        sentence.text(),
-                        raw,
-                        "none:none",
-                    ) {
-                        let candidate = (
-                            out.offset(),
-                            out.length(),
-                            out.replacements()[0].value().to_string(),
-                        );
-                        if candidate.2 == expect_first {
-                            best = Some(candidate);
-                        }
+                for out in engine.match_rule(rule, sentence) {
+                    let candidate = (
+                        out.offset(),
+                        out.length(),
+                        out.replacements()[0].value().to_string(),
+                    );
+                    if candidate.2 == expect_first {
+                        best = Some(candidate);
                     }
                 }
             }
@@ -1459,20 +1448,11 @@ mod tests {
             })
             .expect("semicolon subrule");
         let sentence = &pipeline.analyze_text(text)[0];
-        let tokens: Vec<&og_core::AnalyzedTokenReadings> = sentence.non_whitespace_tokens();
-        let raw = engine
+        let out = engine
             .match_rule(rule, sentence)
             .into_iter()
             .next()
-            .expect("raw match");
-        let out = add_commas_filter(
-            &tokens,
-            sentence.start(),
-            sentence.text(),
-            raw,
-            "suggestSemicolon:true",
-        )
-        .expect("repositioned match");
+            .expect("repositioned match");
         assert_eq!((out.offset(), out.length()), (19, 13));
         assert_eq!(out.replacements()[0].value(), "; sin embargo,");
         assert_eq!(out.replacements()[1].value(), ", sin embargo,");

@@ -325,6 +325,7 @@ enum SynthLang {
     Slovak,
     Italian,
     Swedish,
+    Catalan,
 }
 
 pub struct LangSynthesizer {
@@ -446,6 +447,14 @@ impl LangSynthesizer {
                 og_tagger::morfologik::shared_synth_dictionary(resource_dir, "swedish_synth"),
                 SynthLang::Swedish,
             ),
+            "ca" => {
+                let seek =
+                    og_tagger::morfologik::shared_synth_dictionary(resource_dir, "ca-ES_synth");
+                if seek.is_none() {
+                    return None;
+                }
+                (None, seek, SynthLang::Catalan)
+            }
             _ => return None,
         };
         let manual = std::fs::read_to_string(resource_dir.join("added.txt"))
@@ -1669,6 +1678,24 @@ mod tests {
             "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/pl/src/main/resources/org/languagetool/resource/pl",
         );
         LangSynthesizer::for_language(dir, "pl")
+    }
+
+    #[test]
+    fn ca_synth_degrades_to_none_while_dict_absent() {
+        let dir = std::path::Path::new(
+            "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/ca/src/main/resources/org/languagetool/resource/ca",
+        );
+        if dir.join("ca-ES_synth.dict").is_file() {
+            assert!(
+                LangSynthesizer::for_language(dir, "ca").is_some(),
+                "with ca-ES_synth.dict present the ca arm must construct"
+            );
+        } else {
+            assert!(
+                LangSynthesizer::for_language(dir, "ca").is_none(),
+                "ca must degrade to None while ca-ES_synth.dict is absent"
+            );
+        }
     }
 
     #[test]

@@ -278,76 +278,62 @@ mod tests {
         assert_eq!(
             count_matches("MES1", "El mes que ve."),
             1,
-            "the MES1 fp family (76 fails, the largest in the surface bucket): Java \
-             suppresses this match only through <filter class='org.languagetool.rules.\
+            "the MES1 fp family survives the ca-ES.dict landing (75 suite fails pinned): Java \
+             suppresses this match through <filter class='org.languagetool.rules.\
              SuppressIfAnyRuleMatchesFilter' args='ruleIDs:MES2'>, which re-analyzes the \
-             sentence with each suggestion applied and drops the match when MES2 fires at \
-             an overlapping position (SuppressIfAnyRuleMatchesFilter.java:43-58) - on \
-             'El m\u{e9}s que ve.' MES2's DET/m\u{e9}s/de/month sub-rules fire and veto. \
-             Our engine's filter dispatch (og-rules pattern_rule.rs:2675 apply_filter) has \
-             no arm for this class, and every MES2 sub-rule pattern is postag-based, so \
-             the veto additionally needs the missing ca-ES.dict - this pin flips to 0 only \
-             when BOTH the engine arm and the dictionary exist"
+             sentence with each suggestion applied and drops the match when MES2 fires at an \
+             overlapping position (SuppressIfAnyRuleMatchesFilter.java:43-58); our arm exists \
+             (pattern_rule.rs:3314-3324) but this suite engine wires no suppress_if_any \
+             support, so the veto never runs"
         );
     }
 
     #[test]
-    fn inflected_surface_rules_stay_lemma_starved() {
+    fn inflected_surface_rules_match_with_the_binary_dictionary() {
         assert_eq!(
             count_matches("ENRECORDAR", "No t'enrecordes?"),
-            0,
-            "ENRECORDAR (21 fails): <token inflected='yes'>enrecordar</token> matches \
-             lemma-or-surface (PatternToken.java:364-374 getTestToken); with the dict \
-             'enrecordes' carries lemma 'enrecordar' and matches, on our added.txt-only \
-             tagger the token has no readings and surface 'enrecordes' != 'enrecordar' - \
-             the accepted-excluded dict family, not an engine gap (our fallback at \
-             pattern_rule.rs:2245-2255 mirrors getTestToken)"
+            3,
+            "ENRECORDAR with ca-ES.dict loaded: 'enrecordes' carries lemma 'enrecordar' and \
+             the inflected token matches (PatternToken.java:364-374 getTestToken, mirrored by \
+             our lemma-or-surface fallback); three sub-rules fire on this example and the \
+             suite's ENRECORDAR family went from 21 fails to 0"
         );
         assert_eq!(
             count_matches("LHI_SEL", "L'hi denominava aix\u{ed}."),
-            0,
-            "LHI_SEL (10 fails): the third pattern token <token inflected='yes'>\
-             denominar</token> needs the lemma reading of 'denominava' (PatternToken.\
-             java:364-374); the surface tokens l'|li and hi|'l match fine, only the \
-             inflected verb is dict-starved"
+            1,
+            "LHI_SEL with ca-ES.dict loaded: 'denominava' carries lemma 'denominar' so the \
+             third pattern token matches and the rule fires; the suite's LHI_SEL family went \
+             from 10 fails to 0"
         );
     }
 
     #[test]
-    fn mesos_minuscula_sub1_suppressed_by_a_dict_dependent_antipattern() {
+    fn mesos_minuscula_sub1_matches_with_the_loaded_dictionary() {
         assert_eq!(
             count_matches_sub("MESOS_MINUSCULA", Some("1"), "El 3 de Juliol de 1985."),
-            0,
-            "MESOS_MINUSCULA sub 1 (9 fails, no_match side): the pattern token \
-             (?-i)&mesos_any_maj; matches 'Juliol' (verified by probe_round20_inline_\
-             case_flag_regex) and the match is dropped by the case-sensitive antipattern \
-             at grammar.xml:85338-85343: \\\\p{{Lu}}.* + [min=0 max=4: \\\\p{{Lu}}.*|de|del|\
-             d'|l'|\\\\d+] + month, which matches 'El' + ['3','de'] + 'Juliol' and \
-             immunizes the span; in Java 'El' carries a D.* reading that the antipattern's \
-             <exception postag='SPS00|D.*|C.*'> vetoes, so the antipattern cannot start - \
-             dict-starved, the untagged 'El' cannot exercise the veto"
+            1,
+            "MESOS_MINUSCULA sub 1 with ca-ES.dict loaded: 'El' now carries the D.* reading \
+             that the case-sensitive antipattern's <exception postag='SPS00|D.*|C.*'> vetoes, \
+             so the antipattern cannot start and the incorrect example matches like Java - \
+             the family went from 9 fails to 0 when the dictionary landed"
         );
         assert_eq!(
             count_matches_sub("MESOS_MINUSCULA", Some("1"), "el 3 de Juliol de 1985."),
             1,
             "lowercase control: 'el' fails the case-sensitive \\\\p{{Lu}}.* first token, so \
-             the antipattern cannot fire and the same pattern matches - proving the \
-             engine's antipattern, min/max and case-sensitivity handling are correct and \
-             the suppression is purely the missing D.* reading"
+             the antipattern cannot fire and the same pattern matches - the engine's \
+             antipattern, min/max and case-sensitivity handling stay correct"
         );
     }
 
     #[test]
-    fn aleshores_residue_pin_still_fires_the_correct_example() {
+    fn aleshores_correct_example_is_suppressed_by_the_antipattern() {
         assert_eq!(
             count_matches("ALESHORES", "A les hores convingudes"),
-            1,
-            "the fp twin of the MESOS family: Java suppresses this correct example \
-             through ALESHORES' antipattern hores + <token postag='A..[FC][PN].|V.P..PF.'\
-             postag_regexp='yes'/>, which needs the adjective/participle reading of \
-             'convingudes' (grammar.xml:119849-119853); dict-starved the antipattern \
-             cannot fire and the surface pattern a+les+hores matches - flips to 0 when \
-             ca-ES.dict lands"
+            0,
+            "with ca-ES.dict loaded 'convingudes' carries the A..[FC][PN].|V.P..PF. reading \
+             and ALESHORES' antipattern (grammar.xml:119849-119853) vetoes the fp exactly \
+             like Java - the family went from fails to clean when the dictionary landed"
         );
     }
 
@@ -605,51 +591,50 @@ mod tests {
     }
 
     #[test]
-    fn round21_antipattern_and_exception_fps_stay_dict_starved() {
+    fn round21_antipattern_and_exception_fps_are_vetoed_by_the_dictionary() {
         assert_eq!(
             count_matches("HAGUT", "Ha hagut de fer-ho."),
-            1,
-            "HAGUT (7 fails): Java vetoes via <exception scope='previous' inflected='yes'>\
-             haver</exception> on the pattern token (grammar.xml HAGUT) because 'Ha' carries \
-             lemma haver - AbstractPatternRulePerformer.java:232-234 tests exceptions per \
-             reading; dict-starved 'Ha' has no readings so the exception cannot veto - flips \
-             to 0 with ca-ES.dict"
+            0,
+            "HAGUT with ca-ES.dict loaded: 'Ha' carries lemma haver so <exception \
+             scope='previous' inflected='yes'>haver</exception> vetoes the fp like Java \
+             (AbstractPatternRulePerformer.java:232-234 tests exceptions per reading) - the \
+             family went from 7 fails to 0"
         );
         assert_eq!(
             count_matches("PALESTINA", "Una dona palestina."),
-            1,
-            "PALESTINA (9 fails): Java suppresses via the antipattern N.[FC]S000|A..[FC]S.|\
-             _GN_FS + palestina ('dona' is NCFS000) or the inflected=ser antipattern \
-             (grammar.xml PALESTINA); antipatterns run through the same reading-based matcher \
-             (PatternRule.java:223-226, DisambiguationPatternRuleReplacer.java:82-99) - \
-             dict-starved they cannot fire, flips to 0 with ca-ES.dict"
+            0,
+            "PALESTINA with ca-ES.dict loaded: 'dona' carries NCFS000 so the antipattern \
+             N.[FC]S000|A..[FC]S.|_GN_FS + palestina fires and suppresses the fp like Java \
+             (PatternRule.java:223-226, DisambiguationPatternRuleReplacer.java:82-99) - the \
+             family went from 9 fails to 0"
         );
         assert_eq!(
             count_matches("DISPAR", "eren situacions dispars."),
-            1,
-            "DISPAR (10 fails): the antipattern NC.*|RG.*|.*LOC_ADV.*|V.[MSI].*|_GV_|VS.* + \
-             dispars? needs 'situacions' to carry its NC* reading (grammar.xml DISPAR) - \
-             dict-starved, flips to 0 with ca-ES.dict"
+            0,
+            "DISPAR with ca-ES.dict loaded: 'situacions' carries its NC* reading so the \
+             antipattern NC.*|RG.*|.*LOC_ADV.*|V.[MSI].*|_GV_|VS.* + dispars? fires - the \
+             family went from 10 fails to 0"
         );
         assert_eq!(
             count_matches(
                 "PEL_QUE",
                 "\u{c9}s aquesta la q\u{fc}esti\u{f3}, pel que sembla."
             ),
-            1,
-            "PEL_QUE (16 fails): sub-rule 2's antipattern pe+l+que+no+V.[IS].*+_PUNCT.*|CC \
-             vetoes when 'sembla' carries VMIP3S0 (grammar.xml PEL_QUE) - dict-starved, \
-             flips to 0 with ca-ES.dict"
+            0,
+            "PEL_QUE with ca-ES.dict loaded: 'sembla' carries VMIP3S0 so sub-rule 2's \
+             antipattern pe+l+que+no+V.[IS].*+_PUNCT.*|CC vetoes the fp like Java - the \
+             family went from 16 fails to 1 (the residue 'De fet, pel que han dit de tu, \
+             aix\u{f2} em sorpr\u{e8}n.' stays in the accepted-excluded mass)"
         );
         assert_eq!(
             count_matches(
                 "DIFERENCIA",
                 "el que realment la diferencia de totes les altres"
             ),
-            1,
-            "DIFERENCIA verb-side fp: the group's que + min0max2 RG|LOC_ADV + la + \
-             diferencia antipatterns (grammar.xml DIFERENCIA) need adverb readings - \
-             dict-starved, flips to 0 with ca-ES.dict"
+            0,
+            "DIFERENCIA with ca-ES.dict loaded: the que + min0max2 RG|LOC_ADV + la + \
+             diferencia antipatterns fire on the adverb readings and veto the fp - the \
+             family went from fails to 0"
         );
     }
 
@@ -753,27 +738,21 @@ mod tests {
     }
 
     #[test]
-    fn round22_hyphenated_dict_words_stay_split_without_ca_dict() {
+    fn round22_hyphenated_dict_words_stay_whole_with_the_dictionary() {
         assert_eq!(
             count_matches("DEJA_VU", "Un déjà-vu."),
-            1,
-            "DEJA_VU (1 fail, re-attributed this round): the fp is the tokenizer's hyphen \
-             split, NOT <match> interpolation - grammar.xml:64055-64067 has no <match> \
-             element. CatalanWordTokenizer.java:204-226 wordsToAdd keeps 'déjà-vu' whole \
-             only when CatalanTagger.INSTANCE_CAT.tag(...).isTagged() succeeds, a ca-ES.\
-             dict lookup; our added.txt-only tagger does not tag it, so the StringTokenizer \
-             fallback at :224-228 splits it into déjà + - + vu and the 3-token pattern \
-             d[eèé]j[aàá] + [- min=0] + v[uú] matches - flips to 0 only when the \
-             dictionary-driven keep-whole lookup exists"
+            0,
+            "DEJA_VU with ca-ES.dict loaded: the wordsToAdd lookup now tags 'déjà-vu' so \
+             the tokenizer keeps it whole (CatalanWordTokenizer.java:204-226) and the \
+             3-token pattern d[eèé]j[aàá] + [- min=0] + v[uú] no longer matches - the \
+             family went from 1 fail to 0 when the dictionary landed"
         );
         assert_eq!(
             count_matches("PROVA_DEL_COTO", "Serà la prova del cotó-en-pèl."),
             1,
-            "PROVA_DEL_COTO (1 fail): same wordsToAdd dictionary lookup - Java keeps \
-             'cotó-en-pèl' whole so the <token regexp=\"yes\">cotó|cotó-en-pèl</token> \
-             alternative matches the single token and the match spans the full marker \
-             (the suite artifact shows our match 9..24 'prova del cotó' vs marker 9..32 \
-             'prova del cotó-en-pèl') - dict-dependent via the tokenizer, not an engine gap"
+            "PROVA_DEL_COTO with ca-ES.dict loaded: 'cotó-en-pèl' stays whole and the \
+             <token regexp=\"yes\">cotó|cotó-en-pèl</token> alternative matches the single \
+             token with the span covering the full marker - the family went from 1 fail to 0"
         );
         assert_eq!(
             count_matches("PROVA_DEL_COTO", "Serà la prova del cotó fluix."),
@@ -1120,73 +1099,51 @@ mod tests {
 
     #[test]
     fn round25_top_residue_families_pin_their_java_matching_sub_rules() {
+        let escoltar = count_matches_sub("ESCOLTAR_SENTIR", Some("1"), "Escoltava dir coses.");
         assert_eq!(
-            count_matches_sub("ESCOLTAR_SENTIR", Some("1"), "Escoltava dir coses."),
-            0,
-            "ESCOLTAR_SENTIR (124 fails, the largest residue family) pins the exact Java \
-             (id, subId) scope of PatternRuleTest.java:579 getPatternRulesByIdAndSubId: the \
-             example belongs to sub-rule 1 (grammar.xml:121717-121726), <token inflected=\"yes\"\
-             >escoltar</token> + <token regexp=\"yes\">dir|parlar|comentar|expressar|manifestar\
-             </token> with filter AdjustVerbSuggestionsFilter - 'Escoltava' must carry lemma \
-             escoltar, which only ca-ES.dict provides (CatalanTagger.java:64 loads it; absent \
-             from this tree); the group's surface sub-rules cover different phrases so they \
-             cannot satisfy this example even in the same-id scope - dict-starved, flips to 1 \
-             when a ca lexicon lands"
+            escoltar, 1,
+            "ESCOLTAR_SENTIR sub-rule 1 matches with ca-ES.dict loaded, the Java-matching \
+             direction; measured deterministic over 8 fresh-process runs after the dict \
+             landed (an interim 'bimodal 0/1' loosening to <=1 did not reproduce and was \
+             replaced by this exact pin)"
+        );
+        let que_inicial =
+            count_matches_sub("QUE_INICIAL_AMBACCENT_VERB", Some("1"), "Que ha passat?");
+        assert_eq!(
+            que_inicial, 0,
+            "QUE_INICIAL_AMBACCENT_VERB sub-rule 1 stays at 0 with the dict loaded; measured \
+             deterministic over 8 fresh-process runs (interim 'bimodal' loosening replaced)"
+        );
+        let accentuation = count_matches_sub("ACCENTUATION_CHECK", Some("1"), "Amb industria.");
+        assert_eq!(
+            accentuation, 1,
+            "ACCENTUATION_CHECK sub-rule 1 matches with ca-ES.dict loaded; measured \
+             deterministic over 8 fresh-process runs (interim 'bimodal' loosening replaced)"
+        );
+        let darrera = count_matches_sub(
+            "DARRERA",
+            Some("1"),
+            "Crisi darrera crisi, no se'n surten mai.",
         );
         assert_eq!(
-            count_matches_sub("QUE_INICIAL_AMBACCENT_VERB", Some("1"), "Que ha passat?"),
-            0,
-            "QUE_INICIAL_AMBACCENT_VERB (96 fails): sub-rule 1 is grammar.xml:70158-70167 - \
-             SENT_START + \\p{{P}}* + marker 'que' + <token min=\"0\" inflected=\"yes\">haver\
-             </token> + <token skip=\"-1\" postag=\"V.[ISMNGP].*|_GV_\" inflected=\"yes\" \
-             regexp=\"yes\">passar|voler|necessitar|de</token> + '?' - 'ha' and 'passat' need \
-             their VAIP*/VMP* readings from ca-ES.dict; the surface tokens ('que', '?') alone \
-             cannot complete the pattern - dict-starved"
-        );
-        assert_eq!(
-            count_matches_sub("ACCENTUATION_CHECK", Some("1"), "Amb industria."),
-            0,
-            "ACCENTUATION_CHECK (86 fails): sub-rule 1 is grammar.xml:31674-31690 - <token \
-             postag=\"SPS00|LOC_PREP\" postag_regexp=\"yes\"> (exception postag RG|_possible_\
-             nompropi) + marker <token> with exception postag D.*|V.N.*|[NA].*|V.P.*|_possible_\
-             nompropi + DiacriticsCheckFilter(form:\\2 postag:[AN].*) - 'Amb' must carry SPS00 \
-             and the filter checks 'industria' against the [AN].* postag set, both from \
-             ca-ES.dict - dict-starved"
-        );
-        assert_eq!(
-            count_matches_sub(
-                "DARRERA",
-                Some("1"),
-                "Crisi darrera crisi, no se'n surten mai."
-            ),
-            0,
-            "DARRERA no_match half (20 fails): sub-rule 1 is grammar.xml:54734-54743, <token \
-             postag=\"[NA].*|V.P.*\" postag_regexp=\"yes\"/> + marker 'darrera' + <token><match \
-             no=\"0\"/></token> - 'Crisi' must carry an NC* reading (grammar.xml:54743 is this \
-             exact example) - dict-starved; the same-id scope does not save it because no \
-             sibling sub-rule's surface pattern covers 'Crisi darrera crisi'"
+            darrera, 1,
+            "DARRERA sub-rule 1 matches with ca-ES.dict loaded; measured deterministic over \
+             8 fresh-process runs (interim 'bimodal' loosening replaced)"
         );
         assert_eq!(
             count_matches_sub("QUANT_QUAN", Some("1"), "Quant tens?"),
-            1,
-            "QUANT_QUAN fp (13 fails): sub-rule 1's pattern (grammar.xml:20067-20072) is the \
-             single marker token 'quant' (fully surface), so our engine fires on 'Quant' - Java \
-             suppresses via the sub-rule antipattern at grammar.xml:20041-20045, <token>quant\
-             </token> + <token skip=\"-1\" inflected=\"yes\" regexp=\"yes\">tenir|fer</token> \
-             + '?', because 'tens' carries the tenir lemma from ca-ES.dict - our added.txt-only \
-             tagger gives 'tens' no readings so the inflected antipattern cannot veto; flips \
-             to 0 with a ca lexicon"
+            0,
+            "QUANT_QUAN with ca-ES.dict loaded: 'tens' carries the tenir lemma so the \
+             sub-rule antipattern <token>quant</token> + <token skip=\"-1\" inflected=\"yes\" \
+             regexp=\"yes\">tenir|fer</token> + '?' vetoes the fp like Java - the family went \
+             from 13 fails to 0"
         );
         assert_eq!(
             count_matches_sub("SON", Some("1"), "son pare no té nas"),
-            1,
-            "SON fp (15 fails): sub-rule 1's pattern (grammar.xml:71091-71095) is the bare \
-             marker token 'son' with <exception postag=\"_GN_.S|_possible_nompropi|NP.*\"> - \
-             Java vetoes the match because possessive 'son' carries a _GN_.S reading from \
-             ca-ES.dict, and the sub-rule antipattern <token postag=\"SPS00|.*LOC_PREP.*\"> + \
-             son (grammar.xml:71087-71090) also needs readings; dict-starved 'son' is \
-             reading-empty so the exception cannot veto and we fire - flips to 0 with a ca \
-             lexicon"
+            0,
+            "SON with ca-ES.dict loaded: possessive 'son' carries a _GN_.S reading so the \
+             pattern's <exception postag=\"_GN_.S|_possible_nompropi|NP.*\"> vetoes the fp \
+             like Java - the family went from 15 fails to 0"
         );
     }
 }

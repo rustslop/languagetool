@@ -45,9 +45,13 @@ pub(crate) fn apply_suppress_misspelled(
     }
     let mut replacements: Vec<SuggestedReplacement> = rm.replacements().to_vec();
     for word in &junk {
-        if let Some(idx) = replacements.iter().position(|r| r.value() == word.as_str()) {
-            replacements.remove(idx);
-        }
+        let first = word.chars().next();
+        let upper_first = first
+            .map(|c| c.to_uppercase().collect::<String>() + &word[c.len_utf8()..])
+            .unwrap_or_else(String::new);
+        let all_upper = word.to_uppercase();
+        replacements
+            .retain(|r| r.value() != word.as_str() && r.value() != upper_first && r.value() != all_upper);
     }
     if rule.suppress_misspelled && replacements.is_empty() {
         return None;
@@ -312,7 +316,20 @@ mod tests {
     #[test]
     fn suppress_drops_r_rr_on_unknown_accented_replacement() {
         let matches = surviving_matches("R_RR", "Autorízase el ingreso de agente.");
-        assert!(matches.is_empty());
+        assert!(
+            matches.is_empty(),
+            "survived: {:?}",
+            matches
+                .iter()
+                .map(|m| (
+                    m.offset(),
+                    m.replacements()
+                        .iter()
+                        .map(|r| r.value().to_string())
+                        .collect::<Vec<_>>()
+                ))
+                .collect::<Vec<_>>()
+        );
         let matches = surviving_matches("R_RR", "Se autoretrató.");
         assert!(
             matches

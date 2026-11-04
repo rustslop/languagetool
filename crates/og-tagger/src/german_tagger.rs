@@ -948,7 +948,7 @@ fn fill_adj_infos(
     adj_infos.insert(fullform, list);
 }
 
-fn synthesize_verb_forms(dictionary: &MorfologikDictionary, lemma: &str) -> Vec<&'static str> {
+pub fn synthesize_verb_forms(dictionary: &MorfologikDictionary, lemma: &str) -> Vec<&'static str> {
     let mut forms: Vec<&'static str> = Vec::new();
     let lc_lemma = starts_lowercase(lemma);
     if let Some(words) = dictionary.verb_forms_by_lemma().get(lemma) {
@@ -963,6 +963,26 @@ fn synthesize_verb_forms(dictionary: &MorfologikDictionary, lemma: &str) -> Vec<
         }
     }
     forms
+}
+
+pub fn expand_verb_prefix_line(
+    dictionary: &MorfologikDictionary,
+    prefix: &str,
+    verb_baseform: &str,
+) -> Vec<String> {
+    let mut result: Vec<String> = Vec::new();
+    for form in synthesize_verb_forms(dictionary, verb_baseform) {
+        let word = format!("{prefix}{form}");
+        if !result.contains(&word) {
+            result.push(word);
+        }
+    }
+    if result.is_empty() {
+        return result;
+    }
+    result.push(format!("{prefix}zu{verb_baseform}"));
+    result.push(format!("{}{verb_baseform}s", uppercase_first(prefix)));
+    result
 }
 
 fn add_verb_line(line: &str, infos: &mut ExpansionInfos, dictionary: &MorfologikDictionary) {

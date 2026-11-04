@@ -92,14 +92,19 @@ impl RefreshPipeline {
             if token_idx >= tokens_mut.len() {
                 continue;
             }
+            let typographic_apostrophe = atr.has_typographic_apostrophe();
             let readings = atr.into_readings();
             if !readings.is_empty() {
                 let primary = tokens_mut[token_idx].token().clone();
                 let updated_primary =
                     AnalyzedToken::new(primary.token(), primary.start(), primary.end())
                         .with_lemma(readings[0].lemma().unwrap_or(primary.token()).to_string());
-                tokens_mut[token_idx] =
+                let mut updated =
                     AnalyzedTokenReadings::new(updated_primary).with_readings(readings);
+                if typographic_apostrophe {
+                    updated.set_chunks(vec![og_core::TYPOGRAPHIC_APOSTROPHE_CHUNK.to_string()]);
+                }
+                tokens_mut[token_idx] = updated;
             }
         }
         for token in sentence.tokens_mut().iter_mut().rev() {
@@ -152,65 +157,9 @@ enum Outcome {
 
 type ExampleRecord = (String, String, Option<(Outcome, String)>, bool);
 
-const PINNED_PASSED: usize = 15723;
-const PINNED_DICT_EXCLUDED: usize = 9968;
+const PINNED_PASSED: usize = 24532;
+const PINNED_DICT_EXCLUDED: usize = 1205;
 const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
-    ("AL_ANDALUS", "Un estudi sobre l'al-Àndalus."),
-    ("APOSTROF_RECTE", "L’home"),
-    ("APOSTROF_RECTE", "Se’ns va explicar."),
-    ("APOSTROF_TIPOGRAFIC", "L’home"),
-    (
-        "AVANTATJA_AVANTATGE",
-        "L'avantatja decisiva que tenen és molt gran.",
-    ),
-    ("AVANTATJA_AVANTATGE", "La verdadera avantatja competitiva."),
-    (
-        "AVANTATJA_AVANTATGE",
-        "Va ser una gran avantatja poder usar aquestes plataformes.",
-    ),
-    ("COLLE", "Els col·les ho fan."),
-    ("COLLE", "Me'n vaig amb el col·le."),
-    ("COMMA_LOCUTION", "Això en canvi no és correcte."),
-    (
-        "COMMA_LOCUTION",
-        "Ara farem per exemple un exercici de fraccions.",
-    ),
-    (
-        "COMMA_LOCUTION",
-        "Finalment doncs, les ajudes públiques es van aprovar.",
-    ),
-    (
-        "COMMA_LOCUTION",
-        "M'agradava aquesta, això no obstant m'enduguí l'altra.",
-    ),
-    (
-        "COMMA_LOCUTION",
-        "M'agradava aquesta, ara bé m'enduguí l'altra.",
-    ),
-    ("COMMA_LOCUTION", "O per exemple, el mes que ve."),
-    (
-        "COMMA_LOCUTION",
-        "Va dir, no obstant això que era necessari.",
-    ),
-    ("CONCORDANCES_NUMERALS_DOS", "Dues-centes xiquetes."),
-    (
-        "CONCORDANCES_NUMERALS_DOS",
-        "Han vingut vint-i-dues xiquetes.",
-    ),
-    ("CONCORDANCES_NUMERALS_DOS", "Trenta-dues xiquetes."),
-    ("CONCORDANCES_NUMERALS_DUES", "Dos-centes."),
-    ("COSE", "Tinc una cose per a tu."),
-    ("DEJA_VU", "Un déjà-vu."),
-    ("ENTENIMENT_ENTESA", "Cal un enteniment entre generacions"),
-    (
-        "ENTENIMENT_ENTESA",
-        "cal un enteniment mutu entre generacions",
-    ),
-    (
-        "ENTENIMENT_ENTESA",
-        "cal un enteniment recíproc entre generacions",
-    ),
-    ("LIJA", "Ho vam polir amb lija fina."),
     (
         "MOTS_NO_SEPARATS",
         "El cantant Fito Luri farà una actuació.",
@@ -222,28 +171,22 @@ const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
         "MOTS_NO_SEPARATS",
         "És un exemple retro del que passa a tot arreu.",
     ),
-    (
-        "MUNICIPIS_CATALANS_FORMA_NORMATIVA_NO_OFICIAL",
-        "Ajuntament del Figaró-Montmany.",
-    ),
-    (
-        "MUNICIPIS_CATALANS_FORMA_NORMATIVA_NO_OFICIAL",
-        "Allò era Figaró-Montmany.",
-    ),
-    ("NORD_AMERICA", "A Sud-àfrica"),
-    ("PROVA_DEL_COTO", "Serà la prova del cotó-en-pèl."),
     ("RECOLZAMENT", "Amb la vostre\u{a0}recolzament."),
     ("RECOLZAMENT", "Sense recolzament popular."),
     ("RECOLZAMENT", "Sense recolzaments parlamentaris."),
-    ("RODALIES", "Per la ciutat i les seves rodalies."),
-    ("TINGLADO", "Els tinglados."),
-    ("TINGLADO", "Era un tinglado."),
 ];
 
 fn evaluate_all() -> Vec<ExampleRecord> {
     use rayon::prelude::*;
     let rule_set = compiled_rules();
-    let engine = PatternRuleEngine::new();
+    let resource_dir = ca_resource_dir().expect("ca resource dir");
+    let engine = PatternRuleEngine::new().with_language_filter_hook(Arc::new(
+        crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
+            crate::ca::tagger::CatalanTagger::shared_arc(),
+            og_rules::postponed_adjective::LangSynthesizer::for_language(&resource_dir, "ca")
+                .map(Arc::new),
+        ),
+    ));
     let pipeline = RefreshPipeline::shared();
     og_rules::pattern_rule::set_test_date_hack(true);
 
@@ -396,16 +339,17 @@ fn catalan_refresh_example_suite_counts_accepted_exclusions() {
     );
 
     assert_eq!(
-        evaluated, 25732,
+        evaluated, 25745,
         "the full live example set must be evaluated"
     );
     assert_eq!(
         passed, PINNED_PASSED,
-        "passed count pinned at the 4cff7008 refresh"
+        "passed count pinned at the 2c9b51e refresh with ca-ES.dict loaded"
     );
     assert_eq!(
         dict_excluded, PINNED_DICT_EXCLUDED,
-        "dict/synthesis-dependent failures are the accepted-excluded mass (missing ca-ES.dict)"
+        "reading-consulting rules are the accepted-excluded mass (agreement, filter and \
+         synthesis divergences against Java with the loaded ca-ES.dict)"
     );
     let actual: Vec<(&str, &str)> = surface
         .iter()
@@ -414,5 +358,20 @@ fn catalan_refresh_example_suite_counts_accepted_exclusions() {
     assert_eq!(
         actual, PINNED_SURFACE_RESIDUES,
         "every surface-only failure must be an explicitly accepted residue"
+    );
+}
+
+#[test]
+fn pipeline_tokens_keep_the_typographic_apostrophe_flag() {
+    let pipeline = RefreshPipeline::shared();
+    let sentence = pipeline.analyze_range("L\u{2019}home", 0, 7);
+    let flagged = sentence
+        .tokens()
+        .iter()
+        .filter(|t| t.has_typographic_apostrophe())
+        .count();
+    assert_eq!(
+        flagged, 1,
+        "the rebuilt suite tokens must carry the tagger chunk like Java setTypographicApostrophe"
     );
 }

@@ -266,7 +266,7 @@ fn add_expanded(result: &mut Vec<String>, word: String) {
     }
 }
 
-fn expand_line(line: &str) -> Vec<String> {
+fn expand_line(line: &str, verb_dictionary: Option<&og_tagger::morfologik::MorfologikDictionary>) -> Vec<String> {
     let flag_idx = line.find('/');
     let is_flag_line = !line.starts_with('#') && flag_idx.is_some_and(|i| i > 0);
     let underscore_idx = line.find('_');
@@ -283,10 +283,12 @@ fn expand_line(line: &str) -> Vec<String> {
             for joiner in ["_in", "_innen", "*in", "*innen", ":in", ":innen"] {
                 result.push(format!("{first}{joiner}"));
             }
+        } else if let Some(dictionary) = verb_dictionary {
+            return og_tagger::german_tagger::expand_verb_prefix_line(dictionary, first, second);
         } else {
-            result.push(format!("{first}{second}"));
-            result.push(format!("{first}zu{second}"));
-            result.push(format!("{}{second}s", uppercase_first_char(first)));
+            add_expanded(&mut result, format!("{first}{second}"));
+            add_expanded(&mut result, format!("{first}zu{second}"));
+            add_expanded(&mut result, format!("{}{second}s", uppercase_first_char(first)));
         }
         return result;
     }
@@ -405,6 +407,7 @@ impl GermanSpeller {
         let mut prohibit_exact: HashSet<String> = HashSet::new();
 
         let hunspell_dir = resource_dir.join("hunspell");
+        let verb_dictionary = og_tagger::german_tagger::shared_german_dictionary(resource_dir);
         let mut ignore_sources = vec![
             hunspell_dir.join("ignore.txt"),
             hunspell_dir.join("spelling.txt"),
@@ -425,7 +428,7 @@ impl GermanSpeller {
                     ignored_in_compounds.insert(stripped.to_string());
                     continue;
                 }
-                for word in expand_line(&line) {
+                for word in expand_line(&line, verb_dictionary.as_deref()) {
                     ignore_words.insert(word.clone());
                     if variant != SWISS {
                         let ch_form = if word.contains('ß') {
@@ -444,7 +447,7 @@ impl GermanSpeller {
             hunspell_dir.join("prohibit_custom.txt"),
         ] {
             for line in load_word_file(&source) {
-                let words = expand_line(&line);
+                let words = expand_line(&line, verb_dictionary.as_deref());
                 if words.len() == 1 && words[0].ends_with(".*") {
                     prohibit_starts.push(words[0][..words[0].len() - 2].to_string());
                 } else if words.first().is_some_and(|w| w.starts_with(".*")) {
@@ -1774,19 +1777,74 @@ mod tests {
     #[test]
     fn line_expansion_covers_flags_and_gender() {
         assert_eq!(
-            expand_line("Osama/S"),
+            expand_line("Osama/S", None),
             vec!["Osama".to_string(), "Osamas".to_string()]
         );
-        assert_eq!(expand_line("Kund_in").len(), 6);
+        assert_eq!(expand_line("Kund_in", None).len(), 6);
         assert_eq!(
-            expand_line("weg_delegieren"),
+            expand_line("weg_delegieren", None),
             vec![
                 "wegdelegieren".to_string(),
                 "wegzudelegieren".to_string(),
                 "Wegdelegierens".to_string()
             ]
         );
-        assert_eq!(expand_line("Foo Bar # note"), vec!["Foo Bar".to_string()]);
+        assert_eq!(
+            expand_line("Foo Bar # note", None),
+            vec!["Foo Bar".to_string()]
+        );
+    }
+
+    #[test]
+    fn verb_prefix_lines_expand_to_synthesized_forms_like_java() {
+        let Some(dir) = resource_dir() else {
+            eprintln!("Skipping: German resources not present");
+            return;
+        };
+        let Some(dict) = og_tagger::german_tagger::shared_german_dictionary(&dir) else {
+            eprintln!("Skipping: German dictionary not present");
+            return;
+        };
+        let dict = dict.as_ref();
+
+        let mut rüber: Vec<String> = expand_line("rüber_verschicken", Some(dict));
+        rüber.sort();
+        let mut java_expected: Vec<String> = [
+            "rüberverschickend",
+            "rüberverschickst",
+            "rüberverschick",
+            "rüberverschickest",
+            "rüberverschicktest",
+            "rüberverschicke",
+            "rüberverschicket",
+            "rüberverschickte",
+            "rüberverschicktet",
+            "rüberverschickten",
+            "rüberverschicken",
+            "rüberverschickt",
+            "rüberzuverschicken",
+            "Rüberverschickens",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        java_expected.sort();
+        assert_eq!(rüber, java_expected);
+
+        let weg = expand_line("weg_delegieren", Some(dict));
+        assert!(weg.contains(&"wegdelegieren".to_string()));
+        assert!(weg.contains(&"wegdelegiere".to_string()));
+        assert!(weg.contains(&"wegdelegiert".to_string()));
+        assert!(weg.contains(&"wegzudelegieren".to_string()));
+        assert!(weg.contains(&"Wegdelegierens".to_string()));
+        assert_eq!(weg.last().unwrap(), "Wegdelegierens");
+
+        let hinterher = expand_line("hinterher_spionieren", Some(dict));
+        assert!(
+            hinterher.contains(&"hinterherspioniert".to_string()),
+            "the ZUSAMMENSCHREIBUNG_HINTER replacement must be an accepted word"
+        );
+        assert!(hinterher.contains(&"hinterherzuspionieren".to_string()));
     }
 
     #[test]
@@ -2193,15 +2251,18 @@ mod tests {
 
     #[test]
     fn line_expansion_handles_malformed_lines() {
-        assert_eq!(expand_line("Foo_Bar_Baz"), vec!["Foo_Bar_Baz".to_string()]);
-        assert_eq!(expand_line("a/b/c"), vec!["a/b/c".to_string()]);
         assert_eq!(
-            expand_line("Hauptstraße/T"),
+            expand_line("Foo_Bar_Baz", None),
+            vec!["Foo_Bar_Baz".to_string()]
+        );
+        assert_eq!(expand_line("a/b/c", None), vec!["a/b/c".to_string()]);
+        assert_eq!(
+            expand_line("Hauptstraße/T", None),
             vec!["Hauptstraße".to_string(), "Hauptstr.".to_string()]
         );
         assert_eq!(replace_first_binnen_i("Kunden"), "Kunden");
         assert!(
-            expand_line("Wort/Q").is_empty(),
+            expand_line("Wort/Q", None).is_empty(),
             "unknown flag chars expand to nothing"
         );
     }
