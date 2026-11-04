@@ -1233,9 +1233,7 @@ impl XmlRuleParser {
                                 if let Some(rule) = &mut current_rule {
                                     let corrections = example_correction
                                         .as_ref()
-                                        .map(|c| {
-                                            c.split('|').map(|s| s.trim().to_string()).collect()
-                                        })
+                                        .map(|c| c.split('|').map(str::to_string).collect())
                                         .unwrap_or_default();
                                     rule.examples.push(XmlExample {
                                         example_type: final_type,
@@ -1575,7 +1573,9 @@ mod tests {
             Some("aceitar|propor")
         );
         assert_eq!(
-            result.rules[0].pattern.tokens[1].exceptions[0].text.as_deref(),
+            result.rules[0].pattern.tokens[1].exceptions[0]
+                .text
+                .as_deref(),
             Some("aceitar|propor")
         );
     }

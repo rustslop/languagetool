@@ -41,7 +41,10 @@ impl CatalanPatternFilterHook {
         let ca_synth = synthesizer.as_ref().map(|synth| {
             let dir = crate::ca::tagger::ca_resource_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("ca-resource-missing"));
-            Arc::new(super::ca_synthesizer::CaSynthesizer::build(&dir, synth.clone()))
+            Arc::new(super::ca_synthesizer::CaSynthesizer::build(
+                &dir,
+                synth.clone(),
+            ))
         });
         Self { tagger, ca_synth }
     }
@@ -149,7 +152,12 @@ impl LanguageFilterHook for CatalanPatternFilterHook {
                 possessius_accept(&mut rm, pattern_token_pos, call.tokens).map(|()| rm)
             }
             "org.languagetool.rules.ca.DiacriticsCheckFilter" => {
-                super::diacritics_check::accept_rule_match(&rm, call.args, call.tokens, call.matched_positions)
+                super::diacritics_check::accept_rule_match(
+                    &rm,
+                    call.args,
+                    call.tokens,
+                    call.matched_positions,
+                )
             }
             _ => Some(rm),
         }

@@ -957,8 +957,7 @@ fn oblidarse_takes_the_de_path_for_an_infinitive_after_the_verb() {
 #[test]
 fn ca_synth_dictionary_resolves_real_forms() {
     let dir = crate::ca::tagger::ca_resource_dir().expect("ca resource dir");
-    let Some(synth) =
-        og_rules::postponed_adjective::LangSynthesizer::for_language(&dir, "ca")
+    let Some(synth) = og_rules::postponed_adjective::LangSynthesizer::for_language(&dir, "ca")
     else {
         panic!("ca-ES_synth.dict + .info must construct the ca synthesizer");
     };

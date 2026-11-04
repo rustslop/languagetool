@@ -452,13 +452,19 @@ fn sentence_start_corrections_wait_for_the_shared_capitalization_step() {
     let offered = offered_for("GREEK_WHERE-", "Που πας;");
     assert_eq!(
         offered,
-        vec![vec!["πού".to_string()]],
+        vec![vec!["Πού".to_string()]],
         "Java capitalizes the suggestion to 'Πού' via RuleMatch.java:198-199 \
-         (startWithUppercase from PatternRuleMatcher.java:164-173); the shared \
-         og-rules suggestion path has no uppercaseFirstChar step yet"
+         (startWithUppercase from PatternRuleMatcher.java:164-173, read from the \
+         marker-corrected first token); the shared og-rules suggestion path now \
+         applies uppercaseFirstChar the same way"
     );
     let offered = offered_for("GREEK_NUMERAL_ONE_WORD", "Δέκα τρία.");
-    assert_eq!(offered, vec![vec!["δεκατρία".to_string()]]);
+    assert_eq!(
+        offered,
+        vec![vec!["Δεκατρία".to_string()]],
+        "grammar.xml pins correction='Δεκατρία' (uppercase, RuleMatch.java:198-199): the \
+         match starts at 'Δέκα', which Java reads as startWithUppercase"
+    );
 }
 
 #[test]

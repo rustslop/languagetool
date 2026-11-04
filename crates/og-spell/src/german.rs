@@ -266,7 +266,10 @@ fn add_expanded(result: &mut Vec<String>, word: String) {
     }
 }
 
-fn expand_line(line: &str, verb_dictionary: Option<&og_tagger::morfologik::MorfologikDictionary>) -> Vec<String> {
+fn expand_line(
+    line: &str,
+    verb_dictionary: Option<&og_tagger::morfologik::MorfologikDictionary>,
+) -> Vec<String> {
     let flag_idx = line.find('/');
     let is_flag_line = !line.starts_with('#') && flag_idx.is_some_and(|i| i > 0);
     let underscore_idx = line.find('_');
@@ -288,7 +291,10 @@ fn expand_line(line: &str, verb_dictionary: Option<&og_tagger::morfologik::Morfo
         } else {
             add_expanded(&mut result, format!("{first}{second}"));
             add_expanded(&mut result, format!("{first}zu{second}"));
-            add_expanded(&mut result, format!("{}{second}s", uppercase_first_char(first)));
+            add_expanded(
+                &mut result,
+                format!("{}{second}s", uppercase_first_char(first)),
+            );
         }
         return result;
     }

@@ -157,8 +157,8 @@ enum Outcome {
 
 type ExampleRecord = (String, String, Option<(Outcome, String)>, bool);
 
-const PINNED_PASSED: usize = 24532;
-const PINNED_DICT_EXCLUDED: usize = 1205;
+const PINNED_PASSED: usize = 24760;
+const PINNED_DICT_EXCLUDED: usize = 977;
 const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
     (
         "MOTS_NO_SEPARATS",
@@ -176,18 +176,97 @@ const PINNED_SURFACE_RESIDUES: &[(&str, &str)] = &[
     ("RECOLZAMENT", "Sense recolzaments parlamentaris."),
 ];
 
+pub(crate) struct VetoAdapter {
+    pub rule: og_xml::compiler::CompiledRule,
+    pub hook: std::sync::Arc<crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook>,
+}
+
+impl og_core::Rule for VetoAdapter {
+    fn id(&self) -> &str {
+        &self.rule.id
+    }
+    fn match_sentence(&self, sentence: &AnalyzedSentence) -> Vec<og_core::RuleMatch> {
+        let concrete = std::sync::Arc::clone(&self.hook);
+        let hook: std::sync::Arc<dyn og_rules::language_filter::LanguageFilterHook> = concrete;
+        PatternRuleEngine::new()
+            .with_language_filter_hook(hook)
+            .match_rule(&self.rule, sentence)
+    }
+}
+
+pub(crate) struct CaSuppressSupport<F>
+where
+    F: Fn(&str) -> Vec<AnalyzedSentence> + Send + Sync,
+{
+    pub rules: std::sync::Arc<CompiledRuleSet>,
+    pub hook: std::sync::Arc<crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook>,
+    pub analyze: F,
+}
+
+impl<F> og_rules::suppress_if_any::SuppressIfAnySupport for CaSuppressSupport<F>
+where
+    F: Fn(&str) -> Vec<AnalyzedSentence> + Send + Sync,
+{
+    fn analyze_text(&self, text: &str) -> Vec<AnalyzedSentence> {
+        (self.analyze)(text)
+    }
+    fn rules_for_ids(&self, rule_ids: &[&str]) -> Vec<std::sync::Arc<dyn og_core::Rule>> {
+        self.rules
+            .rules
+            .iter()
+            .filter(|r| rule_ids.contains(&r.id.as_str()))
+            .map(|r| {
+                let adapter: std::sync::Arc<dyn og_core::Rule> = std::sync::Arc::new(VetoAdapter {
+                    rule: r.clone(),
+                    hook: std::sync::Arc::clone(&self.hook),
+                });
+                adapter
+            })
+            .collect()
+    }
+}
+
+pub(crate) fn ca_suite_engine(
+    rule_set: &std::sync::Arc<CompiledRuleSet>,
+    resource_dir: &std::path::Path,
+    analyze: impl Fn(&str) -> Vec<AnalyzedSentence> + Send + Sync + 'static,
+) -> PatternRuleEngine {
+    let hook = std::sync::Arc::new(
+        crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
+            crate::ca::tagger::CatalanTagger::shared_arc(),
+            og_rules::postponed_adjective::LangSynthesizer::for_language(resource_dir, "ca")
+                .map(std::sync::Arc::new),
+        ),
+    );
+    let tagger = crate::ca::tagger::CatalanTagger::shared_arc()
+        .map(|tagger| tagger as std::sync::Arc<dyn og_tagger::Tagger>);
+    let hook_concrete = std::sync::Arc::clone(&hook);
+    let hook_dyn: std::sync::Arc<dyn og_rules::language_filter::LanguageFilterHook> = hook_concrete;
+    PatternRuleEngine::new()
+        .with_language_filter_hook(hook_dyn)
+        .with_suppress_if_any_support(
+            std::sync::Arc::new(CaSuppressSupport {
+                rules: std::sync::Arc::clone(rule_set),
+                hook,
+                analyze,
+            }),
+            tagger,
+        )
+}
+
 fn evaluate_all() -> Vec<ExampleRecord> {
     use rayon::prelude::*;
     let rule_set = compiled_rules();
     let resource_dir = ca_resource_dir().expect("ca resource dir");
-    let engine = PatternRuleEngine::new().with_language_filter_hook(Arc::new(
-        crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
-            crate::ca::tagger::CatalanTagger::shared_arc(),
-            og_rules::postponed_adjective::LangSynthesizer::for_language(&resource_dir, "ca")
-                .map(Arc::new),
-        ),
-    ));
     let pipeline = RefreshPipeline::shared();
+    let pipeline_for_engine = std::sync::Arc::clone(&pipeline);
+    let engine = ca_suite_engine(&rule_set, &resource_dir, move |text| {
+        pipeline_for_engine
+            .analyze_offset_text(text)
+            .into_iter()
+            .map(|(sentence, _)| sentence)
+            .collect()
+    });
     og_rules::pattern_rule::set_test_date_hack(true);
 
     let mut group_index: HashMap<(String, Option<String>), usize> = HashMap::new();

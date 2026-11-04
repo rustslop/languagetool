@@ -7,8 +7,7 @@ use regex::Regex;
 const LEMMAS_TO_IGNORE: [&str; 4] = ["enterar", "sentar", "conseguir", "alcançar"];
 const CA_ES_VERB_TAGS: &str = "[0CXY12]";
 
-static P_VERB: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("^V.*[CVBXYZ0123456]$").unwrap());
+static P_VERB: LazyLock<Regex> = LazyLock::new(|| Regex::new("^V.*[CVBXYZ0123456]$").unwrap());
 
 pub struct CaSynthesizer {
     inner: Arc<LangSynthesizer>,
@@ -33,9 +32,7 @@ impl CaSynthesizer {
                     continue;
                 }
                 let mut parts = line.splitn(3, '\t');
-                if let (Some(_), Some(_), Some(tag)) =
-                    (parts.next(), parts.next(), parts.next())
-                {
+                if let (Some(_), Some(_), Some(tag)) = (parts.next(), parts.next(), parts.next()) {
                     let tag = tag.trim().to_string();
                     if !tag.is_empty() && !tags.contains(&tag) {
                         tags.push(tag);
@@ -137,8 +134,10 @@ mod tests {
     #[test]
     fn regexp_mode_applies_the_variant_verb_retry() {
         let synth = test_synth("menjo\tmenjar\tVMIP1S00\n");
-        assert!(synth.synthesize_plain("menjar", "VMIP1S00").is_empty()
-            || synth.synthesize_plain("menjar", "VMIP1S00") == vec!["menjo"]);
+        assert!(
+            synth.synthesize_plain("menjar", "VMIP1S00").is_empty()
+                || synth.synthesize_plain("menjar", "VMIP1S00") == vec!["menjo"]
+        );
         let forms = synth.synthesize_regexp("menjar", "VMIP1S0Z");
         assert_eq!(
             forms,
@@ -170,17 +169,21 @@ mod tests {
         std::fs::write(resource_dir.join("added.txt"), added).unwrap();
         std::fs::write(
             resource_dir.join("ca-ES_synth.dict"),
-            std::fs::read(crate::ca::tagger::ca_resource_dir()
-                .expect("ca resource dir")
-                .join("ca-ES_synth.dict"))
+            std::fs::read(
+                crate::ca::tagger::ca_resource_dir()
+                    .expect("ca resource dir")
+                    .join("ca-ES_synth.dict"),
+            )
             .unwrap(),
         )
         .unwrap();
         std::fs::write(
             resource_dir.join("ca-ES_synth.info"),
-            std::fs::read(crate::ca::tagger::ca_resource_dir()
-                .expect("ca resource dir")
-                .join("ca-ES_synth.info"))
+            std::fs::read(
+                crate::ca::tagger::ca_resource_dir()
+                    .expect("ca resource dir")
+                    .join("ca-ES_synth.info"),
+            )
             .unwrap(),
         )
         .unwrap();

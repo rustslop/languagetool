@@ -15,9 +15,8 @@ impl ConfusionPairs {
         static CACHE: OnceLock<Option<Arc<ConfusionPairs>>> = OnceLock::new();
         CACHE
             .get_or_init(|| {
-                let path = crate::engine::find_lt_resource_dir()?.join(
-                    "ca/src/main/resources/org/languagetool/rules/ca/confusion_pairs.txt",
-                );
+                let path = crate::engine::find_lt_resource_dir()?
+                    .join("ca/src/main/resources/org/languagetool/rules/ca/confusion_pairs.txt");
                 let data = std::fs::read_to_string(path).ok()?;
                 let mut entries: HashMap<String, Vec<(String, String)>> = HashMap::new();
                 for line in data.lines() {
@@ -61,8 +60,7 @@ static SEL_CP: LazyLock<Regex> = LazyLock::new(|| Regex::new("^([NAPD].+CP.*|V.P
 static SEL_CS: LazyLock<Regex> = LazyLock::new(|| Regex::new("^([NAPD].+CS.*|V.P..S..)$").unwrap());
 
 fn matches_full(pattern: &str, value: &str) -> bool {
-    Regex::new(&format!("^(?:{pattern})$"))
-        .is_ok_and(|re| re.is_match(value))
+    Regex::new(&format!("^(?:{pattern})$")).is_ok_and(|re| re.is_match(value))
 }
 
 fn select_gender_number_pattern(atr: &AnalyzedTokenReadings) -> Option<&'static Regex> {
@@ -81,7 +79,8 @@ fn has_diacritics(word: &str) -> bool {
 }
 
 fn is_all_uppercase(word: &str) -> bool {
-    word.chars().all(|c| !(c.is_alphabetic() && c.is_lowercase()))
+    word.chars()
+        .all(|c| !(c.is_alphabetic() && c.is_lowercase()))
 }
 
 fn is_capitalized_word(word: &str) -> bool {
@@ -128,10 +127,7 @@ pub fn accept_rule_match(
     }
 
     let readings = pairs.entries.get(&form)?;
-    if !readings
-        .iter()
-        .any(|(_, tag)| matches_full(postag, tag))
-    {
+    if !readings.iter().any(|(_, tag)| matches_full(postag, tag)) {
         return None;
     }
     let mut replacement;

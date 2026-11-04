@@ -192,14 +192,19 @@ fn catalan_grammar_examples_with_ca_pipeline() {
     let rule_set = compiled_rules();
     let groups = rule_groups(&rule_set);
     let resource_dir = super::tagger::ca_resource_dir().expect("ca resource dir");
-    let engine = PatternRuleEngine::new().with_language_filter_hook(Arc::new(
-        crate::ca_filter_semantics_delta::dispatch::CatalanPatternFilterHook::new(
-            super::tagger::CatalanTagger::shared_arc(),
-            og_rules::postponed_adjective::LangSynthesizer::for_language(&resource_dir, "ca")
-                .map(Arc::new),
-        ),
-    ));
     let pipeline = CatalanPipeline::shared();
+    let pipeline_for_engine = Arc::clone(&pipeline);
+    let engine = crate::ca_module_refresh::example_suite::ca_suite_engine(
+        &rule_set,
+        &resource_dir,
+        move |text| {
+            pipeline_for_engine
+                .analyze_offset_text(text)
+                .into_iter()
+                .map(|(sentence, _)| sentence)
+                .collect()
+        },
+    );
     og_rules::pattern_rule::set_test_date_hack(true);
     let started = std::time::Instant::now();
 
@@ -554,7 +559,8 @@ fn pipeline_gv_chunking_fires_with_the_binary_dictionary() {
         .map(|t| t.token().token())
         .collect();
     assert_eq!(
-        gv, vec!["ha", "de", "fer"],
+        gv,
+        vec!["ha", "de", "fer"],
         "with ca-ES.dict loaded the tagger emits the haver/de/fer verb readings and the GV \
          chunker covers the verb group like Java's CatalanChunker"
     );

@@ -190,7 +190,9 @@ impl CatalanTagger {
 
     pub fn is_word_tagged(&self, word: &str) -> bool {
         let (readings, _, _) = self.analyze_token(word, 0, 0);
-        readings.iter().any(|reading| !reading.pos_tags().is_empty())
+        readings
+            .iter()
+            .any(|reading| !reading.pos_tags().is_empty())
     }
 
     fn combined_readings(&self, word: &str) -> Vec<(String, String)> {

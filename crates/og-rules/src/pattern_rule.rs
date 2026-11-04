@@ -739,7 +739,7 @@ impl PatternRuleEngine {
         let context_text = text[context_start..context_end].to_string();
 
         let mut replacements: Vec<SuggestedReplacement> = Vec::new();
-        let starts_upper = self.match_starts_uppercase(tokens, &match_result);
+        let starts_upper = self.match_starts_uppercase(tokens, match_start);
         for s in &rule.suggestions {
             let alternatives = self.suggestion_alternatives(s, tokens, &match_result);
             let strippable = rule.suppress_misspelled || s.suppress_misspelled;
@@ -833,14 +833,15 @@ impl PatternRuleEngine {
     fn match_starts_uppercase(
         &self,
         tokens: &[&AnalyzedTokenReadings],
-        match_result: &PatternMatchResult,
+        match_start: usize,
     ) -> bool {
-        let Some(&first_pos) = match_result.matched_positions.first() else {
+        let Some(first_pos) = tokens
+            .iter()
+            .position(|t| !t.is_whitespace() && t.token().end() > match_start)
+        else {
             return false;
         };
-        let Some(first_token) = tokens.get(first_pos) else {
-            return false;
-        };
+        let first_token = tokens[first_pos];
         if first_token.is_sentence_start() {
             return tokens
                 .get(first_pos + 1)
@@ -1256,53 +1257,56 @@ impl PatternRuleEngine {
                 let composed = compose(&raw);
                 eval_targets(&[composed])
             };
-            let transformed_forms = |synth: &crate::postponed_adjective::LangSynthesizer| -> Option<Vec<String>> {
-                let filter = whole_match_regex(postag, pattern_token.match_no_postag_regexp)?;
-                let mut pos_tags: Vec<&str> = Vec::new();
-                for reading in ref_token.readings() {
-                    for tag in reading.pos_tags() {
-                        if !tag.is_empty() && filter.is_match(tag) && !pos_tags.contains(&tag.as_str())
-                        {
-                            pos_tags.push(tag);
-                        }
-                    }
-                }
-                let mut target = synth.target_postag(&pos_tags).unwrap_or(postag).to_string();
-                if let Some(replace) = pattern_token.match_no_postag_replace.as_deref() {
-                    let unanchored_body = if pattern_token.match_no_postag_regexp {
-                        postag.to_string()
-                    } else {
-                        regex::escape(postag)
-                    };
-                    let unanchored = og_xml::compiler::shared_cached_regex(&unanchored_body)?;
-                    let mut replaced: Vec<String> = if pos_tags.is_empty() {
-                        vec![target]
-                    } else {
-                        pos_tags.iter().map(|t| t.to_string()).collect()
-                    };
-                    for t in &mut replaced {
-                        *t = unanchored
-                            .replace_all(t, java_replacement(replace).as_ref())
-                            .into_owned();
-                    }
-                    target = replaced.join("|");
-                }
-                let mut forms: Vec<String> = Vec::new();
-                for reading in ref_token.readings() {
-                    if let Some(lemma) = reading.lemma() {
-                        for form in synth.synthesize_full_for(
-                            lemma,
-                            reading.pos_tags().first().map(String::as_str),
-                            &target,
-                        ) {
-                            if !forms.contains(&form) {
-                                forms.push(form);
+            let transformed_forms =
+                |synth: &crate::postponed_adjective::LangSynthesizer| -> Option<Vec<String>> {
+                    let filter = whole_match_regex(postag, pattern_token.match_no_postag_regexp)?;
+                    let mut pos_tags: Vec<&str> = Vec::new();
+                    for reading in ref_token.readings() {
+                        for tag in reading.pos_tags() {
+                            if !tag.is_empty()
+                                && filter.is_match(tag)
+                                && !pos_tags.contains(&tag.as_str())
+                            {
+                                pos_tags.push(tag);
                             }
                         }
                     }
-                }
-                Some(forms)
-            };
+                    let mut target = synth.target_postag(&pos_tags).unwrap_or(postag).to_string();
+                    if let Some(replace) = pattern_token.match_no_postag_replace.as_deref() {
+                        let unanchored_body = if pattern_token.match_no_postag_regexp {
+                            postag.to_string()
+                        } else {
+                            regex::escape(postag)
+                        };
+                        let unanchored = og_xml::compiler::shared_cached_regex(&unanchored_body)?;
+                        let mut replaced: Vec<String> = if pos_tags.is_empty() {
+                            vec![target]
+                        } else {
+                            pos_tags.iter().map(|t| t.to_string()).collect()
+                        };
+                        for t in &mut replaced {
+                            *t = unanchored
+                                .replace_all(t, java_replacement(replace).as_ref())
+                                .into_owned();
+                        }
+                        target = replaced.join("|");
+                    }
+                    let mut forms: Vec<String> = Vec::new();
+                    for reading in ref_token.readings() {
+                        if let Some(lemma) = reading.lemma() {
+                            for form in synth.synthesize_full_for(
+                                lemma,
+                                reading.pos_tags().first().map(String::as_str),
+                                &target,
+                            ) {
+                                if !forms.contains(&form) {
+                                    forms.push(form);
+                                }
+                            }
+                        }
+                    }
+                    Some(forms)
+                };
             let mut forms: Vec<String> = match synth.map(transformed_forms) {
                 Some(Some(formed)) if !formed.is_empty() => formed,
                 Some(Some(_)) => vec![format!("({})", ref_text)],
@@ -3349,6 +3353,15 @@ impl PatternRuleEngine {
             }
             "org.languagetool.rules.es.PostponedAdjectiveConcordanceFilter" => {
                 crate::postponed_adjective::accept_es(
+                    self.synthesizer.as_deref(),
+                    &filter.args,
+                    matched_positions,
+                    tokens,
+                    rm,
+                )
+            }
+            "org.languagetool.rules.ca.PostponedAdjectiveConcordanceFilter" => {
+                crate::postponed_adjective::accept_ca(
                     self.synthesizer.as_deref(),
                     &filter.args,
                     matched_positions,
@@ -12435,16 +12448,14 @@ mod shared_engine_semantics_tests {
         let dir = std::path::Path::new(
             "/home/agent/opengrammar-rs/languagetool/languagetool-language-modules/it/src/main/resources/org/languagetool/resource/it",
         );
-        let Some(synth) =
-            crate::postponed_adjective::LangSynthesizer::for_language(dir, "it")
+        let Some(synth) = crate::postponed_adjective::LangSynthesizer::for_language(dir, "it")
         else {
             eprintln!("Skipping: Italian synth dictionary not present");
             return;
         };
         let xml = r#"<rules lang="it"><rule id="BACKREF" name="backref"><pattern><token postag_regexp="yes" postag="NOUN-M:s"/><token>e</token><token><match no='0' postag="(NOUN-M):s" postag_regexp="yes" postag_replace="$1:p"/></token></pattern><message>m</message></rule></rules>"#;
         let rule = compile(xml);
-        let engine = PatternRuleEngine::new()
-            .with_synthesizer(std::sync::Arc::new(synth));
+        let engine = PatternRuleEngine::new().with_synthesizer(std::sync::Arc::new(synth));
         let sentence = tagged_sentence(&[
             ("libro", "libro", "NOUN-M:s"),
             ("e", "e", "CONJ"),

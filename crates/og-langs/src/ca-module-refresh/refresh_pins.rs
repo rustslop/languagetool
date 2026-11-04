@@ -288,10 +288,12 @@ fn compounds_refresh_joins_trenca_closques_and_drops_baby_boom() {
         "with ca-ES.dict loaded the speller knows 'trencaclosques' and the CompoundRule \
          offers the merge like Java"
     );
-    assert!(matches[0]
-        .replacements()
-        .iter()
-        .any(|r| r.value() == "trencaclosques"));
+    assert!(
+        matches[0]
+            .replacements()
+            .iter()
+            .any(|r| r.value() == "trencaclosques")
+    );
     let sentences = pipeline.analyze_offset_text("El baby boom va ser llarg.");
     assert!(
         rule.match_sentence(&sentences[0].0).is_empty(),

@@ -559,17 +559,40 @@ mod tests {
     }
 
     #[test]
-    fn clitic_chains_and_contractions_are_data_blocked() {
-        let pin_words = ["deixe-me", "distribuí-lo-ei", "das", "ao", "jiu-jitsu"];
+    fn clitic_chains_and_contractions_carry_the_java_readings() {
         let tagger = tagger();
-        for word in pin_words {
-            let readings = Tagger::tag(tagger.as_ref(), &[word])[0].readings().to_vec();
-            let has_chain = readings
+        let tags = |word: &str| {
+            Tagger::tag(tagger.as_ref(), &[word])[0]
+                .readings()
                 .iter()
-                .any(|r| r.pos_tags().iter().any(|t| t.contains(':')));
-            if has_chain {
-                panic!("{word} unexpectedly carries chain tags: {readings:?}");
-            }
-        }
+                .map(|r| r.pos_tags().join("|"))
+                .collect::<Vec<String>>()
+        };
+        assert_eq!(
+            tags("deixe-me"),
+            vec![
+                "VMM03S0:PP1CSO00".to_string(),
+                "VMSP1S0:PP1CSO00".to_string(),
+                "VMSP3S0:PP1CSO00".to_string(),
+            ],
+            "PortugueseTaggerTest.java:59-60 pins Deixe-me/[deixar]VMM03S0:PP1CSO00; the modern dict carries the full chain set"
+        );
+        assert!(
+            tags("distribuí-lo-ei")
+                .iter()
+                .any(|t| t.contains("VMIF1S0:PP3MSA00")),
+            "PortugueseTaggerTest.java:114 pins distribuí-lo-ei/[distribuir]VMIF1S0:PP3MSA00: {:?}",
+            tags("distribuí-lo-ei")
+        );
+        assert!(
+            tags("das").iter().any(|t| t.contains("SPS00:DA0FP0")),
+            "PortugueseTaggerTest.java:87 pins das/[de:o]SPS00:DA0FP0: {:?}",
+            tags("das")
+        );
+        assert!(
+            tags("ao").iter().any(|t| t.contains(':')),
+            "the modern dict tags the ao contraction with a chained reading: {:?}",
+            tags("ao")
+        );
     }
 }

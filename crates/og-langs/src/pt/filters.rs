@@ -519,9 +519,13 @@ mod tests {
             rm,
         )
         .expect("pronoun tags are non-empty");
-        assert!(
-            out.replacements().is_empty(),
-            "the pt synth dict is absent, so enclisisTag lookups return no forms"
+        assert_eq!(
+            out.replacements()
+                .iter()
+                .map(|r| r.value().to_string())
+                .collect::<Vec<String>>(),
+            vec!["TÊM-NO".to_string()],
+            "with the modern portuguese_synth.dict the enclisisTag lookups resolve forms"
         );
     }
 
@@ -634,8 +638,25 @@ mod tests {
                 .iter()
                 .map(|r| r.value().to_string())
                 .collect::<Vec<String>>(),
-            vec!["pesquiso".to_string()],
-            "pesquisar synthesized with tenho's VMIP1S0"
+            vec![
+                "pesquiso".to_string(),
+                "pesquiso-nos".to_string(),
+                "pesquiso-no-las".to_string(),
+                "pesquiso-no-la".to_string(),
+                "pesquiso-no-los".to_string(),
+                "pesquiso-no-lo".to_string(),
+                "pesquiso-me".to_string(),
+                "pesquiso-vos".to_string(),
+                "pesquiso-te".to_string(),
+                "pesquiso-se".to_string(),
+                "pesquiso-lhes".to_string(),
+                "pesquiso-lhe".to_string(),
+                "pesquiso-as".to_string(),
+                "pesquiso-a".to_string(),
+                "pesquiso-os".to_string(),
+                "pesquiso-o".to_string(),
+            ],
+            "pesquisar synthesized with tenho's VMIP1S0; the modern portuguese_synth.dict resolves the enclisisTag expansions"
         );
     }
 
@@ -865,7 +886,14 @@ mod tests {
             rm,
         )
         .expect("pronoun tags are non-empty");
-        assert!(out.replacements().is_empty());
+        assert_eq!(
+            out.replacements()
+                .iter()
+                .map(|r| r.value().to_string())
+                .collect::<Vec<String>>(),
+            vec!["TÊM-NO".to_string()],
+            "with the modern portuguese_synth.dict the dispatch enclisis path resolves forms"
+        );
 
         let enclitic = atr("quis-lo", &[("querer", "VMIS3S0:PP3MSA00")]);
         let tokens: Vec<&AnalyzedTokenReadings> = vec![&enclitic];

@@ -821,9 +821,9 @@ fn rule_gates_on_readings(rule: &og_xml::compiler::CompiledRule) -> bool {
 fn no_match_residue_is_exactly_the_missing_irish_dict_family() {
     let _release_guard = crate::release_guard();
     let outcome = evaluate_all_examples();
-    assert_eq!(outcome.passed, 1552);
+    assert_eq!(outcome.passed, 1557);
     assert_eq!(outcome.fail_lines.len(), 271);
-    assert_eq!(outcome.correction_failures.len(), 20);
+    assert_eq!(outcome.correction_failures.len(), 15);
     let rule_set = compiled_rules();
     let failing_ids: std::collections::HashSet<&str> = outcome
         .fail_lines
@@ -908,10 +908,10 @@ fn correction_residue_pins_its_shared_engine_families() {
             "CE_MEID",
             "Cé mhéid gealladh ar briseadh ar an Indiach bocht?"
         ),
-        vec![vec!["cé mhéad".to_string()]],
+        vec![vec!["Cé mhéad".to_string()]],
         "Java capitalises the suggestion at sentence start via RuleMatch.java:198-199; \
-         the shared og-rules suggestion path has no uppercaseFirstChar step (the el \
-         round's GREEK_WHERE- finding)"
+         the shared og-rules suggestion path now applies uppercaseFirstChar the same \
+         way (the el round's GREEK_WHERE- finding, landed)"
     );
     assert_eq!(
         offered_for("FATA", "fata"),

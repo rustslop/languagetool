@@ -194,8 +194,8 @@ mod tests {
             .collect();
         assert_eq!(
             readings,
-            vec!["NCFS000".to_string()],
-            "DET_VERBONOME (disambiguation.xml with external entities resolved) must drop the V.[ISM].+ readings of 'tira' after 'seu': {readings:?}"
+            vec!["NCCS000".to_string()],
+            "DET_VERBONOME (disambiguation.xml with external entities resolved) must drop the V.[ISM].+ readings of 'tira' after 'seu'; the modern dict tags the surviving noun reading common-gender: {readings:?}"
         );
     }
 

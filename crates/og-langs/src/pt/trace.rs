@@ -865,23 +865,35 @@ mod round2_pins {
     }
 
     #[test]
-    fn style_residue_contraction_tags_are_plus_joined_truncated_chains() {
+    fn style_residue_contraction_tags_carry_the_java_chained_readings() {
         assert_eq!(
             tagger_tags("das"),
-            vec!["de+as/SPS00+*".to_string()],
-            "Java pins das/[de:o]SPS00:DA0FP0 (PortugueseTaggerTest.java:87); the pinned 2016-era dict gives a plus-joined truncated chain"
+            vec!["de:o/SPS00:DA0FP0".to_string()],
+            "PortugueseTaggerTest.java:87 pins das/[de:o]SPS00:DA0FP0; the modern dict reproduces the chained reading"
         );
         assert_eq!(
             tagger_tags("deles"),
-            vec!["de+eles/SPS00+PP3MP00".to_string()],
-            "INIMIGO_ADVERSÁRIO's scope=next exception postag SPS00:PP3.+ can never fire on this reading"
+            vec![
+                "delir/VMIP2S0".to_string(),
+                "de:ele/SPS00:PP3MPN00".to_string()
+            ],
+            "INIMIGO_ADVERSÁRIO's scope=next exception postag SPS00:PP3.+ fires on the modern chained reading"
         );
-        assert!(tagger_tags("nesta") == vec!["em+esta/SPS00+*".to_string()]);
-        assert!(tagger_tags("disso") == vec!["de+isso/SPS00+PD0NN00".to_string()]);
+        assert_eq!(
+            tagger_tags("nesta"),
+            vec![
+                "em:este/SPS00:DI0FS0".to_string(),
+                "em:este/SPS00:PI0FS000".to_string()
+            ]
+        );
+        assert_eq!(
+            tagger_tags("disso"),
+            vec!["de:isso/SPS00:PD0NN00".to_string()]
+        );
     }
 
     #[test]
-    fn style_residue_enclitic_and_hyphen_words_are_untagged_and_split() {
+    fn style_residue_enclitic_and_hyphen_words_are_tagged_and_kept_whole() {
         for word in [
             "aturam-me",
             "usa-se",
@@ -891,65 +903,81 @@ mod round2_pins {
         ] {
             let readings = tagger_tags(word);
             assert!(
-                readings.is_empty() || readings.iter().all(|r| r.ends_with("/-")),
-                "{word} must be dict-untagged so the tokenizer splits it (PortugueseWordTokenizer.java:161-171 parity): {readings:?}"
+                readings.iter().any(|r| !r.ends_with("/-")),
+                "{word} carries dict readings so the tokenizer keeps it whole (PortugueseWordTokenizer.java:161-171 parity): {readings:?}"
             );
         }
         assert_eq!(
             pipeline_tokens("Os meus pais aturam-me há décadas."),
             vec![
-                "<S>", "Os", "meus", "pais", "aturam", "-", "me", "há", "décadas", "."
+                "<S>".to_string(),
+                "Os".to_string(),
+                "meus".to_string(),
+                "pais".to_string(),
+                "aturam-me".to_string(),
+                "há".to_string(),
+                "décadas".to_string(),
+                ".".to_string()
             ],
-            "PortugueseWordTokenizer.java:161-171 keeps hyphen words whole iff the tagger tags them; aturam-me is untagged in this dict so it splits, shrinking ATURAR_SUPORTAR_TOLERAR's marker"
+            "PortugueseWordTokenizer.java:161-171 keeps hyphen words whole iff the tagger tags them; aturam-me is tagged in the modern dict"
         );
         assert_eq!(
             pipeline_tokens("Quero isto para a segunda-feira de hoje."),
             vec![
-                "<S>", "Quero", "isto", "para", "a", "segunda", "-", "feira", "de", "hoje", "."
+                "<S>".to_string(),
+                "Quero".to_string(),
+                "isto".to_string(),
+                "para".to_string(),
+                "a".to_string(),
+                "segunda-feira".to_string(),
+                "de".to_string(),
+                "hoje".to_string(),
+                ".".to_string(),
             ]
         );
     }
 
     #[test]
     fn style_residue_missing_vocabulary_and_stale_readings() {
-        for word in [
-            "resolver",
-            "resolvem",
-            "refiro",
-            "revendo",
-            "downloads",
-            "tão-pouco",
-        ] {
-            let readings = tagger_tags(word);
+        assert!(
+            tagger_tags("resolver")
+                .iter()
+                .any(|r| r.contains("VMN0000")),
+            "the modern dict tags resolver (VMN0000 + personal-infinitive readings): {:?}",
+            tagger_tags("resolver")
+        );
+        for word in ["resolvem", "refiro", "revendo", "downloads", "tão-pouco"] {
             assert!(
-                readings.is_empty() || readings.iter().all(|r| r == &format!("{word}/-")),
-                "{word} has no entry in the pinned dict (Java's v0.14 dict tags it): {readings:?}"
+                tagger_tags(word).iter().any(|r| !r.ends_with("/-")),
+                "{word} carries readings in the modern dict: {:?}",
+                tagger_tags(word)
             );
         }
         assert!(
-            !tagger_tags("usamos").iter().any(|r| r.contains("VMIS1P0")),
-            "usamos carries only VMIP1P0; Java's dict has the VMIS1P0 homograph that REMOVER_EU_NÓS needs"
+            tagger_tags("usamos").iter().any(|r| r.contains("VMIS1P0")),
+            "REMOVER_EU_NÓS needs the VMIS1P0 homograph and the modern dict carries it"
         );
         assert!(
-            !tagger_tags("preso").iter().any(|r| r.contains("prender")),
-            "preso lacks the prender/VMP00SM participle reading PRESO_RETIDO_V2 needs"
+            tagger_tags("preso").iter().any(|r| r.contains("prender")),
+            "PRESO_RETIDO_V2 needs the prender participle reading and the modern dict carries it"
         );
         assert!(
-            !tagger_tags("ambientes").iter().any(|r| r.contains("NC")),
-            "ambientes carries only verb readings; QUE_SE_V_PRESENTE needs ambiente/NCMP000"
+            tagger_tags("ambientes").iter().any(|r| r.contains("NC")),
+            "QUE_SE_V_PRESENTE needs ambiente/NCMP000 and the modern dict carries it"
         );
         assert!(
             tagger_tags("mortos")
                 .iter()
-                .any(|r| r.starts_with("matar/")),
-            "mortos carries the wrong participle lemma matar; MORRER_PERECER_FALECEN needs morrer/VMP00PM"
+                .any(|r| r.starts_with("morrer/")),
+            "MORRER_PERECER_FALECEN needs morrer/VMP00PM and the modern dict carries it: {:?}",
+            tagger_tags("mortos")
         );
         let acrescentar = tagger_tags("acrescentar");
         assert!(
-            !acrescentar
+            acrescentar
                 .iter()
                 .any(|r| r.contains("VMN01S0") || r.contains("VMN03S0")),
-            "acrescentar lacks the personal-infinitive readings SER_SIGNIFICATIVO's VMN0.S.+ element needs: {acrescentar:?}"
+            "SER_SIGNIFICATIVO's VMN0.S.+ element needs the personal-infinitive readings and the modern dict carries them: {acrescentar:?}"
         );
     }
 }

@@ -50,8 +50,9 @@ pub(crate) fn apply_suppress_misspelled(
             .map(|c| c.to_uppercase().collect::<String>() + &word[c.len_utf8()..])
             .unwrap_or_else(String::new);
         let all_upper = word.to_uppercase();
-        replacements
-            .retain(|r| r.value() != word.as_str() && r.value() != upper_first && r.value() != all_upper);
+        replacements.retain(|r| {
+            r.value() != word.as_str() && r.value() != upper_first && r.value() != all_upper
+        });
     }
     if rule.suppress_misspelled && replacements.is_empty() {
         return None;
