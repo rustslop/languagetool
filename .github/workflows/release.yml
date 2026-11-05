@@ -25,6 +25,10 @@ env:
   CARGO_TERM_COLOR: always
   # kache cache entries older than this are pruned by the cleanup job.
   KACHE_CACHE_TTL_DAYS: "14"
+  # Frozen upstream LanguageTool revision the workspace embeds rule data
+  # from at compile time. Must stay in sync with the local reference
+  # checkout the sources are developed against.
+  LT_FROZEN_REF: "2c9b51ea0746c341fd7edabfc753b1cff1f516c7"
 
 jobs:
   build:
@@ -34,19 +38,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Full OS x arch matrix; every target is built natively on a matching
-        # runner (no cross-compilation toolchains needed).
-        # Arch notes (GitHub-hosted runners, Nov 2026): plain macos-latest is
-        # already Apple Silicon arm64 - there is no "macos-arm" label; Intel
-        # macOS needs the -large suffix (macos-14 retired Nov 2026). Ubuntu
-        # and Windows expose arm64 via explicit -arm labels.
+        # Full OS x arch matrix on free runners only (public repo):
+        #   - ubuntu/windows arm64 via the free -arm hosted labels
+        #   - macos-latest is Apple Silicon arm64
+        #   - Intel macOS (x86_64-apple-darwin) is cross-compiled on the
+        #     Apple Silicon runner: free Intel macOS runners no longer exist
+        #     and macos-latest-large is a paid larger runner. Apple clang
+        #     links both arches natively, so no extra toolchain is needed.
+        # Every job builds with an explicit --target (see build step), so the
+        # artifact path is uniformly target/<triple>/release/.
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
           - target: x86_64-apple-darwin
-            runner: macos-latest-large
+            runner: macos-latest
           - target: aarch64-apple-darwin
             runner: macos-latest
           - target: x86_64-pc-windows-msvc
@@ -57,10 +64,33 @@ jobs:
       - name: Check out sources
         uses: actions/checkout@v5
 
+      # og-langs embeds upstream rule data at compile time (include_str! into
+      # languagetool/), but that directory is a gitignored local reference
+      # checkout — CI must fetch the frozen upstream revision itself. Only
+      # the resource files the build actually reads are fetched: blobless
+      # partial clone + depth-1 fetch of the pinned commit + sparse checkout
+      # of the .txt/.csv resource patterns (~170 MiB instead of a multi-GiB
+      # full checkout).
+      - name: Fetch pinned LanguageTool resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/languagetool-org/languagetool.git languagetool
+          git -C languagetool sparse-checkout set --no-cone \
+            '/languagetool-language-modules/*/src/main/resources/**/*.txt' \
+            '/languagetool-language-modules/*/src/main/resources/**/*.csv'
+          git -C languagetool fetch --quiet --depth 1 origin "${LT_FROZEN_REF}"
+          git -C languagetool checkout --quiet FETCH_HEAD
+          echo "Fetched $(find languagetool -type f | wc -l) LanguageTool resource files."
+
       - name: Install Rust toolchain (workspace MSRV)
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.95.0"
+          # Explicit target install: the host may build a foreign triple
+          # (x86_64-apple-darwin on Apple Silicon).
+          targets: ${{ matrix.target }}
 
       # kache is the compiler cache for this workflow (it replaces
       # Swatinem/rust-cache). v2.0.0 ships prebuilt binaries for every
@@ -84,8 +114,10 @@ jobs:
           job-summary: true
           pr-comment: false
 
+      # Explicit --target keeps the artifact path uniform
+      # (target/<triple>/release) for native and cross builds alike.
       - name: Build og-server (release)
-        run: cargo build --release --locked --bin og-server
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin og-server
 
       # Tag builds stage into dist/<tag>/, master builds into dist/latest/.
       - name: Package (tar.gz)
@@ -98,7 +130,7 @@ jobs:
           STAGE="og-server-${VERSION}-${TARGET}"
 
           mkdir -p "${STAGE}" "dist/${VERSION}"
-          cp "target/release/og-server" "${STAGE}/"
+          cp "target/${TARGET}/release/og-server" "${STAGE}/"
           tar -czf "dist/${VERSION}/${STAGE}.tar.gz" "${STAGE}"
 
       - name: Package (zip)
@@ -111,7 +143,7 @@ jobs:
           $Stage = "og-server-$Version-$Target"
 
           New-Item -ItemType Directory -Force -Path $Stage, "dist/$Version" | Out-Null
-          Copy-Item "target/release/og-server.exe" -Destination $Stage
+          Copy-Item "target/$Target/release/og-server.exe" -Destination $Stage
           Compress-Archive -Path $Stage -DestinationPath "dist/$Version/$Stage.zip"
 
       - name: Upload build artifact
