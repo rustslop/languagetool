@@ -109,7 +109,11 @@ jobs:
                "${STAGE}/languagetool/languagetool-language-modules/${lang}/src/main/"
           done
 
-          HASH="$(cd "${STAGE}" && find languagetool -type f | sort | LC_ALL=C \
+          # LC_ALL=C for byte-stable find/sort output; exported rather than
+          # used as a pipeline stage (a bare assignment stage is a no-op
+          # that severs the pipe).
+          export LC_ALL=C
+          HASH="$(cd "${STAGE}" && find languagetool -type f | sort \
             | xargs sha256sum | sha256sum | cut -c1-12)"
           echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
           echo "languages=${LANGS}" >> "$GITHUB_OUTPUT"
