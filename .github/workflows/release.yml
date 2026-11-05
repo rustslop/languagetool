@@ -23,6 +23,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # kache cache entries older than this are pruned by the cleanup job.
+  KACHE_CACHE_TTL_DAYS: "14"
 
 jobs:
   build:
@@ -177,3 +179,61 @@ jobs:
           are also attached to each workflow run under the \`latest/\`
           directory of its build artifacts."
           fi
+
+  cleanup:
+    # The cache store self-cleans on three levels:
+    #   1. kache itself evicts its local store LRU-style beyond max-size.
+    #   2. The GitHub Actions cache service enforces a 10 GiB per-repo LRU,
+    #      expires entries unused for 7 days, and removes entries when their
+    #      PR/branch ref disappears.
+    #   3. This job bounds the steady state explicitly: kache entries the
+    #      service kept but nothing restored for KACHE_CACHE_TTL_DAYS are
+    #      dead weight from old runs and one-shot tag builds, so they are
+    #      pruned after every pipeline.
+    name: Prune stale kache caches
+    needs: [build, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Runs after build/publish have fully completed (cache saves included),
+      # so it never races a live save; only entries past the TTL are touched.
+      - name: Delete kache cache entries older than ${{ env.KACHE_CACHE_TTL_DAYS }} days
+        run: |
+          set -euo pipefail
+          CUTOFF="$(date -u -d "-${KACHE_CACHE_TTL_DAYS} days" '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "Pruning kache-release-* caches created before ${CUTOFF}"
+
+          # --key restricts this pipeline's kache entries only; caches that
+          # belong to other workflows are never touched.
+          IDS="$(gh cache list --key kache-release- --limit 1000 \
+            --json id,createdAt --jq "
+              map(select(.createdAt < \"${CUTOFF}\"))
+              | sort_by(.createdAt)
+              | .[].id")"
+
+          if [[ -z "${IDS}" ]]; then
+            echo "Nothing to prune."
+            exit 0
+          fi
+
+          for id in ${IDS}; do
+            gh cache delete "${id}"
+          done
+          echo "Pruned $(wc -l <<< "${IDS}") stale kache cache entries."
+
+      - name: Report remaining kache cache footprint
+        run: |
+          set -euo pipefail
+          gh cache list --key kache-release- --limit 1000 \
+            --json key,sizeInBytes,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[]
+                  | "\(.createdAt)  \((.sizeInBytes / 1048576) | floor) MiB  \(.key)"'
+          echo "Total: $(gh cache list --key kache-release- --limit 1000 \
+            --json sizeInBytes \
+            --jq '[.[].sizeInBytes] | ((add // 0) / 1048576) | floor') MiB"
