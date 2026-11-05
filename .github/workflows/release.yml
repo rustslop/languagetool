@@ -34,6 +34,10 @@ jobs:
       matrix:
         # Full OS x arch matrix; every target is built natively on a matching
         # runner (no cross-compilation toolchains needed).
+        # Arch notes (GitHub-hosted runners, Nov 2026): plain macos-latest is
+        # already Apple Silicon arm64 - there is no "macos-arm" label; Intel
+        # macOS needs the -large suffix (macos-14 retired Nov 2026). Ubuntu
+        # and Windows expose arm64 via explicit -arm labels.
         include:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
@@ -58,9 +62,8 @@ jobs:
 
       # kache is the compiler cache for this workflow (it replaces
       # Swatinem/rust-cache). v2.0.0 ships prebuilt binaries for every
-      # platform in the matrix above, and persists its store through the
-      # GitHub Actions cache service - or through S3-compatible remote
-      # storage once the vars/secrets below are configured.
+      # platform in the matrix above; its store persists through the regular
+      # GitHub Actions cache service - no external storage configured.
       - name: Set up kache compiler cache
         uses: kunobi-ninja/kache-action@v1
         with:
@@ -72,22 +75,12 @@ jobs:
           manifest-key: release-${{ matrix.target }}
           cache-key-prefix: kache-release-${{ matrix.target }}
           max-size: 30GiB
+          # Persist the local store through the built-in GitHub Actions cache.
+          github-cache: true
           # Stats into the job summary; no sticky PR comment since this
           # workflow never runs against pull requests.
           job-summary: true
           pr-comment: false
-          # Optional shared remote cache. While these repo vars/secrets are
-          # unset, kache transparently falls back to GitHub Actions cache
-          # persistence. Set KACHE_S3_BUCKET plus KACHE_S3_ACCESS_KEY_ID /
-          # KACHE_S3_SECRET_ACCESS_KEY (and optionally KACHE_S3_REGION /
-          # KACHE_S3_ENDPOINT for MinIO/R2-style endpoints) to move the whole
-          # matrix to shared remote storage.
-          s3-bucket: ${{ vars.KACHE_S3_BUCKET }}
-          s3-region: ${{ vars.KACHE_S3_REGION || 'us-east-1' }}
-          s3-prefix: languagetool/release
-          s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
-          s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY_ID }}
-          s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_ACCESS_KEY }}
 
       - name: Build og-server (release)
         run: cargo build --release --locked --bin og-server
