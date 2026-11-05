@@ -1,0 +1,186 @@
+name: Release Builds
+
+run-name: ${{ github.ref_type == 'tag' && format('Release {0}', github.ref_name) || 'Latest master build' }}
+
+# This workflow is only responsible for building release artifacts:
+#   - pushes of a v* tag -> versioned GitHub Release for that tag
+#   - any non-tag push to master -> rolling "latest" builds (staged in the
+#     latest/ directory of the workflow artifacts and republished to a
+#     rolling `latest` prerelease)
+on:
+  push:
+    tags: ["v*"]
+    branches: [master]
+
+concurrency:
+  # One pipeline per ref: a newer master push cancels the superseded build,
+  # tag builds are never cancelled.
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Full OS x arch matrix; every target is built natively on a matching
+        # runner (no cross-compilation toolchains needed).
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-latest-large
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain (workspace MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+
+      # kache is the compiler cache for this workflow (it replaces
+      # Swatinem/rust-cache). v2.0.0 ships prebuilt binaries for every
+      # platform in the matrix above, and persists its store through the
+      # GitHub Actions cache service - or through S3-compatible remote
+      # storage once the vars/secrets below are configured.
+      - name: Set up kache compiler cache
+        uses: kunobi-ninja/kache-action@v1
+        with:
+          version: v2.0.0
+          # Release builds are all about the executables - cache those too.
+          cache-executables: true
+          # Keep release-build shards dense and scoped per target, never
+          # shared with debug/test builds on the same store.
+          manifest-key: release-${{ matrix.target }}
+          cache-key-prefix: kache-release-${{ matrix.target }}
+          max-size: 30GiB
+          # Stats into the job summary; no sticky PR comment since this
+          # workflow never runs against pull requests.
+          job-summary: true
+          pr-comment: false
+          # Optional shared remote cache. While these repo vars/secrets are
+          # unset, kache transparently falls back to GitHub Actions cache
+          # persistence. Set KACHE_S3_BUCKET plus KACHE_S3_ACCESS_KEY_ID /
+          # KACHE_S3_SECRET_ACCESS_KEY (and optionally KACHE_S3_REGION /
+          # KACHE_S3_ENDPOINT for MinIO/R2-style endpoints) to move the whole
+          # matrix to shared remote storage.
+          s3-bucket: ${{ vars.KACHE_S3_BUCKET }}
+          s3-region: ${{ vars.KACHE_S3_REGION || 'us-east-1' }}
+          s3-prefix: languagetool/release
+          s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
+          s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY_ID }}
+          s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_ACCESS_KEY }}
+
+      - name: Build og-server (release)
+        run: cargo build --release --locked --bin og-server
+
+      # Tag builds stage into dist/<tag>/, master builds into dist/latest/.
+      - name: Package (tar.gz)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}"
+          TARGET="${{ matrix.target }}"
+          STAGE="og-server-${VERSION}-${TARGET}"
+
+          mkdir -p "${STAGE}" "dist/${VERSION}"
+          cp "target/release/og-server" "${STAGE}/"
+          tar -czf "dist/${VERSION}/${STAGE}.tar.gz" "${STAGE}"
+
+      - name: Package (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Version = "${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}"
+          $Target = "${{ matrix.target }}"
+          $Stage = "og-server-$Version-$Target"
+
+          New-Item -ItemType Directory -Force -Path $Stage, "dist/$Version" | Out-Null
+          Copy-Item "target/release/og-server.exe" -Destination $Stage
+          Compress-Archive -Path $Stage -DestinationPath "dist/$Version/$Stage.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_type == 'tag' && format('release-{0}', matrix.target) || format('latest-{0}', matrix.target) }}
+          path: dist/
+          if-no-files-found: error
+          # Archives are already compressed; don't burn CPU recompressing.
+          compression-level: 0
+          retention-days: ${{ github.ref_type == 'tag' && 90 || 7 }}
+
+  publish:
+    name: Publish ${{ github.ref_type == 'tag' && format('release {0}', github.ref_name) || 'latest rolling release' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to GitHub Releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}"
+          ASSETS="dist/${VERSION}"
+
+          (cd "${ASSETS}" && sha256sum og-server-* | tee SHA256SUMS.txt)
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # Versioned release for the pushed tag. The release may already
+            # exist when the workflow is re-run on the same tag.
+            if ! gh release view "${VERSION}" >/dev/null 2>&1; then
+              gh release create "${VERSION}" \
+                --title "og-server ${VERSION#v}" \
+                --generate-notes \
+                --verify-tag
+            fi
+            gh release upload "${VERSION}" "${ASSETS}"/* --clobber
+          else
+            # Rolling `latest` prerelease, rebuilt on every non-tag push to
+            # master. The moving tag does not match the v* trigger, and events
+            # created by GITHUB_TOKEN never start new workflow runs, so this
+            # cannot re-trigger the workflow.
+            gh release delete latest --cleanup-tag --yes >/dev/null 2>&1 || true
+            gh release create latest "${ASSETS}"/* \
+              --target "${GITHUB_SHA}" \
+              --prerelease \
+              --title "Latest master build" \
+              --notes "Rolling release builds from every non-tag push to \`master\`.
+
+          - Commit: ${GITHUB_SHA}
+          - Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Assets are replaced in place on every master push; the same files
+          are also attached to each workflow run under the \`latest/\`
+          directory of its build artifacts."
+          fi
