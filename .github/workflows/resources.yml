@@ -109,6 +109,12 @@ jobs:
                "${STAGE}/languagetool/languagetool-language-modules/${lang}/src/main/"
           done
 
+          # Runtime dictionaries, OpenNLP models and hunspell word lists that
+          # upstream LT does not track in git are frozen in resources-extra/
+          # and overlaid onto the staged tree — without them the spellers
+          # and taggers stay silent at runtime.
+          cp -al resources-extra/languagetool/. "${STAGE}/languagetool/"
+
           # LC_ALL=C for byte-stable find/sort output; exported rather than
           # used as a pipeline stage (a bare assignment stage is a no-op
           # that severs the pipe).
