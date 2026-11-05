@@ -1,0 +1,216 @@
+name: Language Resource Packs
+
+# Publishes the LanguageTool resource sets the release binaries need at
+# runtime as downloadable language packs. The binaries look for a
+# ./languagetool/ directory (see find_lt_resource_dir() in og-langs); each
+# pack unpacks exactly into that layout:
+#
+#   tar -xzf langpack-core.tar.gz      # always required (sentence SRX etc.)
+#   tar -xzf langpack-en.tar.gz        # plus any languages you check
+#
+# Packs are content-addressed: the release tag is derived from a hash over
+# every packed file, so identical content always maps to the same release
+# (publishing is idempotent and skipped when nothing changed) and a bumped
+# LT_FROZEN_REF naturally produces a new release.
+#
+# Runs when the pack definition changes (this file) or the frozen upstream
+# revision moves (it lives in release.yml). Manual dispatch covers
+# repacks after new language crates appear under crates/og-langs/src/,
+# which path filters cannot see.
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/resources.yml
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+concurrency:
+  group: resources-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Must match LT_FROZEN_REF in release.yml — the packs are cut from the
+  # same frozen revision the binaries embed rule data from. A guard step
+  # below fails the run if the two drift apart.
+  LT_FROZEN_REF: "2c9b51ea0746c341fd7edabfc753b1cff1f516c7"
+
+jobs:
+  pack:
+    name: Publish language packs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # The implemented-language list is derived from the language crates
+      # present in this checkout (intersected with upstream modules).
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Guard LT_FROZEN_REF against drift from release.yml
+        run: |
+          set -euo pipefail
+          REL_REF="$(grep 'LT_FROZEN_REF:' .github/workflows/release.yml \
+            | head -1 | sed 's/.*"\([0-9a-f]*\)".*/\1/')"
+          if [ "${REL_REF}" != "${LT_FROZEN_REF}" ]; then
+            echo "LT_FROZEN_REF drift: resources.yml has ${LT_FROZEN_REF}, release.yml has ${REL_REF}." >&2
+            exit 1
+          fi
+          echo "Frozen refs in sync: ${LT_FROZEN_REF}"
+
+      # Full resource fetch (dictionaries, hunspell, grammar.xml — not just
+      # the txt/csv the build embeds): everything the runtime loads.
+      - name: Fetch pinned LanguageTool resources
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/languagetool-org/languagetool.git languagetool
+          git -C languagetool sparse-checkout set --no-cone \
+            '/languagetool-language-modules/*/src/main/resources/**' \
+            '/languagetool-core/src/main/resources/**' \
+            '/COPYING.txt'
+          git -C languagetool fetch --quiet --depth 1 origin "${LT_FROZEN_REF}"
+          git -C languagetool checkout --quiet FETCH_HEAD
+
+      # Each pack stages as languagetool/languagetool-language-modules/<lang>
+      # (hardlinks, no copy cost) plus the LGPL COPYING.txt required for
+      # redistribution. The hash covers every staged file across all packs,
+      # so it identifies the complete published set.
+      - name: Stage packs and compute content hash
+        id: stage
+        run: |
+          set -euo pipefail
+          LANGS="$(ls crates/og-langs/src | grep -E '^[a-z]{2,3}$' | sort \
+            | while read -r l; do
+                [ -d "languagetool/languagetool-language-modules/$l" ] || continue
+                echo "$l"
+              done | tr '\n' ' ')"
+          LANGS="${LANGS% }"
+          echo "Languages: ${LANGS}"
+          [ -n "${LANGS}" ] || { echo "No languages matched" >&2; exit 1; }
+
+          STAGE=".pack-stage"
+          mkdir -p "${STAGE}/languagetool/languagetool-language-modules" \
+                   "${STAGE}/languagetool/languagetool-core/src/main" \
+                   "packs"
+          cp languagetool/COPYING.txt "${STAGE}/languagetool/COPYING.txt"
+          cp -al languagetool/languagetool-core/src/main/resources \
+             "${STAGE}/languagetool/languagetool-core/src/main/"
+          for lang in ${LANGS}; do
+            mkdir -p "${STAGE}/languagetool/languagetool-language-modules/${lang}/src/main"
+            cp -al "languagetool/languagetool-language-modules/${lang}/src/main/resources" \
+               "${STAGE}/languagetool/languagetool-language-modules/${lang}/src/main/"
+          done
+
+          HASH="$(cd "${STAGE}" && find languagetool -type f | sort | LC_ALL=C \
+            | xargs sha256sum | sha256sum | cut -c1-12)"
+          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
+          echo "languages=${LANGS}" >> "$GITHUB_OUTPUT"
+          echo "lang-count=$(wc -w <<< "${LANGS}")" >> "$GITHUB_OUTPUT"
+          echo "Content hash: ${HASH}"
+
+      # Content-addressed: same content -> same tag. Expected asset count
+      # is <languages> + core + all-in-one + SHA256SUMS. A release holding
+      # fewer assets is the debris of a failed upload — delete and redo.
+      - name: Check if this pack set is already published
+        id: published
+        run: |
+          set -euo pipefail
+          TAG="resources-${{ steps.stage.outputs.hash }}"
+          EXPECTED=$(( ${{ steps.stage.outputs.lang-count }} + 3 ))
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            HAVE="$(gh release view "${TAG}" --json assets --jq '.assets | length')"
+            if [ "${HAVE}" -eq "${EXPECTED}" ]; then
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              echo "Release ${TAG} already complete (${HAVE}/${EXPECTED} assets)."
+            else
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              gh release delete "${TAG}" --cleanup-tag --yes
+              echo "Deleted incomplete release ${TAG} (${HAVE}/${EXPECTED} assets); republishing."
+            fi
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Release ${TAG} not found; publishing."
+          fi
+
+      - name: Build pack archives
+        if: steps.published.outputs.published != 'true'
+        run: |
+          set -euo pipefail
+          cd .pack-stage
+          tar -czf ../packs/langpack-core.tar.gz \
+            languagetool/languagetool-core languagetool/COPYING.txt
+          for lang in ${{ steps.stage.outputs.languages }}; do
+            tar -czf "../packs/langpack-${lang}.tar.gz" \
+              "languagetool/languagetool-language-modules/${lang}" \
+              languagetool/COPYING.txt
+          done
+          # One-archive option for "just give me everything".
+          tar -czf ../packs/langpack-all.tar.gz languagetool
+          cd ../packs
+          ls -la
+          sha256sum langpack-*.tar.gz | tee SHA256SUMS.txt
+
+      - name: Publish resource release
+        if: steps.published.outputs.published != 'true'
+        run: |
+          set -euo pipefail
+          TAG="resources-${{ steps.stage.outputs.hash }}"
+          COUNT="${{ steps.stage.outputs.lang-count }}"
+
+          gh release create "${TAG}" packs/* \
+            --target "${GITHUB_SHA}" \
+            --title "Language packs ${TAG#resources-} (LT @ ${LT_FROZEN_REF:0:8})" \
+            --notes "$(cat <<EOF
+          Runtime resource packs for the \`og-server\` release binaries, cut
+          from upstream LanguageTool @ \`${LT_FROZEN_REF}\` — the same frozen
+          revision the binaries embed rule data from.
+
+          The binaries look for a \`./languagetool/\` directory next to them
+          (or a couple of parent dirs). Download, then unpack **core plus
+          the languages you need** in the directory you run og-server from
+          (\`.tar.gz\` extracts everywhere, Windows 10+ included — \`tar\`
+          ships with it):
+
+          \`\`\`bash
+          tar -xzf langpack-core.tar.gz
+          tar -xzf langpack-en.tar.gz   # plus any other languages
+          ./og-server                   # now checks with full rules
+          \`\`\`
+
+          - \`langpack-core.tar.gz\` — always required (sentence segmentation,
+            shared resources; tiny)
+          - \`langpack-<lang>.tar.gz\` — ${COUNT} per-language packs
+          - \`langpack-all.tar.gz\` — everything in one archive
+          - \`SHA256SUMS.txt\` — checksums for all archives
+
+          Content-addressed tag: \`resources-*\` is derived from a hash over
+          every packed file, so identical content always maps to the same
+          release and nothing is republished without a change.
+          EOF
+          )"
+
+      # Immutable content-addressed releases appear only when upstream
+      # content actually changes; keep a bounded history anyway.
+      - name: Prune old resource releases (keep newest 5)
+        if: always()
+        run: |
+          set -euo pipefail
+          OLD="$(gh release list --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("resources-"))]
+                   | sort_by(.createdAt) | reverse | .[5:] | .[].tagName')"
+          if [ -n "${OLD}" ]; then
+            for tag in ${OLD}; do
+              gh release delete "${tag}" --cleanup-tag --yes
+              echo "Pruned ${tag}"
+            done
+          else
+            echo "Nothing to prune."
+          fi
