@@ -177,36 +177,46 @@ fn canonical_key(source: EngineSource) -> String {
     }
 }
 
+// Engines are built through LanguageEngine::shared_for_code, whose per-code
+// Releasable cells keep a built engine warm even after AppState's LRU cache
+// evicts its Arc — the og-core RSS-budget eviction is the memory backstop, so
+// a cache miss re-probes a warm cell instead of rebuilding a multi-megabyte
+// engine on the request path. Regional variants are derived from the shared
+// base engine rather than rebuilding english()/german()/for_code("pt") from
+// scratch per variant; only the variant-specific transform re-runs.
 fn build_engine(source: EngineSource) -> Arc<LanguageEngine> {
     match source {
         EngineSource::EnglishBase => {
             info!("Loading English language engine...");
-            let engine = Arc::new(LanguageEngine::english());
+            let engine = LanguageEngine::shared_for_code("en")
+                .unwrap_or_else(|| Arc::new(LanguageEngine::english()));
             info!("English engine loaded with {} rules", engine.rule_count());
             engine
         }
         EngineSource::EnglishVariant(code) => {
             info!("Loading {code} engine...");
-            let variant = LanguageEngine::english().variant(code);
+            let base = LanguageEngine::shared_for_code("en")
+                .unwrap_or_else(|| Arc::new(LanguageEngine::english()));
+            let variant = Arc::new(base.variant(code));
             info!("Loaded {code} engine with {} rules", variant.rule_count());
-            Arc::new(variant)
+            variant
         }
         EngineSource::Generic(short) => {
             info!("Loading {short} engine...");
-            let engine = Arc::new(LanguageEngine::for_code(short).unwrap_or_else(|| {
-                LanguageEngine::new(
+            let engine = LanguageEngine::shared_for_code(short).unwrap_or_else(|| {
+                Arc::new(LanguageEngine::new(
                     og_core::Language::from_code(short).unwrap_or(og_core::Language::English),
-                )
-            }));
+                ))
+            });
             info!("Loaded {short} engine with {} rules", engine.rule_count());
             engine
         }
         EngineSource::PortugueseVariant(code) => {
             info!("Loading {code} engine...");
-            let base = LanguageEngine::for_code("pt").unwrap_or_else(|| {
-                LanguageEngine::new(
+            let base = LanguageEngine::shared_for_code("pt").unwrap_or_else(|| {
+                Arc::new(LanguageEngine::new(
                     og_core::Language::from_code("pt").unwrap_or(og_core::Language::PortuguesePt),
-                )
+                ))
             });
             let engine = Arc::new(base.portuguese_variant(code));
             info!("Loaded {code} engine with {} rules", engine.rule_count());
@@ -214,13 +224,16 @@ fn build_engine(source: EngineSource) -> Arc<LanguageEngine> {
         }
         EngineSource::GermanVariant(code) => {
             info!("Loading {code} engine...");
-            let variant = LanguageEngine::german().german_variant(code);
+            let base = LanguageEngine::shared_for_code("de")
+                .unwrap_or_else(|| Arc::new(LanguageEngine::german()));
+            let variant = Arc::new(base.german_variant(code));
             info!("Loaded {code} engine with {} rules", variant.rule_count());
-            Arc::new(variant)
+            variant
         }
         EngineSource::German => {
             info!("Loading German language engine...");
-            let engine = Arc::new(LanguageEngine::german());
+            let engine = LanguageEngine::shared_for_code("de")
+                .unwrap_or_else(|| Arc::new(LanguageEngine::german()));
             info!("German engine loaded with {} rules", engine.rule_count());
             engine
         }
