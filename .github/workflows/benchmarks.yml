@@ -1,0 +1,315 @@
+name: Benchmarks
+
+# Manual-only comparison of the built og-server against the original Java
+# LanguageTool server: startup, cold/warm check latency, throughput, peak
+# memory and match counts, both serving the identical request stream over
+# the same LanguageTool-compatible HTTP API.
+#
+# Java side facts (verified Nov 2026):
+#   - LT ships versioned standalone zips only up to 6.6; since March 2025
+#     it is stable-alias + daily snapshots:
+#       stable:    https://languagetool.org/download/LanguageTool-stable.zip
+#       snapshot:  https://languagetool.org/download/snapshots/LanguageTool-latest-snapshot.zip
+#     (redirects to internal1.languagetool.org — curl --location handles it)
+#   - LT 6.6+ requires Java 17 (up to 21) — Temurin 17 is set up explicitly.
+#   - Server start (official docs): java -cp languagetool-server.jar
+#     org.languagetool.server.HTTPServer --port <port>
+#   - Memory: ~1 GiB heap baseline, 2+ GiB with several languages loaded;
+#     run with default (uncapped) heap for an out-of-the-box comparison —
+#     fits the 4 vCPU / 16 GiB free ubuntu runner alongside og-server.
+# The snapshot flavor defaults on because the frozen revision og-server
+# implements (v6.8-874) postdates the last versioned release (6.6).
+#
+# og-server uses the language packs from the rolling `resources` release,
+# so the benchmark exercises the artifacts users actually download.
+on:
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: "Space-separated language codes to benchmark"
+        default: "en"
+        type: string
+      requests:
+        description: "Check requests per language (sequential phase)"
+        default: "100"
+        type: string
+      concurrency:
+        description: "Concurrent clients for the throughput phase"
+        default: "4"
+        type: string
+      lt_flavor:
+        description: "Java LanguageTool build to compare against"
+        default: "snapshot"
+        type: choice
+        options: [snapshot, stable]
+
+concurrency:
+  group: benchmarks
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Must match LT_FROZEN_REF in release.yml (the Java build compared
+  # against is its closest available distribution).
+  LT_FROZEN_REF: "2c9b51ea0746c341fd7edabfc753b1cff1f516c7"
+
+jobs:
+  benchmark:
+    name: og-server vs Java LanguageTool
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      # Compile-time dependency only (include_str! rule data); the runtime
+      # resources come from the published language packs below.
+      - name: Fetch pinned LanguageTool resources for the build
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout --quiet \
+            https://github.com/languagetool-org/languagetool.git languagetool
+          git -C languagetool sparse-checkout set --no-cone \
+            '/languagetool-language-modules/*/src/main/resources/**/*.txt' \
+            '/languagetool-language-modules/*/src/main/resources/**/*.csv'
+          git -C languagetool fetch --quiet --depth 1 origin "${LT_FROZEN_REF}"
+          git -C languagetool checkout --quiet FETCH_HEAD
+
+      - name: Install Rust toolchain (workspace MSRV)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+
+      # LanguageTool 6.6+ requires Java 17-21.
+      - name: Install Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build og-server (release)
+        run: cargo build --release --locked --bin og-server
+
+      # Runtime resources for og-server: the actual published packs.
+      - name: Download language packs from the resources release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view resources >/dev/null || {
+            echo "Rolling 'resources' release not found — run the Language Resource Packs workflow first." >&2
+            exit 1
+          }
+          PATTERNS=""
+          for lang in ${{ inputs.languages }}; do
+            PATTERNS="${PATTERNS} --pattern langpack-${lang}.tar.gz"
+          done
+          # shellcheck disable=SC2086
+          gh release download resources ${PATTERNS} \
+            --pattern langpack-core.tar.gz --pattern SHA256SUMS.txt
+          sha256sum -c --ignore-missing SHA256SUMS.txt
+          for f in langpack-*.tar.gz; do tar -xzf "$f"; done
+          rm -f langpack-*.tar.gz SHA256SUMS.txt
+          echo "Packs extracted:"; ls languagetool/languagetool-language-modules/
+
+      - name: Download Java LanguageTool
+        run: |
+          set -euo pipefail
+          case "${{ inputs.lt_flavor }}" in
+            stable)   URL="https://languagetool.org/download/LanguageTool-stable.zip" ;;
+            snapshot) URL="https://languagetool.org/download/snapshots/LanguageTool-latest-snapshot.zip" ;;
+          esac
+          echo "Downloading ${URL}"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o lt-standalone.zip "${URL}"
+          unzip -q lt-standalone.zip -d lt-dist
+          rm lt-standalone.zip
+          # The extracted directory name varies (version or snapshot);
+          # normalize it so the benchmark script can find it.
+          mv lt-dist/LanguageTool* lt-dist/LanguageTool
+          ls lt-dist/LanguageTool/ | head -8
+          java -version 2>&1 | head -1
+
+      # Starts both servers (og-server: 8081, Java LT: 8082), drives the
+      # identical request stream against each, samples memory, and appends
+      # a markdown report to the job summary. One invocation keeps the
+      # timing methodology identical for both sides. The Java server runs
+      # with default heap settings — the out-of-the-box experience.
+      - name: Run benchmark
+        env:
+          BENCH_LANGUAGES: ${{ inputs.languages }}
+          BENCH_REQUESTS: ${{ inputs.requests }}
+          BENCH_CONCURRENCY: ${{ inputs.concurrency }}
+          BENCH_FLAVOR: ${{ inputs.lt_flavor }}
+        run: |
+          set -euo pipefail
+          cat > bench.py <<'PYEOF'
+          import json, os, statistics, subprocess, time
+          import urllib.parse, urllib.request
+          from concurrent.futures import ThreadPoolExecutor
+
+          REQ_TIMEOUT = 300
+
+          # Deterministic per-language corpus with real errors; languages
+          # without a tailored set fall back to the English sentences.
+          CORPUS = {
+              "en": [
+                  "Their going too the store , but i dont know if its open.",
+                  "I cannt spel corectly and he dosent care about it.",
+                  "She has wrote a book wich was publish last year by they.",
+                  "The result of the experiment are surprising for everyone involve.",
+                  "We was walking in the forest when it sudden began too rain heavily.",
+              ],
+          }
+          DEFAULT_CORPUS = CORPUS["en"]
+
+          def sentences(lang):
+              return CORPUS.get(lang, DEFAULT_CORPUS)
+
+          def get_json(port, path, timeout=10):
+              with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=timeout) as r:
+                  return json.load(r)
+
+          def wait_ready(port, timeout=900):
+              deadline = time.monotonic() + timeout
+              while time.monotonic() < deadline:
+                  try:
+                      if get_json(port, "/v2/version", timeout=5):
+                          return True
+                  except Exception:
+                      time.sleep(0.25)
+              return False
+
+          def check(port, text, lang):
+              data = urllib.parse.urlencode({"text": text, "language": lang}).encode()
+              req = urllib.request.Request(f"http://127.0.0.1:{port}/v2/check", data=data)
+              t0 = time.perf_counter()
+              with urllib.request.urlopen(req, timeout=REQ_TIMEOUT) as r:
+                  body = json.load(r)
+              return (time.perf_counter() - t0) * 1000.0, len(body.get("matches", []))
+
+          def peak_rss_kb(pid):
+              try:
+                  with open(f"/proc/{pid}/status") as f:
+                      status = f.read()
+              except OSError:
+                  return None, None
+              hwm = rss = None
+              for line in status.splitlines():
+                  if line.startswith("VmHWM:"):
+                      hwm = int(line.split()[1])
+                  elif line.startswith("VmRSS:"):
+                      rss = int(line.split()[1])
+              return hwm, rss
+
+          def bench_server(name, proc, port, languages, requests, concurrency):
+              if not wait_ready(port):
+                  proc.kill()
+                  raise SystemExit(f"{name}: server never became ready")
+              version = get_json(port, "/v2/version")
+              per_lang = {}
+              for lang in languages:
+                  corpus = sentences(lang)
+                  # Cold: the first check loads the language engine.
+                  cold_ms, _ = check(port, corpus[0], lang)
+                  for text in corpus[1:]:
+                      check(port, text, lang)
+                  # Sequential latency.
+                  lat, match_counts = [], []
+                  for i in range(requests):
+                      ms, m = check(port, corpus[i % len(corpus)], lang)
+                      lat.append(ms)
+                      match_counts.append(m)
+                  lat.sort()
+                  # Concurrent throughput.
+                  def one(i):
+                      check(port, corpus[i % len(corpus)], lang)
+                  t0 = time.monotonic()
+                  with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                      list(pool.map(one, range(requests)))
+                  wall = time.monotonic() - t0
+                  hwm, rss = peak_rss_kb(proc.pid)
+                  per_lang[lang] = {
+                      "cold_first_check_ms": round(cold_ms, 1),
+                      "warm_p50_ms": round(lat[len(lat) // 2], 1),
+                      "warm_p95_ms": round(lat[int(len(lat) * 0.95)], 1),
+                      "warm_avg_ms": round(statistics.mean(lat), 1),
+                      "throughput_rps": round(requests / wall, 2),
+                      "avg_matches": round(statistics.mean(match_counts), 1),
+                      "peak_rss_mib": round(hwm / 1024, 1),
+                      "final_rss_mib": round(rss / 1024, 1),
+                  }
+              return {"name": name, "version": version, "languages": per_lang}
+
+          def report(og, lt, path):
+              lines = []
+              out = lines.append
+              out("## Benchmark: og-server vs Java LanguageTool\n")
+              out(f"- og-server: `{os.environ['OG_COMMIT']}` "
+                  f"(version {og['version'].get('version', '?')})")
+              out(f"- Java: LanguageTool `{lt['version'].get('version', '?')}` "
+                  f"(build {lt['version'].get('buildDate', '?')}), "
+                  f"{lt['flavor']} distribution, default heap, "
+                  f"{os.environ['JAVA_VERSION']}")
+              out(f"- load: {os.environ['BENCH_REQUESTS']} requests/language, "
+                  f"concurrency {os.environ['BENCH_CONCURRENCY']}, "
+                  f"languages: {os.environ['BENCH_LANGUAGES']}\n")
+              for lang in og["languages"]:
+                  a, b = og["languages"][lang], lt["languages"][lang]
+                  out(f"### `{lang}`\n")
+                  out("| metric | og-server | LanguageTool (Java) | ratio (og/Java) |")
+                  out("|---|---:|---:|---:|")
+                  def row(label, key, fmt="{:.1f}", ratio=True):
+                      av, bv = a[key], b[key]
+                      rtxt = f"{av / bv:.2f}x" if (ratio and bv) else ""
+                      out(f"| {label} | {fmt.format(av)} | {fmt.format(bv)} | {rtxt} |")
+                  row("cold first check (ms)", "cold_first_check_ms")
+                  row("warm p50 (ms)", "warm_p50_ms")
+                  row("warm p95 (ms)", "warm_p95_ms")
+                  row("warm avg (ms)", "warm_avg_ms")
+                  row("throughput (req/s)", "throughput_rps", "{:.2f}")
+                  row("avg matches/request", "avg_matches", "{:.1f}", ratio=False)
+                  row("peak RSS (MiB)", "peak_rss_mib")
+                  row("final RSS (MiB)", "final_rss_mib")
+                  out("")
+              text = "\n".join(lines) + "\n"
+              print(text)
+              if path:
+                  with open(path, "a") as f:
+                      f.write(text)
+
+          def main():
+              languages = os.environ["BENCH_LANGUAGES"].split()
+              requests = int(os.environ["BENCH_REQUESTS"])
+              concurrency = int(os.environ["BENCH_CONCURRENCY"])
+              summary_path = os.environ.get("BENCH_SUMMARY")
+
+              og = subprocess.Popen(
+                  ["./target/release/og-server"],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              lt = subprocess.Popen(
+                  ["java", "-cp", "lt-dist/LanguageTool/languagetool-server.jar",
+                   "org.languagetool.server.HTTPServer", "--port", "8082"],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  og_res = bench_server("og-server", og, 8081, languages, requests, concurrency)
+                  lt_res = bench_server("LanguageTool (Java)", lt, 8082, languages, requests, concurrency)
+                  lt_res["flavor"] = os.environ["BENCH_FLAVOR"]
+                  report(og_res, lt_res, summary_path)
+              finally:
+                  for p in (og, lt):
+                      p.terminate()
+                      try:
+                          p.wait(timeout=10)
+                      except subprocess.TimeoutExpired:
+                          p.kill()
+
+          main()
+          PYEOF
+          export JAVA_VERSION="$(java -version 2>&1 | head -1)"
+          export OG_COMMIT="${GITHUB_SHA::12}"
+          export BENCH_SUMMARY="${GITHUB_STEP_SUMMARY}"
+          python3 bench.py
