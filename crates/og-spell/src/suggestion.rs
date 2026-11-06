@@ -15,7 +15,17 @@ impl SuggestionEngine {
     }
 
     pub fn suggest(&self, word: &str, max: usize) -> Vec<String> {
-        let words = self.words.get_or_init(|| self.dictionary.word_list());
+        // `Dictionary::word_list` yields its inline words in per-process
+        // `HashSet` order, and the stable sort by distance below keeps the
+        // candidate order among equal-distance words. Sorting the candidates
+        // once, byte-wise, makes suggestions a pure function of the word set:
+        // ascending distance, ties in byte order, identical in every run.
+        // Equal entries are identical strings, so an unstable sort is enough.
+        let words = self.words.get_or_init(|| {
+            let mut words = self.dictionary.word_list();
+            words.sort_unstable();
+            words
+        });
         let lower = word.to_lowercase();
         let is_capitalized = word
             .chars()
@@ -255,6 +265,24 @@ mod tests {
         let engine = engine(&["hello", "hell", "helm", "x"]);
         assert!(engine.suggest("helo", 1).len() <= 1);
         assert!(!engine.suggest("helo", 5).contains(&"x".to_string()));
+    }
+
+    #[test]
+    fn equal_distance_ties_come_out_in_byte_order() {
+        // Every candidate is one edit from "helo"; before the candidate list
+        // was sorted, their order followed the dictionary's per-process
+        // HashSet order and changed from run to run.
+        let expected = ["held", "hell", "hello", "helm", "help"];
+        let forward = engine(&["help", "hello", "helm", "held", "hell"]);
+        let backward = engine(&["hell", "held", "helm", "hello", "help"]);
+        assert_eq!(forward.suggest("helo", 5), expected);
+        assert_eq!(backward.suggest("helo", 5), expected);
+        // Truncation keeps the head of that stable order.
+        assert_eq!(forward.suggest("helo", 2), ["held", "hell"]);
+        // Distance still ranks first: "hello" (1 edit) beats "heal" (2 edits)
+        // even though "heal" sorts first byte-wise.
+        let ranked = engine(&["heal", "hello"]);
+        assert_eq!(ranked.suggest("helo", 5), ["hello", "heal"]);
     }
 
     #[test]

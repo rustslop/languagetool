@@ -12,6 +12,7 @@ members = [
     "crates/og-langs",
     "crates/og-test-runner",
     "crates/og-compat",
+    "crates/og-bench",
 ]
 
 [workspace.package]

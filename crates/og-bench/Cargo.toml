@@ -1,0 +1,11 @@
+[package]
+name = "og-bench"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+# std only: the workspace crates under measurement and nothing else.
+[dependencies]
+og-core = { workspace = true }
+og-langs = { workspace = true }
+og-languagemodel = { workspace = true }

@@ -1,0 +1,11 @@
+{
+  "corpus": "multi",
+  "text": "Last summer we drove to the coast for a long weekend. The weather was warm and the sea was calm. Their was a small restaurant near the harbor that served fresh fish. We ordered the soup, and it tasted wonderfull. My brother wanted to go swimming, but there towels were still in the car. In the afternoon we walked along the beach and colected shells. The children built a sandcastle with a tall tower. Later, a sudden storm forced us to run back to the hotel. I think there going to remember that trip for years. The next morning the sky was clear again. We packed our bags and drove home before lunch. It was the best holiday we have had in a long time.",
+  "en_ngram_data": true,
+  "matches": [
+    {"rule_id": "COMMA_COMPOUND_SENTENCE_2", "offset": 74, "length": 4, "covered": " and", "message": "Use a comma before \"\\6\" if it connects two independent clauses (unless they are closely connected and short).", "replacements": [", and"]},
+    {"rule_id": "THEIR_IS", "offset": 97, "length": 5, "covered": "Their", "message": "Did you mean there?", "replacements": ["There"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 201, "length": 10, "covered": "wonderfull", "message": "Possible spelling mistake found: 'wonderfull'", "replacements": ["wonderful", "wonderfully", "overfull", "unwonderful"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 334, "length": 8, "covered": "colected", "message": "Possible spelling mistake found: 'colected'", "replacements": ["collected", "cleated", "collated", "colocated", "complected"]}
+  ]
+}
