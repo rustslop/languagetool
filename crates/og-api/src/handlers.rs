@@ -12,7 +12,7 @@ pub async fn handle_check(
     MergedCheckParams(params): MergedCheckParams,
 ) -> Result<Json<CheckResult>, (StatusCode, Json<serde_json::Value>)> {
     let text = match params.get_text() {
-        Some(t) if !t.is_empty() => t,
+        Some(t) if !t.is_empty() => t.to_string(),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -31,23 +31,57 @@ pub async fn handle_check(
     }
 
     let auto_requested = params.language.eq_ignore_ascii_case("auto");
-    let language = match params.get_language() {
-        Some(l) => l,
-        None if auto_requested => Language::English,
-        None => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "Missing or invalid 'language' parameter"})),
-            ));
+    let fallback_language = if auto_requested {
+        Language::English
+    } else {
+        match params.get_language() {
+            Some(l) => l,
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": "Missing or invalid 'language' parameter"})),
+                ));
+            }
         }
     };
 
+    // Language detection, engine acquisition, and rule evaluation are all
+    // CPU-heavy. A check costs tens of milliseconds, and the first build of a
+    // language costs seconds (English ~4.7 s, German ~13.8 s); same-language
+    // requests also park inside engine_for's OnceLock until that build
+    // finishes. Running any of that inline in the async handler freezes a
+    // Tokio worker for the duration; with one worker per core, a handful of
+    // concurrent checks or one cold language stalls the whole runtime and
+    // caps throughput at ~cores/avg-check-time (measured: the 52 req/s
+    // ceiling in the Nov 2026 CI benchmark). Hand all of it to the blocking
+    // pool so async workers stay free to accept and multiplex requests.
+    let state_for_task = Arc::clone(&state);
+    let result = tokio::task::spawn_blocking(move || {
+        run_check(state_for_task, params, text, auto_requested, fallback_language)
+    })
+    .await
+    .map_err(|err| {
+        tracing::error!("check task join error: {err}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": "Check execution failed"
+            })),
+        )
+    })??;
+    Ok(Json(result))
+}
+
+fn run_check(
+    state: Arc<AppState>,
+    params: crate::request::CheckParams,
+    text: String,
+    auto_requested: bool,
+    fallback_language: Language,
+) -> Result<CheckResult, (StatusCode, Json<serde_json::Value>)> {
     let (language, detected) = if auto_requested {
-        match detect_language(text) {
-            Some((lang, confidence)) => {
-                let detected = (lang.clone(), confidence);
-                (lang, Some(detected))
-            }
+        match detect_language(&text) {
+            Some((lang, confidence)) => (lang.clone(), Some((lang, confidence))),
             None => {
                 return Err((
                     StatusCode::BAD_REQUEST,
@@ -58,7 +92,7 @@ pub async fn handle_check(
             }
         }
     } else {
-        (language, None)
+        (fallback_language, None)
     };
 
     let engine = if let Some(e) = state.engine_for(language.code()) {
@@ -86,30 +120,13 @@ pub async fn handle_check(
         .as_deref()
         .and_then(Language::from_code);
 
-    // Rule evaluation is CPU-heavy (tens of milliseconds per request).
-    // Running it inline in the async handler freezes a Tokio worker for the
-    // duration; with one worker per core, four concurrent checks stall the
-    // whole runtime and cap throughput at ~cores/avg-check-time (measured:
-    // the 52 req/s ceiling in the Nov 2026 CI benchmark). Hand the check to
-    // the blocking pool so async workers stay free to accept and multiplex
-    // requests.
-    let mut result = tokio::task::spawn_blocking(move || engine.check_with_request(&request))
-        .await
-        .map_err(|err| {
-            tracing::error!("check task join error: {err}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Check execution failed"
-                })),
-            )
-        })?;
+    let mut result = engine.check_with_request(&request);
     if let Some((lang, confidence)) = detected {
         result.language.detected.code = lang.code().to_string();
         result.language.detected.name = lang.name().to_string();
         result.language.detected.confidence = confidence;
     }
-    Ok(Json(result))
+    Ok(result)
 }
 
 fn detect_language(text: &str) -> Option<(Language, f64)> {
