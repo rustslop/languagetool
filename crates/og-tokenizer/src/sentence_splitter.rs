@@ -380,8 +380,7 @@ impl DefaultSentenceSplitter {
         false
     }
 
-    fn is_sentence_boundary(&self, text: &str, pos: usize) -> bool {
-        let chars: Vec<char> = text.chars().collect();
+    fn is_sentence_boundary(&self, text: &str, chars: &[char], pos: usize) -> bool {
         if pos >= chars.len() {
             return false;
         }
@@ -466,12 +465,13 @@ impl SentenceTokenizer for DefaultSentenceSplitter {
         let mut sentence_start = 0;
         let mut last_boundary: Option<usize> = None;
 
+        // byte_offset tracks the byte position of chars[i] so each boundary's
+        // end offset is O(1) instead of re-summing char lengths from the start.
+        let mut byte_offset = 0;
         for i in 0..chars.len() {
-            if self.is_sentence_boundary(text, i) {
-                let mut byte_pos = 0;
-                for c in chars.iter().take(i + 1) {
-                    byte_pos += c.len_utf8();
-                }
+            let ch_len = chars[i].len_utf8();
+            if self.is_sentence_boundary(text, &chars, i) {
+                let byte_pos = byte_offset + ch_len;
 
                 let mut end_pos = byte_pos;
                 while end_pos < text.len() && text.as_bytes()[end_pos] == b' ' {
@@ -486,6 +486,7 @@ impl SentenceTokenizer for DefaultSentenceSplitter {
                 }
                 sentence_start = end_pos;
             }
+            byte_offset += ch_len;
         }
 
         if sentence_start < text.len() {
