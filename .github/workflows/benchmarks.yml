@@ -75,7 +75,8 @@ jobs:
           mv og-server-latest-x86_64-unknown-linux-gnu/og-server ./og-server
           rmdir og-server-latest-x86_64-unknown-linux-gnu
           rm og-server-latest-x86_64-unknown-linux-gnu.tar.gz
-          ./og-server --help >/dev/null 2>&1 || true
+          # NB: og-server parses no CLI flags — running it for a "smoke
+          # check" would start the server and block the step forever.
           ls -la og-server
 
       # LanguageTool 6.6+ requires Java 17-21.
