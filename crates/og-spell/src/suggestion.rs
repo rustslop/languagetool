@@ -34,6 +34,12 @@ impl SuggestionEngine {
         let word_len = lower.len();
         let max_dist = if word_len <= 4 { 2 } else { 3 };
 
+        // The query's chars are collected once and reused across all
+        // dictionary candidates, with a scratch row pair shared between
+        // calls so candidate scoring does not allocate per word.
+        let lower_chars: Vec<char> = lower.chars().collect();
+        let mut scratch = (Vec::new(), Vec::new());
+
         let mut scored: Vec<(String, usize)> = words
             .iter()
             .filter(|w| {
@@ -41,7 +47,7 @@ impl SuggestionEngine {
                 wlen > 1 && wlen.abs_diff(word_len) <= max_dist
             })
             .filter_map(|w| {
-                let dist = levenshtein_distance(&lower, w);
+                let dist = levenshtein_distance_capped(&lower_chars, w, max_dist, &mut scratch);
                 if dist <= max_dist && dist > 0 {
                     Some((w.clone(), dist))
                 } else {
@@ -74,8 +80,39 @@ impl SuggestionEngine {
     }
 }
 
+/// Exact Levenshtein distance over chars. Kept as the correctness oracle;
+/// the suggest path uses the capped variant below.
 fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_len = a.chars().count();
+    let a_chars: Vec<char> = a.chars().collect();
+    levenshtein_impl(&a_chars, b, None, &mut (Vec::new(), Vec::new()))
+}
+
+/// Levenshtein distance with an early cutoff: returns `max + 1` as soon as
+/// the distance provably exceeds `max`, so far candidates are rejected after
+/// a few rows instead of a full matrix. The minimum of any DP row is a lower
+/// bound on the final distance, and the length-difference pre-check bounds
+/// it before any cell is computed. Distances <= max are exact, matching the
+/// uncapped computation, so the accepted set and stored distances are
+/// unchanged.
+fn levenshtein_distance_capped(
+    a: &[char],
+    b: &str,
+    max: usize,
+    scratch: &mut (Vec<usize>, Vec<usize>),
+) -> usize {
+    levenshtein_impl(a, b, Some(max), scratch)
+}
+
+/// Two-row DP over chars (never bytes: a byte-level distance would change
+/// results for non-ASCII words). `scratch` carries the two rows so repeated
+/// calls over a dictionary do not allocate.
+fn levenshtein_impl(
+    a: &[char],
+    b: &str,
+    max: Option<usize>,
+    (prev, cur): &mut (Vec<usize>, Vec<usize>),
+) -> usize {
+    let a_len = a.len();
     let b_len = b.chars().count();
 
     if a_len == 0 {
@@ -84,35 +121,37 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     if b_len == 0 {
         return a_len;
     }
-
-    let mut matrix = vec![vec![0; b_len + 1]; a_len + 1];
-
-    for (i, row) in matrix.iter_mut().enumerate() {
-        row[0] = i;
+    if let Some(max) = max
+        && a_len.abs_diff(b_len) > max
+    {
+        return max + 1;
     }
 
-    for (j, cell) in matrix[0].iter_mut().enumerate() {
-        *cell = j;
-    }
-
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
+    prev.clear();
+    prev.extend(0..=b_len);
+    cur.clear();
+    cur.resize(b_len + 1, 0);
 
     for i in 1..=a_len {
-        for j in 1..=b_len {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
-                0
-            } else {
-                1
-            };
-            matrix[i][j] = std::cmp::min(
-                std::cmp::min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1),
-                matrix[i - 1][j - 1] + cost,
-            );
+        cur[0] = i;
+        let a_char = a[i - 1];
+        let mut row_min = i;
+        for (j, b_char) in b.chars().enumerate() {
+            let cost = usize::from(a_char != b_char);
+            let value = (prev[j + 1] + 1).min(cur[j] + 1).min(prev[j] + cost);
+            cur[j + 1] = value;
+            if value < row_min {
+                row_min = value;
+            }
         }
+        if let Some(max) = max
+            && row_min > max
+        {
+            return max + 1;
+        }
+        std::mem::swap(prev, cur);
     }
-
-    matrix[a_len][b_len]
+    prev[b_len]
 }
 
 #[cfg(test)]
@@ -125,6 +164,35 @@ mod tests {
         assert_eq!(levenshtein_distance("hello", "helo"), 1);
         assert_eq!(levenshtein_distance("hello", "hallo"), 1);
         assert_eq!(levenshtein_distance("hello", "world"), 4);
+    }
+
+    #[test]
+    fn capped_levenshtein_matches_the_exact_oracle() {
+        let cases = [
+            ("hello", "hello"),
+            ("hello", "helo"),
+            ("hello", "hallo"),
+            ("hello", "world"),
+            ("café", "cafe"),
+            ("grübchen", "grubchen"),
+            ("naïve", "naive"),
+            ("a", "b"),
+            ("", "abc"),
+            ("abc", ""),
+        ];
+        for (a, b) in cases {
+            let a_chars: Vec<char> = a.chars().collect();
+            for max in [1usize, 2, 3, 5] {
+                let mut scratch = (Vec::new(), Vec::new());
+                let capped = levenshtein_distance_capped(&a_chars, b, max, &mut scratch);
+                let exact = levenshtein_distance(a, b);
+                if exact <= max {
+                    assert_eq!(capped, exact, "({a:?}, {b:?}, max={max})");
+                } else {
+                    assert!(capped > max, "({a:?}, {b:?}, max={max}): {capped}");
+                }
+            }
+        }
     }
 
     #[test]

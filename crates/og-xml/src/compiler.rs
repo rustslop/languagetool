@@ -467,6 +467,7 @@ impl XmlCompiler {
             token.text.clone()
         };
 
+        let matches_unknown = postag_matches_unknown(postag_re.as_ref(), postag_fancy.as_ref());
         CompiledPatternToken {
             unify_neutral: token.unify_neutral,
             is_regexp: token.regexp.as_deref() == Some("yes"),
@@ -481,6 +482,7 @@ impl XmlCompiler {
             postag: token.postag.clone(),
             compiled_postag_regexp: postag_re,
             compiled_postag_regexp_fancy: postag_fancy,
+            postag_matches_unknown: matches_unknown,
             negate: token.negate,
             negate_pos: token.negate_pos,
             case_sensitive: token.case_sensitive,
@@ -571,6 +573,10 @@ impl XmlCompiler {
         } else {
             None
         };
+        let matches_unknown = postag_matches_unknown(
+            compiled_postag_re.as_ref(),
+            compiled_postag_fancy.as_ref(),
+        );
         CompiledException {
             text: exc.text.clone(),
             compiled_regexp: compiled_re.clone(),
@@ -578,6 +584,7 @@ impl XmlCompiler {
             postag: exc.postag.clone(),
             compiled_postag_regexp: compiled_postag_re,
             compiled_postag_regexp_fancy: compiled_postag_fancy,
+            postag_matches_unknown: matches_unknown,
             negate: exc.negate,
             negate_pos: exc.negate_pos,
             inflected: exc.inflected,
@@ -1051,6 +1058,21 @@ pub struct CompiledPattern {
     pub raw_pos: bool,
 }
 
+/// Whether the active compiled postag regex matches the constant "UNKNOWN",
+/// evaluated once at compile time. Mirrors the branch selection of
+/// unifier::reading_pos_matches: the plain regex wins when present, the
+/// fancy one is consulted only otherwise, and the plain-postag path never
+/// uses the flag.
+fn postag_matches_unknown(re: Option<&SharedRegex>, fancy: Option<&SharedFancyRegex>) -> bool {
+    if let Some(re) = re {
+        re.is_match("UNKNOWN")
+    } else if let Some(re) = fancy {
+        re.is_match("UNKNOWN").unwrap_or(false)
+    } else {
+        false
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompiledPatternToken {
     pub unify_neutral: bool,
@@ -1062,6 +1084,10 @@ pub struct CompiledPatternToken {
     pub postag: Option<String>,
     pub compiled_postag_regexp: Option<SharedRegex>,
     pub compiled_postag_regexp_fancy: Option<SharedFancyRegex>,
+    /// Whether the compiled postag regex matches the constant "UNKNOWN";
+    /// hoisted out of reading_pos_matches so the hot match path reads a flag
+    /// instead of running a regex on a constant string per reading.
+    pub postag_matches_unknown: bool,
     pub negate: bool,
     pub negate_pos: bool,
     pub case_sensitive: bool,
@@ -1091,6 +1117,9 @@ pub struct CompiledException {
     pub postag: Option<String>,
     pub compiled_postag_regexp: Option<SharedRegex>,
     pub compiled_postag_regexp_fancy: Option<SharedFancyRegex>,
+    /// Whether the compiled postag regex matches the constant "UNKNOWN";
+    /// see CompiledPatternToken::postag_matches_unknown.
+    pub postag_matches_unknown: bool,
     pub negate: bool,
     pub negate_pos: bool,
     pub inflected: bool,

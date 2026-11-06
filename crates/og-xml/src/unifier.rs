@@ -75,17 +75,16 @@ pub fn reading_pos_matches(
     postag: &str,
     postag_re: Option<&crate::compiler::SharedRegex>,
     postag_fancy: Option<&crate::compiler::SharedFancyRegex>,
+    matches_unknown: bool,
     tags: &[String],
     token_untagged: bool,
 ) -> bool {
     match postag_re {
-        Some(re) => {
-            tags.iter().any(|t| re.is_match(t)) || (re.is_match("UNKNOWN") && token_untagged)
-        }
+        Some(re) => tags.iter().any(|t| re.is_match(t)) || (matches_unknown && token_untagged),
         None => match postag_fancy {
             Some(re) => {
                 tags.iter().any(|t| re.is_match(t).unwrap_or(false))
-                    || (re.is_match("UNKNOWN").unwrap_or(false) && token_untagged)
+                    || (matches_unknown && token_untagged)
             }
             None => {
                 if postag == "UNKNOWN" {
@@ -110,6 +109,7 @@ pub fn reading_matches_element(
                 postag,
                 pattern.compiled_postag_regexp.as_ref(),
                 pattern.compiled_postag_regexp_fancy.as_ref(),
+                pattern.postag_matches_unknown,
                 reading.pos_tags(),
                 token_untagged,
             ) != pattern.negate_pos
@@ -836,6 +836,7 @@ mod tests {
             postag: Some("VVFIN".to_string()),
             compiled_postag_regexp: None,
             compiled_postag_regexp_fancy: None,
+            postag_matches_unknown: false,
             negate: false,
             negate_pos: false,
             case_sensitive: false,
@@ -887,6 +888,7 @@ mod tests {
             postag: None,
             compiled_postag_regexp: None,
             compiled_postag_regexp_fancy: None,
+            postag_matches_unknown: false,
             negate: false,
             negate_pos: false,
             case_sensitive: false,
@@ -945,24 +947,26 @@ mod tests {
     fn reading_pos_matches_supports_regex_fancy_and_unknown_forms() {
         let tags = vec!["ART:DEF:NOM:SIN:MAS".to_string()];
         let plain = std::sync::Arc::new(regex::Regex::new(".*:NOM.*").unwrap());
-        assert!(reading_pos_matches("", Some(&plain), None, &tags, false));
+        assert!(reading_pos_matches("", Some(&plain), None, false, &tags, false));
         let unknown_re = std::sync::Arc::new(regex::Regex::new("UNKNOWN").unwrap());
-        assert!(reading_pos_matches("", Some(&unknown_re), None, &[], true));
+        assert!(reading_pos_matches("", Some(&unknown_re), None, true, &[], true));
         assert!(!reading_pos_matches(
             "",
             Some(&unknown_re),
             None,
+            true,
             &[],
             false
         ));
 
         let fancy = std::sync::Arc::new(fancy_regex::Regex::new(".*:(NOM|AKK).*").unwrap());
-        assert!(reading_pos_matches("", None, Some(&fancy), &tags, false));
+        assert!(reading_pos_matches("", None, Some(&fancy), false, &tags, false));
         let fancy_unknown = std::sync::Arc::new(fancy_regex::Regex::new("^UNKNOWN$").unwrap());
         assert!(reading_pos_matches(
             "",
             None,
             Some(&fancy_unknown),
+            true,
             &[],
             true
         ));
@@ -970,6 +974,7 @@ mod tests {
             "",
             None,
             Some(&fancy_unknown),
+            true,
             &[],
             false
         ));
@@ -977,6 +982,7 @@ mod tests {
             "ART:DEF:NOM:SIN:MAS",
             None,
             None,
+            false,
             &tags,
             false
         ));
