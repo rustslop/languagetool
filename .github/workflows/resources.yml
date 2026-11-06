@@ -1,22 +1,26 @@
 name: Language Resource Packs
 
 # Publishes the LanguageTool resource sets the release binaries need at
-# runtime as downloadable language packs. The binaries look for a
-# ./languagetool/ directory (see find_lt_resource_dir() in og-langs); each
-# pack unpacks exactly into that layout:
+# runtime as downloadable language packs, under ONE stable rolling
+# release tagged `resources` (no content hash in the tag). The binaries
+# look for a ./languagetool/ directory (see find_lt_resource_dir() in
+# og-langs); each pack unpacks exactly into that layout:
 #
 #   tar -xzf langpack-core.tar.gz      # always required (sentence SRX etc.)
 #   tar -xzf langpack-en.tar.gz        # plus any languages you check
 #
-# Packs are content-addressed: the release tag is derived from a hash over
-# every packed file, so identical content always maps to the same release
-# (publishing is idempotent and skipped when nothing changed) and a bumped
-# LT_FROZEN_REF naturally produces a new release.
+# A pack archive is replaced on the release only when its content
+# actually changed. Packs are built byte-reproducibly (sorted names,
+# zeroed ownership/timestamps, gzip -n), so the tarball's sha256 is a
+# faithful content hash: the workflow compares it against the
+# SHA256SUMS.txt published on the release and re-uploads only what
+# differs. A change to one language therefore touches exactly that
+# language's archive (plus langpack-all and the checksum file).
 #
-# Runs when the pack definition changes (this file) or the frozen upstream
-# revision moves (it lives in release.yml). Manual dispatch covers
-# repacks after new language crates appear under crates/og-langs/src/,
-# which path filters cannot see.
+# Runs when the pack definition changes (this file) or the frozen
+# upstream revision moves (it lives in release.yml). Manual dispatch
+# covers repacks after new language crates appear under
+# crates/og-langs/src/, which path filters cannot see.
 on:
   push:
     branches: [master]
@@ -26,7 +30,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: resources-${{ github.ref }}
+  # Single rolling release: a newer run supersedes an in-flight one.
+  group: resources
   cancel-in-progress: true
 
 permissions:
@@ -81,9 +86,8 @@ jobs:
 
       # Each pack stages as languagetool/languagetool-language-modules/<lang>
       # (hardlinks, no copy cost) plus the LGPL COPYING.txt required for
-      # redistribution. The hash covers every staged file across all packs,
-      # so it identifies the complete published set.
-      - name: Stage packs and compute content hash
+      # redistribution.
+      - name: Stage packs
         id: stage
         run: |
           set -euo pipefail
@@ -115,69 +119,75 @@ jobs:
           # and taggers stay silent at runtime.
           cp -al resources-extra/languagetool/. "${STAGE}/languagetool/"
 
-          # LC_ALL=C for byte-stable find/sort output; exported rather than
-          # used as a pipeline stage (a bare assignment stage is a no-op
-          # that severs the pipe).
-          export LC_ALL=C
-          HASH="$(cd "${STAGE}" && find languagetool -type f | sort \
-            | xargs sha256sum | sha256sum | cut -c1-12)"
-          echo "hash=${HASH}" >> "$GITHUB_OUTPUT"
           echo "languages=${LANGS}" >> "$GITHUB_OUTPUT"
           echo "lang-count=$(wc -w <<< "${LANGS}")" >> "$GITHUB_OUTPUT"
-          echo "Content hash: ${HASH}"
 
-      # Content-addressed: same content -> same tag. Expected asset count
-      # is <languages> + core + all-in-one + SHA256SUMS. A release holding
-      # fewer assets is the debris of a failed upload — delete and redo.
-      - name: Check if this pack set is already published
-        id: published
+      # Deterministic archives: sorted entry names, zeroed owner/group and
+      # mtimes, gzip without a timestamp. Identical staged content then
+      # yields a byte-identical tarball, which is what makes the per-pack
+      # sha256 comparison below meaningful.
+      - name: Build deterministic pack archives
         run: |
           set -euo pipefail
-          TAG="resources-${{ steps.stage.outputs.hash }}"
-          EXPECTED=$(( ${{ steps.stage.outputs.lang-count }} + 3 ))
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            HAVE="$(gh release view "${TAG}" --json assets --jq '.assets | length')"
-            if [ "${HAVE}" -eq "${EXPECTED}" ]; then
-              echo "published=true" >> "$GITHUB_OUTPUT"
-              echo "Release ${TAG} already complete (${HAVE}/${EXPECTED} assets)."
-            else
-              echo "published=false" >> "$GITHUB_OUTPUT"
-              gh release delete "${TAG}" --cleanup-tag --yes
-              echo "Deleted incomplete release ${TAG} (${HAVE}/${EXPECTED} assets); republishing."
-            fi
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-            echo "Release ${TAG} not found; publishing."
-          fi
-
-      - name: Build pack archives
-        if: steps.published.outputs.published != 'true'
-        run: |
-          set -euo pipefail
+          pack() {
+            local out="$1"; shift
+            tar --sort=name --owner=0 --group=0 --numeric-owner \
+              --mtime='@0' -cf - "$@" | gzip -n > "packs/${out}"
+          }
           cd .pack-stage
-          tar -czf ../packs/langpack-core.tar.gz \
+          pack langpack-core.tar.gz \
             languagetool/languagetool-core languagetool/COPYING.txt
           for lang in ${{ steps.stage.outputs.languages }}; do
-            tar -czf "../packs/langpack-${lang}.tar.gz" \
+            pack "langpack-${lang}.tar.gz" \
               "languagetool/languagetool-language-modules/${lang}" \
               languagetool/COPYING.txt
           done
-          # One-archive option for "just give me everything".
-          tar -czf ../packs/langpack-all.tar.gz languagetool
+          # One-archive option for "just give me everything"; its content
+          # changes whenever any language does, so it updates alongside.
+          pack langpack-all.tar.gz languagetool
           cd ../packs
           ls -la
           sha256sum langpack-*.tar.gz | tee SHA256SUMS.txt
 
-      - name: Publish resource release
-        if: steps.published.outputs.published != 'true'
+      # Compare freshly built checksums against what the rolling release
+      # already carries; anything absent or differing needs (re-)upload.
+      - name: Compare packs against the published release
+        id: compare
         run: |
           set -euo pipefail
-          TAG="resources-${{ steps.stage.outputs.hash }}"
-          COUNT="${{ steps.stage.outputs.lang-count }}"
+          if ! gh release view resources >/dev/null 2>&1; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Release 'resources' does not exist yet; will create it."
+            exit 0
+          fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          gh release download resources --pattern 'SHA256SUMS.txt' \
+            --output published-SHA256SUMS.txt --clobber
+          CHANGED=""
+          while read -r sum name; do
+            old="$(awk -v n="${name}" '$2 == n {print $1; exit}' published-SHA256SUMS.txt || true)"
+            if [ "${old}" != "${sum}" ]; then
+              CHANGED="${CHANGED} ${name}"
+            fi
+          done < packs/SHA256SUMS.txt
+          # SHA256SUMS.txt itself is rewritten whenever anything changed.
+          if [ -n "${CHANGED}" ]; then
+            CHANGED="${CHANGED} SHA256SUMS.txt"
+            echo "changed=${CHANGED# }" >> "$GITHUB_OUTPUT"
+            echo "Changed packs:${CHANGED}"
+          else
+            echo "changed=" >> "$GITHUB_OUTPUT"
+            echo "All packs identical to the published release; nothing to do."
+          fi
 
-          gh release create "${TAG}" packs/* \
+      - name: Create the rolling resources release
+        if: steps.compare.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          COUNT="${{ steps.stage.outputs.lang-count }}"
+          gh release create resources packs/* \
             --target "${GITHUB_SHA}" \
-            --title "Language packs ${TAG#resources-} (LT @ ${LT_FROZEN_REF:0:8})" \
+            --title "Language resource packs (LT @ ${LT_FROZEN_REF:0:8})" \
             --notes "$(cat <<EOF
           Runtime resource packs for the \`og-server\` release binaries, cut
           from upstream LanguageTool @ \`${LT_FROZEN_REF}\` — the same frozen
@@ -201,26 +211,18 @@ jobs:
           - \`langpack-all.tar.gz\` — everything in one archive
           - \`SHA256SUMS.txt\` — checksums for all archives
 
-          Content-addressed tag: \`resources-*\` is derived from a hash over
-          every packed file, so identical content always maps to the same
-          release and nothing is republished without a change.
+          This is a rolling release: an archive is replaced here only when
+          its content (its sha256) actually changes.
           EOF
           )"
 
-      # Immutable content-addressed releases appear only when upstream
-      # content actually changes; keep a bounded history anyway.
-      - name: Prune old resource releases (keep newest 5)
-        if: always()
+      - name: Update changed packs on the release
+        if: steps.compare.outputs.exists == 'true' && steps.compare.outputs.changed != ''
+        env:
+          CHANGED: ${{ steps.compare.outputs.changed }}
         run: |
           set -euo pipefail
-          OLD="$(gh release list --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("resources-"))]
-                   | sort_by(.createdAt) | reverse | .[5:] | .[].tagName')"
-          if [ -n "${OLD}" ]; then
-            for tag in ${OLD}; do
-              gh release delete "${tag}" --cleanup-tag --yes
-              echo "Pruned ${tag}"
-            done
-          else
-            echo "Nothing to prune."
-          fi
+          # shellcheck disable=SC2086 — intentional word splitting
+          gh release upload resources $(for f in ${CHANGED}; do echo "packs/${f}"; done) \
+            --clobber
+          echo "Updated:${CHANGED}"

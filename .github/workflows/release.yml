@@ -212,9 +212,9 @@ jobs:
           directory of its build artifacts.
 
           The binaries check text with full rules only when a LanguageTool
-          resource directory is present — download the matching language
-          packs (\`langpack-core\` + your languages) from the newest
-          \`resources-*\` release and unpack them next to the binary."
+          resource directory is present — download the language packs
+          (\`langpack-core\` + your languages) from the rolling
+          \`resources\` release and unpack them next to the binary."
           fi
 
   cleanup:
