@@ -169,27 +169,33 @@ jobs:
           def sentences(lang):
               return CORPUS.get(lang, DEFAULT_CORPUS)
 
-          def get_json(port, path, timeout=10):
-              with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=timeout) as r:
-                  return json.load(r)
+          def check_body(port, text, lang, timeout=REQ_TIMEOUT):
+              data = urllib.parse.urlencode({"text": text, "language": lang}).encode()
+              req = urllib.request.Request(f"http://127.0.0.1:{port}/v2/check", data=data)
+              t0 = time.perf_counter()
+              with urllib.request.urlopen(req, timeout=timeout) as r:
+                  body = json.load(r)
+              return (time.perf_counter() - t0) * 1000.0, body
 
+          # Readiness probe: self-hosted LT does not implement GET /v2/version
+          # (that is a languagetool.org API endpoint and answers "Unsupported
+          # action"), so a minimal /v2/check is the only probe both servers
+          # share. Likewise, server version info comes from the `software`
+          # field of a check response, not a version endpoint.
           def wait_ready(port, timeout=900):
               deadline = time.monotonic() + timeout
               while time.monotonic() < deadline:
                   try:
-                      if get_json(port, "/v2/version", timeout=5):
+                      _, body = check_body(port, ".", "en-US", timeout=10)
+                      if "software" in body:
                           return True
                   except Exception:
                       time.sleep(0.25)
               return False
 
           def check(port, text, lang):
-              data = urllib.parse.urlencode({"text": text, "language": lang}).encode()
-              req = urllib.request.Request(f"http://127.0.0.1:{port}/v2/check", data=data)
-              t0 = time.perf_counter()
-              with urllib.request.urlopen(req, timeout=REQ_TIMEOUT) as r:
-                  body = json.load(r)
-              return (time.perf_counter() - t0) * 1000.0, len(body.get("matches", []))
+              ms, body = check_body(port, text, lang)
+              return ms, len(body.get("matches", []))
 
           def peak_rss_kb(pid):
               try:
@@ -209,12 +215,14 @@ jobs:
               if not wait_ready(port):
                   proc.kill()
                   raise SystemExit(f"{name}: server never became ready")
-              version = get_json(port, "/v2/version")
               per_lang = {}
+              software = {}
               for lang in languages:
                   corpus = sentences(lang)
-                  # Cold: the first check loads the language engine.
-                  cold_ms, _ = check(port, corpus[0], lang)
+                  # Cold: the first check loads the language engine; its
+                  # response also identifies the server build.
+                  cold_ms, body = check_body(port, corpus[0], lang)
+                  software = body.get("software", {})
                   for text in corpus[1:]:
                       check(port, text, lang)
                   # Sequential latency.
@@ -242,7 +250,7 @@ jobs:
                       "peak_rss_mib": round(hwm / 1024, 1),
                       "final_rss_mib": round(rss / 1024, 1),
                   }
-              return {"name": name, "version": version, "languages": per_lang}
+              return {"name": name, "version": software, "languages": per_lang}
 
           def report(og, lt, path):
               lines = []
