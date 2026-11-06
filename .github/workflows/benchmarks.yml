@@ -1,9 +1,10 @@
 name: Benchmarks
 
-# Manual-only comparison of the built og-server against the original Java
-# LanguageTool server: startup, cold/warm check latency, throughput, peak
-# memory and match counts, both serving the identical request stream over
-# the same LanguageTool-compatible HTTP API.
+# Manual-only comparison of the published og-server binary (downloaded
+# from the rolling `latest` release, never rebuilt here) against the
+# original Java LanguageTool server: startup, cold/warm check latency,
+# throughput, peak memory and match counts, both serving the identical
+# request stream over the same LanguageTool-compatible HTTP API.
 #
 # Java side facts (verified Nov 2026):
 #   - LT ships versioned standalone zips only up to 6.6; since March 2025
@@ -52,9 +53,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Must match LT_FROZEN_REF in release.yml (the Java build compared
-  # against is its closest available distribution).
-  LT_FROZEN_REF: "2c9b51ea0746c341fd7edabfc753b1cff1f516c7"
 
 jobs:
   benchmark:
@@ -62,26 +60,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Check out sources
-        uses: actions/checkout@v5
-
-      # Compile-time dependency only (include_str! rule data); the runtime
-      # resources come from the published language packs below.
-      - name: Fetch pinned LanguageTool resources for the build
+      # No source checkout needed: both sides run their published
+      # distributions — og-server from the rolling `latest` binary release,
+      # Java LT from the official standalone zip. Neither is rebuilt here.
+      - name: Download og-server from the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          git clone --filter=blob:none --no-checkout --quiet \
-            https://github.com/languagetool-org/languagetool.git languagetool
-          git -C languagetool sparse-checkout set --no-cone \
-            '/languagetool-language-modules/*/src/main/resources/**/*.txt' \
-            '/languagetool-language-modules/*/src/main/resources/**/*.csv'
-          git -C languagetool fetch --quiet --depth 1 origin "${LT_FROZEN_REF}"
-          git -C languagetool checkout --quiet FETCH_HEAD
-
-      - name: Install Rust toolchain (workspace MSRV)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.95.0"
+          gh release download latest \
+            --pattern 'og-server-latest-x86_64-unknown-linux-gnu.tar.gz'
+          tar -xzf og-server-latest-x86_64-unknown-linux-gnu.tar.gz
+          mv og-server-latest-x86_64-unknown-linux-gnu/og-server ./og-server
+          rmdir og-server-latest-x86_64-unknown-linux-gnu
+          rm og-server-latest-x86_64-unknown-linux-gnu.tar.gz
+          ./og-server --help >/dev/null 2>&1 || true
+          ls -la og-server
 
       # LanguageTool 6.6+ requires Java 17-21.
       - name: Install Java 17 (Temurin)
@@ -90,13 +85,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Build og-server (release)
-        run: cargo build --release --locked --bin og-server
-
       # Runtime resources for og-server: the actual published packs.
       - name: Download language packs from the resources release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           gh release view resources >/dev/null || {
@@ -296,7 +289,7 @@ jobs:
               summary_path = os.environ.get("BENCH_SUMMARY")
 
               og = subprocess.Popen(
-                  ["./target/release/og-server"],
+                  ["./og-server"],
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
               lt = subprocess.Popen(
                   ["java", "-cp", "lt-dist/LanguageTool/languagetool-server.jar",
