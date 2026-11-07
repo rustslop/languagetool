@@ -535,6 +535,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

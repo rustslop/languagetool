@@ -228,17 +228,103 @@ impl Checker {
         &self.text_level_rules
     }
 
-    pub fn check(&self, request: &CheckRequest) -> CheckResult {
-        let text = &request.text;
+    /// Whether `rule` runs for `request`. Pure in the sentence, so the check
+    /// pipeline evaluates it once per rule instead of once per sentence.
+    fn sentence_rule_enabled(
+        request: &CheckRequest,
+        rule: &dyn Rule,
+        has_cat_filters: bool,
+    ) -> bool {
+        if has_cat_filters {
+            request.is_rule_enabled(
+                rule.id(),
+                rule.category().id().as_str(),
+                rule.is_default_on(),
+                rule.is_picky(),
+            )
+        } else {
+            request.rule_enabled_by_id(rule.id(), rule.is_default_on(), rule.is_picky())
+        }
+    }
 
-        let sentence_ranges = self.split_sentences(text);
+    /// The per-sentence analyze + match stage of [`Checker::check`], run in
+    /// parallel across sentences with rayon.
+    ///
+    /// Each worker owns one sentence end to end (analysis plus every enabled
+    /// rule), so no shared state mutates across workers: the rule-enablement
+    /// filter and the `enabled_rule_ids` set are hoisted out of the loop and
+    /// computed once on the calling thread. A slice `par_iter` collected into
+    /// a `Vec` preserves slice order, so the flattened matches, the analyzed
+    /// sentence list, and the enabled-id set are identical to
+    /// [`Checker::check_sentences_serial`], which stays in-tree as the parity
+    /// oracle for exactly this stage.
+    fn check_sentences_parallel(
+        &self,
+        text: &str,
+        sentence_ranges: &[SentenceRange],
+        request: &CheckRequest,
+    ) -> (Vec<AnalyzedSentence>, Vec<RuleMatch>, std::collections::HashSet<String>) {
+        use rayon::prelude::*;
 
+        let has_cat_filters = request.has_category_filters();
+        let enabled_rule_indices: Vec<usize> = self
+            .rules
+            .iter()
+            .enumerate()
+            .filter(|(_, rule)| Self::sentence_rule_enabled(request, rule.as_ref(), has_cat_filters))
+            .map(|(index, _)| index)
+            .collect();
+
+        let per_sentence: Vec<(AnalyzedSentence, Vec<RuleMatch>)> = sentence_ranges
+            .par_iter()
+            .map(|range| {
+                let sentence = self.analyze_range(text, range);
+                let mut sentence_matches = Vec::new();
+                for &rule_idx in &enabled_rule_indices {
+                    sentence_matches.extend(self.rules[rule_idx].match_sentence(&sentence));
+                }
+                (sentence, sentence_matches)
+            })
+            .collect();
+
+        let mut all_matches: Vec<RuleMatch> = Vec::new();
+        let mut analyzed_sentences = Vec::with_capacity(per_sentence.len());
+        for (sentence, sentence_matches) in per_sentence {
+            analyzed_sentences.push(sentence);
+            all_matches.extend(sentence_matches);
+        }
+
+        let mut enabled_rule_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        // The serial loop inserted these ids once per sentence; after the
+        // first sentence the set holds exactly the enabled rule ids, so insert
+        // them once — but only when the serial loop body would have run at
+        // all (zero sentences left the set without sentence-rule ids).
+        if !sentence_ranges.is_empty() {
+            for &rule_idx in &enabled_rule_indices {
+                enabled_rule_ids.insert(self.rules[rule_idx].id().to_string());
+            }
+        }
+
+        (analyzed_sentences, all_matches, enabled_rule_ids)
+    }
+
+    /// The serial per-sentence stage that [`Checker::check_sentences_parallel`]
+    /// replaces in production: the original loop, kept verbatim as the parity
+    /// oracle (`parallel_sentence_stage_matches_serial` asserts equality).
+    #[cfg(test)]
+    fn check_sentences_serial(
+        &self,
+        text: &str,
+        sentence_ranges: &[SentenceRange],
+        request: &CheckRequest,
+    ) -> (Vec<AnalyzedSentence>, Vec<RuleMatch>, std::collections::HashSet<String>) {
         let mut all_matches: Vec<RuleMatch> = Vec::new();
         let mut analyzed_sentences = Vec::new();
         let mut enabled_rule_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
-        for range in &sentence_ranges {
+        for range in sentence_ranges {
             let sentence = self.analyze_range(text, range);
 
             let has_cat_filters = request.has_category_filters();
@@ -267,6 +353,58 @@ impl Checker {
             analyzed_sentences.push(sentence);
         }
 
+        (analyzed_sentences, all_matches, enabled_rule_ids)
+    }
+
+    pub fn check(&self, request: &CheckRequest) -> CheckResult {
+        let text = &request.text;
+
+        let sentence_ranges = self.split_sentences(text);
+
+        let (analyzed_sentences, all_matches, enabled_rule_ids) =
+            self.check_sentences_parallel(text, &sentence_ranges, request);
+
+        self.finish_check(
+            request,
+            &sentence_ranges,
+            &analyzed_sentences,
+            all_matches,
+            enabled_rule_ids,
+        )
+    }
+
+    /// [`Checker::check`] with the serial sentence stage: the full-pipeline
+    /// parity oracle (`check_matches_the_serial_oracle` asserts equality).
+    #[cfg(test)]
+    fn check_serial(&self, request: &CheckRequest) -> CheckResult {
+        let text = &request.text;
+
+        let sentence_ranges = self.split_sentences(text);
+
+        let (analyzed_sentences, all_matches, enabled_rule_ids) =
+            self.check_sentences_serial(text, &sentence_ranges, request);
+
+        self.finish_check(
+            request,
+            &sentence_ranges,
+            &analyzed_sentences,
+            all_matches,
+            enabled_rule_ids,
+        )
+    }
+
+    /// Everything after the sentence stage, sequential as it always was:
+    /// the text-level rules, the match filters, then the result envelope.
+    fn finish_check(
+        &self,
+        request: &CheckRequest,
+        sentence_ranges: &[SentenceRange],
+        analyzed_sentences: &[AnalyzedSentence],
+        mut all_matches: Vec<RuleMatch>,
+        mut enabled_rule_ids: std::collections::HashSet<String>,
+    ) -> CheckResult {
+        let text = &request.text;
+
         let has_cat_filters = request.has_category_filters();
         for rule in &self.text_level_rules {
             if has_cat_filters {
@@ -283,7 +421,7 @@ impl Checker {
                 continue;
             }
             enabled_rule_ids.insert(rule.id().to_string());
-            let matches = rule.match_text(text, &analyzed_sentences);
+            let matches = rule.match_text(text, analyzed_sentences);
             all_matches.extend(matches);
         }
 
@@ -1303,5 +1441,294 @@ mod check_flow_tests {
 
         let checker = checker.set_text_level_rules(Vec::new());
         assert!(checker.text_level_rules().is_empty());
+    }
+}
+
+/// Parity of the rayon sentence stage against the serial oracle: same
+/// analyzed sentences, same matches in the same order, same enabled-id set.
+#[cfg(test)]
+mod parallel_sentence_stage_tests {
+    use super::*;
+    use crate::{Category, RuleMatchContext, RuleMatchRule};
+
+    /// Splits at every ". " so a text yields several sentences with real
+    /// byte offsets; the empty text yields no sentences at all.
+    struct SplitSentences;
+    impl SentenceTokenizer for SplitSentences {
+        fn split(&self, text: &str) -> Vec<SentenceRange> {
+            let mut ranges = Vec::new();
+            let mut start = 0;
+            while let Some(idx) = text[start..].find(". ") {
+                let end = start + idx + 1;
+                ranges.push(SentenceRange { start, end });
+                start = end + 1;
+            }
+            if start < text.len() {
+                ranges.push(SentenceRange {
+                    start,
+                    end: text.len(),
+                });
+            }
+            ranges
+        }
+    }
+
+    struct WordSplit;
+    impl WordTokenizer for WordSplit {
+        fn tokenize(&self, text: &str, offset: usize) -> Vec<AnalyzedTokenReadings> {
+            let mut tokens = Vec::new();
+            let mut pos = 0;
+            for word in text.split(' ') {
+                if !word.is_empty() {
+                    tokens.push(AnalyzedTokenReadings::new(AnalyzedToken::new(
+                        word,
+                        offset + pos,
+                        offset + pos + word.len(),
+                    )));
+                }
+                pos += word.len() + 1;
+            }
+            tokens
+        }
+    }
+
+    /// Tags every token with its uppercase form so the analyzed sentences
+    /// carry per-token state that must survive the parallel stage unchanged.
+    struct UppercaseTagger;
+    impl Tagger for UppercaseTagger {
+        fn tag(&self, tokens: &mut [AnalyzedTokenReadings]) {
+            for atr in tokens.iter_mut() {
+                let token = atr.token().clone();
+                if token.token() == "<S>" {
+                    continue;
+                }
+                *atr.readings_mut() = vec![
+                    AnalyzedToken::new(token.token(), token.start(), token.end())
+                        .with_pos_tags(vec![token.token().to_uppercase()]),
+                ];
+            }
+        }
+    }
+
+    /// One match per word whose message names the rule and the word, so any
+    /// reordering across sentences or rules shows up in the comparison.
+    struct TokenRule {
+        id: &'static str,
+        category: Category,
+        default_on: bool,
+    }
+
+    impl TokenRule {
+        fn new(id: &'static str, category: &'static str, default_on: bool) -> Arc<Self> {
+            Arc::new(Self {
+                id,
+                category: Category::new(category, category),
+                default_on,
+            })
+        }
+    }
+
+    impl Rule for TokenRule {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn is_default_on(&self) -> bool {
+            self.default_on
+        }
+
+        fn category(&self) -> Category {
+            self.category.clone()
+        }
+
+        fn match_sentence(&self, sentence: &AnalyzedSentence) -> Vec<RuleMatch> {
+            sentence
+                .non_whitespace_tokens()
+                .iter()
+                .filter(|t| t.token().token() != "<S>")
+                .map(|t| {
+                    let start = t.token().start();
+                    let length = t.token().token().len();
+                    RuleMatch::new(
+                        format!("{} hit {:?} at {start}", self.id, t.token().token()),
+                        start,
+                        length,
+                        RuleMatchRule::new(self.id, "token"),
+                        RuleMatchContext::new(t.token().token(), start, length),
+                    )
+                })
+                .collect()
+        }
+    }
+
+    fn checker() -> Checker {
+        Checker::new()
+            .with_sentence_tokenizer(Arc::new(SplitSentences))
+            .with_word_tokenizer(Arc::new(WordSplit))
+            .with_tagger(Arc::new(UppercaseTagger))
+            .add_rule(TokenRule::new("G1", "GRAMMAR", true))
+            .add_rule(TokenRule::new("OFF1", "STYLE", false))
+            .add_rule(TokenRule::new("S1", "STYLE", true))
+            .add_rule(TokenRule::new("G2", "GRAMMAR", true))
+    }
+
+    const TEXT: &str = "one two. three four five. six. seven eight nine ten. eleven";
+
+    /// Every rule-selection shape the serial loop branches on.
+    fn request_variants() -> Vec<(&'static str, CheckRequest)> {
+        let base = || CheckRequest::new(TEXT, Language::English);
+        let mut run_all = base();
+        run_all.run_all_rules = true;
+        let mut disabled = base();
+        disabled.disabled_rules = vec!["G1".to_string()];
+        let mut only_off = base();
+        only_off.enabled_rules = vec!["OFF1".to_string()];
+        let mut grammar_only = base();
+        grammar_only.enabled_categories = vec!["GRAMMAR".to_string()];
+        let mut no_style = base();
+        no_style.disabled_categories = vec!["STYLE".to_string()];
+        let mut nothing = base();
+        nothing.disabled_rules = vec!["G1".to_string(), "S1".to_string(), "G2".to_string()];
+        vec![
+            ("default", base()),
+            ("run_all_rules", run_all),
+            ("disabled_rules", disabled),
+            ("enabled_rules", only_off),
+            ("enabled_categories", grammar_only),
+            ("disabled_categories", no_style),
+            ("everything_disabled", nothing),
+        ]
+    }
+
+    fn sorted(ids: &std::collections::HashSet<String>) -> Vec<&str> {
+        let mut ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    fn assert_stage_parity(checker: &Checker, name: &str, request: &CheckRequest) {
+        let ranges = checker.split_sentences(&request.text);
+        let (serial_sentences, serial_matches, serial_ids) =
+            checker.check_sentences_serial(&request.text, &ranges, request);
+        let (parallel_sentences, parallel_matches, parallel_ids) =
+            checker.check_sentences_parallel(&request.text, &ranges, request);
+
+        let serial_sentences: Vec<String> =
+            serial_sentences.iter().map(|s| format!("{s:?}")).collect();
+        let parallel_sentences: Vec<String> =
+            parallel_sentences.iter().map(|s| format!("{s:?}")).collect();
+        assert_eq!(
+            serial_sentences, parallel_sentences,
+            "{name}: analyzed sentences differ"
+        );
+        assert_eq!(
+            format!("{serial_matches:?}"),
+            format!("{parallel_matches:?}"),
+            "{name}: matches differ (content or order)"
+        );
+        assert_eq!(
+            sorted(&serial_ids),
+            sorted(&parallel_ids),
+            "{name}: enabled rule ids differ"
+        );
+    }
+
+    #[test]
+    fn parallel_sentence_stage_matches_serial() {
+        let checker = checker();
+        for (name, request) in request_variants() {
+            assert_stage_parity(&checker, name, &request);
+        }
+    }
+
+    #[test]
+    fn parallel_sentence_stage_keeps_sentence_then_rule_order() {
+        let checker = checker();
+        let request = CheckRequest::new(TEXT, Language::English);
+        let ranges = checker.split_sentences(TEXT);
+        assert_eq!(ranges.len(), 5, "the fixture must span several sentences");
+        let (_, matches, _) = checker.check_sentences_parallel(TEXT, &ranges, &request);
+
+        let mut expected = Vec::new();
+        for range in &ranges {
+            for id in ["G1", "S1", "G2"] {
+                let mut pos = range.start;
+                for word in TEXT[range.start..range.end].split(' ') {
+                    if !word.is_empty() {
+                        expected.push((id, pos));
+                    }
+                    pos += word.len() + 1;
+                }
+            }
+        }
+        let actual: Vec<(&str, usize)> = matches
+            .iter()
+            .map(|m| (m.rule().id(), m.offset()))
+            .collect();
+        assert_eq!(actual, expected, "sentence-major, then rule registration order");
+    }
+
+    #[test]
+    fn parallel_sentence_stage_with_zero_sentences_matches_serial() {
+        let checker = checker();
+        let request = CheckRequest::new("", Language::English);
+        let ranges = checker.split_sentences("");
+        assert!(ranges.is_empty(), "the empty text yields no sentence ranges");
+        assert_stage_parity(&checker, "zero_sentences", &request);
+        let (sentences, matches, ids) = checker.check_sentences_parallel("", &ranges, &request);
+        assert!(sentences.is_empty());
+        assert!(matches.is_empty());
+        assert!(
+            ids.is_empty(),
+            "the serial loop never ran, so no sentence-rule id was inserted"
+        );
+    }
+
+    #[test]
+    fn check_matches_the_serial_oracle() {
+        let checker = checker();
+        for (name, request) in request_variants() {
+            let parallel = checker.check(&request);
+            let serial = checker.check_serial(&request);
+            assert_eq!(
+                serde_json::to_string(&parallel).unwrap(),
+                serde_json::to_string(&serial).unwrap(),
+                "{name}: the parallel check must serialize identically to the serial oracle"
+            );
+        }
+    }
+
+    #[test]
+    fn check_matches_the_serial_oracle_with_filters_and_text_rules() {
+        struct OneTextRule;
+        impl TextLevelRule for OneTextRule {
+            fn id(&self) -> &str {
+                "TL"
+            }
+            fn category(&self) -> Category {
+                Category::new("GRAMMAR", "Grammar")
+            }
+            fn match_text(&self, text: &str, _sentences: &[AnalyzedSentence]) -> Vec<RuleMatch> {
+                vec![RuleMatch::new(
+                    format!("text rule over {text:?}"),
+                    0,
+                    3,
+                    RuleMatchRule::new("TL", "text"),
+                    RuleMatchContext::new(&text[0..3], 0, 3),
+                )]
+            }
+        }
+
+        for clean in [true, false] {
+            let checker = checker()
+                .with_clean_overlapping_matches(clean)
+                .add_text_level_rule(Arc::new(OneTextRule));
+            let request = CheckRequest::new(TEXT, Language::English);
+            assert_eq!(
+                serde_json::to_string(&checker.check(&request)).unwrap(),
+                serde_json::to_string(&checker.check_serial(&request)).unwrap(),
+                "clean_overlapping_matches = {clean}"
+            );
+        }
     }
 }
