@@ -468,10 +468,23 @@ impl XmlCompiler {
         };
 
         let matches_unknown = postag_matches_unknown(postag_re.as_ref(), postag_fancy.as_ref());
+        // Per-token invariants that used to be recomputed on every match
+        // predicate call in og-rules. All three are pure functions of the
+        // stored fields below, so results are identical by construction.
+        let text_norm = text_value.as_deref().and_then(|t| {
+            match crate::unifier::normalize_apostrophes(t) {
+                std::borrow::Cow::Owned(norm) => Some(norm),
+                std::borrow::Cow::Borrowed(_) => None,
+            }
+        });
+        let backref_marker = token.match_no.map(|no| format!("\\{no}"));
         CompiledPatternToken {
             unify_neutral: token.unify_neutral,
             is_regexp: token.regexp.as_deref() == Some("yes"),
             text: text_value,
+            string_is_reference: is_reference,
+            text_norm,
+            backref_marker,
             compiled_regexp: compiled_re.clone(),
             compiled_regexp_ci: compiled_re_ci,
             compiled_regexp_fancy: if is_reference {
@@ -1088,6 +1101,18 @@ pub struct CompiledPatternToken {
     /// hoisted out of reading_pos_matches so the hot match path reads a flag
     /// instead of running a regex on a constant string per reading.
     pub postag_matches_unknown: bool,
+    /// Whether the stored `text` embeds a `\{match_no}` backreference marker
+    /// (and therefore must not be matched literally). Same value as the
+    /// compile-time `is_reference` decision; precomputed so the hot match
+    /// predicate does not rebuild the marker string per token.
+    pub string_is_reference: bool,
+    /// `text` with typographic apostrophes normalized, precomputed at compile
+    /// time. `None` when `text` is `None` or when normalization is the
+    /// identity, so the match path falls back to `text` without re-scanning.
+    pub text_norm: Option<String>,
+    /// The `\{match_no}` marker string, precomputed when `match_no` is set;
+    /// `None` otherwise. `Some` exactly when `match_no` is `Some`.
+    pub backref_marker: Option<String>,
     pub negate: bool,
     pub negate_pos: bool,
     pub case_sensitive: bool,

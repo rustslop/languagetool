@@ -837,6 +837,9 @@ mod tests {
             compiled_postag_regexp: None,
             compiled_postag_regexp_fancy: None,
             postag_matches_unknown: false,
+            string_is_reference: false,
+            text_norm: None,
+            backref_marker: None,
             negate: false,
             negate_pos: false,
             case_sensitive: false,
@@ -889,6 +892,9 @@ mod tests {
             compiled_postag_regexp: None,
             compiled_postag_regexp_fancy: None,
             postag_matches_unknown: false,
+            string_is_reference: false,
+            text_norm: None,
+            backref_marker: None,
             negate: false,
             negate_pos: false,
             case_sensitive: false,
@@ -941,6 +947,77 @@ mod tests {
             AnalyzedToken::new("x", 0, 1).with_pos_tags(vec!["NN".to_string()]),
         );
         assert!(!has_no_tag_reading(&tagged));
+    }
+
+    /// Parity oracle for `AnalyzedTokenReadings::has_only_end_tags` (the
+    /// memoized per-token cache used by the pattern matcher) against this
+    /// module's `has_no_tag_reading` rescan, which stays in-tree as the
+    /// reference implementation. Also pins the cache-invalidation rules:
+    /// cloning carries the memo, replacing readings resets it.
+    #[test]
+    fn memoized_has_only_end_tags_agrees_with_has_no_tag_reading() {
+        use og_core::{AnalyzedToken, AnalyzedTokenReadings};
+
+        fn atr(readings: Vec<AnalyzedToken>) -> AnalyzedTokenReadings {
+            AnalyzedTokenReadings::new(AnalyzedToken::new("x", 0, 1)).with_readings(readings)
+        }
+        fn reading_with(tags: &[&str]) -> AnalyzedToken {
+            let tags: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
+            AnalyzedToken::new("x", 0, 1).with_pos_tags(tags)
+        }
+
+        let cases: Vec<AnalyzedTokenReadings> = vec![
+            atr(vec![reading_with(&[])]),
+            atr(vec![reading_with(&["SENT_END"])]),
+            atr(vec![reading_with(&["PARAGRAPH_END"])]),
+            atr(vec![reading_with(&["SENT_END", "PARAGRAPH_END"])]),
+            atr(vec![reading_with(&[]), reading_with(&["SENT_END"])]),
+            atr(vec![reading_with(&["NN"])]),
+            atr(vec![reading_with(&["SENT_END", "NN"])]),
+            atr(vec![reading_with(&["NN"]), reading_with(&["SENT_END"])]),
+            atr(vec![reading_with(&["VB"]), reading_with(&[])]),
+            atr(Vec::new()),
+        ];
+        for token in &cases {
+            assert_eq!(
+                token.has_only_end_tags(),
+                has_no_tag_reading(token),
+                "memoized result diverged from the scan"
+            );
+            // A second call must return the same answer (memo read path).
+            assert_eq!(
+                token.has_only_end_tags(),
+                has_no_tag_reading(token),
+                "memoized second call diverged"
+            );
+        }
+
+        // Cloning carries the memo and stays correct.
+        let tagged = atr(vec![reading_with(&["NN"])]);
+        assert!(!tagged.has_only_end_tags());
+        let clone = tagged.clone();
+        assert!(!clone.has_only_end_tags());
+        assert_eq!(clone.has_only_end_tags(), has_no_tag_reading(&clone));
+
+        // Replacing readings resets the memo.
+        let mut token = atr(vec![reading_with(&["NN"])]);
+        assert!(!token.has_only_end_tags());
+        token.readings_mut().clear();
+        assert!(token.has_only_end_tags());
+        assert_eq!(token.has_only_end_tags(), has_no_tag_reading(&token));
+
+        let token = atr(vec![reading_with(&["NN"])]);
+        assert!(!token.has_only_end_tags());
+        let replaced = atr(vec![reading_with(&["SENT_END"])]);
+        assert!(replaced.has_only_end_tags());
+
+        // add_sent_end (used during sentence finalization) resets too.
+        let mut bare = AnalyzedTokenReadings::new(AnalyzedToken::new("x", 0, 1));
+        assert!(bare.has_only_end_tags());
+        bare.readings_mut().push(reading_with(&["NN"]));
+        assert!(!bare.has_only_end_tags());
+        bare.add_sent_end();
+        assert_eq!(bare.has_only_end_tags(), has_no_tag_reading(&bare));
     }
 
     #[test]
