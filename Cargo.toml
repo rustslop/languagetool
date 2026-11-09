@@ -59,3 +59,11 @@ opt-level = 3
 opt-level = 3
 debug-assertions = false
 debug = "line-tables-only"
+
+# Codegen-only: cross-crate inlining and a single codegen unit for the
+# shipped server; check results are byte-identical. [profile.bench] inherits
+# release automatically. Do not set panic = "abort": a panicking request task
+# must stay a caught unwind, and abort breaks catch_unwind.
+[profile.release]
+lto = "thin"
+codegen-units = 1

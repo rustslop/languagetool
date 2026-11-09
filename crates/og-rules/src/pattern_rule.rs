@@ -2522,6 +2522,7 @@ fn exception_reading_pos_ok(
                 postag,
                 exc.compiled_postag_regexp.as_ref(),
                 exc.compiled_postag_regexp_fancy.as_ref(),
+                exc.postag_matches_unknown,
                 reading.pos_tags(),
                 token_untagged,
             ) != exc.negate_pos
@@ -2574,6 +2575,7 @@ fn reading_pos_ok(
                 postag,
                 pattern.compiled_postag_regexp.as_ref(),
                 pattern.compiled_postag_regexp_fancy.as_ref(),
+                pattern.postag_matches_unknown,
                 reading.pos_tags(),
                 token_untagged,
             ) != pattern.negate_pos
