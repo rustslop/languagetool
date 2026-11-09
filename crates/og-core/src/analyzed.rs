@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use crate::Token;
 use serde::{Deserialize, Serialize};
 
@@ -89,7 +91,7 @@ impl AnalyzedToken {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyzedTokenReadings {
     token: AnalyzedToken,
     readings: Vec<AnalyzedToken>,
@@ -100,6 +102,29 @@ pub struct AnalyzedTokenReadings {
     is_ignored_by_speller: bool,
     #[serde(default)]
     is_immunized: bool,
+    /// Memoized result of [`AnalyzedTokenReadings::has_only_end_tags`]:
+    /// `0` = not yet computed, `1` = `true`, `2` = `false`. It is a pure
+    /// function of `readings`, so every method that replaces the readings
+    /// resets it. `Clone` copies the memo, which stays valid because the
+    /// readings it was computed from are cloned along with it.
+    #[serde(skip)]
+    has_only_end_tags_memo: AtomicU8,
+}
+
+impl Clone for AnalyzedTokenReadings {
+    fn clone(&self) -> Self {
+        Self {
+            token: self.token.clone(),
+            readings: self.readings.clone(),
+            is_whitespace: self.is_whitespace,
+            chunks: self.chunks.clone(),
+            is_ignored_by_speller: self.is_ignored_by_speller,
+            is_immunized: self.is_immunized,
+            has_only_end_tags_memo: AtomicU8::new(
+                self.has_only_end_tags_memo.load(Ordering::Relaxed),
+            ),
+        }
+    }
 }
 
 impl AnalyzedTokenReadings {
@@ -112,11 +137,13 @@ impl AnalyzedTokenReadings {
             chunks: Vec::new(),
             is_ignored_by_speller: false,
             is_immunized: false,
+            has_only_end_tags_memo: AtomicU8::new(0),
         }
     }
 
     pub fn with_readings(mut self, readings: Vec<AnalyzedToken>) -> Self {
         self.readings = readings;
+        self.has_only_end_tags_memo.store(0, Ordering::Relaxed);
         self
     }
 
@@ -133,6 +160,7 @@ impl AnalyzedTokenReadings {
     }
 
     pub fn readings_mut(&mut self) -> &mut Vec<AnalyzedToken> {
+        self.has_only_end_tags_memo.store(0, Ordering::Relaxed);
         &mut self.readings
     }
 
@@ -158,6 +186,32 @@ impl AnalyzedTokenReadings {
 
     pub fn is_immunized(&self) -> bool {
         self.is_immunized
+    }
+
+    /// Whether every reading carries only `SENT_END`/`PARAGRAPH_END` POS tags
+    /// (or no tags at all), i.e. the token is "untagged" for pattern matching.
+    ///
+    /// The pattern matcher evaluates this per (pattern token, sentence token)
+    /// predicate call, while the answer is a pure function of `readings` that
+    /// never changes once analysis has finished — so it is memoized in
+    /// `has_only_end_tags_memo` and computed at most once per token. The
+    /// scan itself is kept in `og_xml::unifier::has_no_tag_reading` as the
+    /// in-tree parity oracle for this cached path.
+    pub fn has_only_end_tags(&self) -> bool {
+        match self.has_only_end_tags_memo.load(Ordering::Relaxed) {
+            1 => true,
+            2 => false,
+            _ => {
+                let value = self.readings.iter().all(|r| {
+                    r.pos_tags
+                        .iter()
+                        .all(|t| t == "SENT_END" || t == "PARAGRAPH_END")
+                });
+                self.has_only_end_tags_memo
+                    .store(if value { 1 } else { 2 }, Ordering::Relaxed);
+                value
+            }
+        }
     }
 
     pub fn first_reading(&self) -> Option<&AnalyzedToken> {
@@ -284,6 +338,7 @@ impl AnalyzedTokenReadings {
             self.readings.pop();
         }
         self.readings.push(sent_end_token);
+        self.has_only_end_tags_memo.store(0, Ordering::Relaxed);
         if !self.token.pos_tags.contains(&"SENT_END".to_string()) {
             self.token.pos_tags.push("SENT_END".to_string());
         }

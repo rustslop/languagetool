@@ -507,6 +507,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "og-bench"
+version = "0.1.0"
+dependencies = [
+ "og-core",
+ "og-langs",
+ "og-languagemodel",
+]
+
+[[package]]
 name = "og-compat"
 version = "0.1.0"
 dependencies = [
@@ -526,6 +535,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

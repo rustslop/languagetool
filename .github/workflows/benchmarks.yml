@@ -6,6 +6,18 @@ name: Benchmarks
 # throughput, peak memory and match counts, both serving the identical
 # request stream over the same LanguageTool-compatible HTTP API.
 #
+# Variance budget: every timed phase (sequential latency, concurrent
+# throughput) runs at least 3 rounds, interleaving og and LanguageTool
+# with the first server alternating each round, so shared-runner drift
+# (noisy neighbors, thermal throttling, page-cache churn) lands on both
+# sides inside every round instead of correlating with one server. The
+# report shows median plus min/max spread per metric, keeps both servers
+# resident for the whole run so each timed phase executes with the
+# other's heap idling on the runner (sampled and reported as its own
+# row), and only flags a ratio as a win when one side's entire spread
+# lies outside the other's — overlapping spreads are ties. avg
+# matches/request stays in the table as the parity signal.
+#
 # Java side facts (verified Nov 2026):
 #   - LT ships versioned standalone zips only up to 6.6; since March 2025
 #     it is stable-alias + daily snapshots:
@@ -31,12 +43,16 @@ on:
         default: "en"
         type: string
       requests:
-        description: "Check requests per language (sequential phase)"
-        default: "100"
+        description: "Check requests per language per round (sequential + throughput phases)"
+        default: "300"
         type: string
       concurrency:
         description: "Concurrent clients for the throughput phase"
         default: "4"
+        type: string
+      rounds:
+        description: "Measurement rounds per timed phase (minimum 3; median and min-max spread reported)"
+        default: "3"
         type: string
       lt_flavor:
         description: "Java LanguageTool build to compare against"
@@ -58,7 +74,7 @@ jobs:
   benchmark:
     name: og-server vs Java LanguageTool
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       # No source checkout needed: both sides run their published
       # distributions — og-server from the rolling `latest` binary release,
@@ -127,16 +143,23 @@ jobs:
           ls lt-dist/LanguageTool/ | head -8
           java -version 2>&1 | head -1
 
-      # Starts both servers (og-server: 8081, Java LT: 8082), drives the
-      # identical request stream against each, samples memory, and appends
-      # a markdown report to the job summary. One invocation keeps the
-      # timing methodology identical for both sides. The Java server runs
-      # with default heap settings — the out-of-the-box experience.
+      # Starts both servers (og-server: 8081, Java LT: 8082) and keeps both
+      # resident for the whole run. After a one-time cold-start + corpus
+      # warmup per server, each timed phase (sequential latency, concurrent
+      # throughput) runs several interleaved rounds with the first server
+      # alternating, so runner drift hits both sides in every round. The
+      # report shows median (min-max) per metric, samples the idle server's
+      # resident heap during the other side's timed phases, and only flags a
+      # win when one side's full spread lies outside the other's.
+      # avg matches/request stays in the table as the parity signal.
+      # The Java server runs with default heap settings — the
+      # out-of-the-box experience.
       - name: Run benchmark
         env:
           BENCH_LANGUAGES: ${{ inputs.languages }}
           BENCH_REQUESTS: ${{ inputs.requests }}
           BENCH_CONCURRENCY: ${{ inputs.concurrency }}
+          BENCH_ROUNDS: ${{ inputs.rounds }}
           BENCH_FLAVOR: ${{ inputs.lt_flavor }}
         run: |
           set -euo pipefail
@@ -146,6 +169,10 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor
 
           REQ_TIMEOUT = 300
+          # Requests between samples of the idle server's resident heap
+          # during the sequential phase (a /proc read is microseconds; a
+          # check request is milliseconds).
+          PEER_SAMPLE_EVERY = 32
 
           # Deterministic per-language corpus with real errors; languages
           # without a tailored set fall back to the English sentences.
@@ -205,48 +232,151 @@ jobs:
                       rss = int(line.split()[1])
               return hwm, rss
 
-          def bench_server(name, proc, port, languages, requests, concurrency):
-              if not wait_ready(port):
-                  proc.kill()
-                  raise SystemExit(f"{name}: server never became ready")
+          def sample_rss_kb(pid):
+              _, rss = peak_rss_kb(pid)
+              return rss
+
+          def seq_round(port, peer_pid, corpus, lang, requests):
+              """One sequential-latency round over the identical request
+              stream; also collects per-request match counts (the parity
+              signal) and periodic samples of the idle peer's heap."""
+              lat, match_counts, peer_rss = [], [], []
+              for i in range(requests):
+                  ms, m = check(port, corpus[i % len(corpus)], lang)
+                  lat.append(ms)
+                  match_counts.append(m)
+                  if peer_pid is not None and i % PEER_SAMPLE_EVERY == 0:
+                      kb = sample_rss_kb(peer_pid)
+                      if kb is not None:
+                          peer_rss.append(kb)
+              lat.sort()
+              return {
+                  "p50": lat[len(lat) // 2],
+                  "p95": lat[int(len(lat) * 0.95)],
+                  "avg": statistics.mean(lat),
+                  "matches": match_counts,
+                  "peer_rss_kb": peer_rss,
+              }
+
+          def conc_round(port, peer_pid, corpus, lang, requests, concurrency):
+              """One concurrent-throughput round; the idle peer's heap is
+              sampled immediately before and after the burst."""
+              def one(i):
+                  check(port, corpus[i % len(corpus)], lang)
+              peer_rss = []
+              kb = sample_rss_kb(peer_pid) if peer_pid is not None else None
+              if kb is not None:
+                  peer_rss.append(kb)
+              t0 = time.monotonic()
+              with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                  list(pool.map(one, range(requests)))
+              wall = time.monotonic() - t0
+              kb = sample_rss_kb(peer_pid) if peer_pid is not None else None
+              if kb is not None:
+                  peer_rss.append(kb)
+              return {"rps": requests / wall, "peer_rss_kb": peer_rss}
+
+          # Both servers stay resident for the entire run: every timed
+          # phase executes while the other server's heap idles on the same
+          # runner, so neither side ever gets the machine to itself and the
+          # memory environment matches a side-by-side deployment. Rounds
+          # interleave the servers and the first server alternates every
+          # round, so slow runner drift hits both sides inside every round
+          # and cancels in the medians.
+          def bench_pair(og, lt, languages, requests, concurrency, rounds):
+              sides = {
+                  "og": {"name": "og-server", "proc": og, "port": 8081,
+                         "peer": lt},
+                  "lt": {"name": "LanguageTool (Java)", "proc": lt, "port": 8082,
+                         "peer": og},
+              }
+              for key, s in sides.items():
+                  if not wait_ready(s["port"]):
+                      s["proc"].kill()
+                      raise SystemExit(f"{s['name']}: server never became ready")
+              # One-shot per server: cold first check (loads the language
+              # engine and identifies the build) plus a corpus warmup,
+              # before any timed round.
+              results = {}
+              for key, s in sides.items():
+                  software, per_lang = {}, {}
+                  for lang in languages:
+                      corpus = sentences(lang)
+                      cold_ms, body = check_body(s["port"], corpus[0], lang)
+                      software = body.get("software", {})
+                      for text in corpus[1:]:
+                          check(s["port"], text, lang)
+                      per_lang[lang] = {"cold_ms": cold_ms, "seq": [], "conc": []}
+                  results[key] = {"software": software, "languages": per_lang}
+              for rnd in range(rounds):
+                  first = ("og", "lt") if rnd % 2 == 0 else ("lt", "og")
+                  for key in first:
+                      s = sides[key]
+                      for lang in languages:
+                          corpus = sentences(lang)
+                          rec = results[key]["languages"][lang]
+                          rec["seq"].append(
+                              seq_round(s["port"], s["peer"].pid, corpus, lang,
+                                        requests))
+                          rec["conc"].append(
+                              conc_round(s["port"], s["peer"].pid, corpus, lang,
+                                         requests, concurrency))
+              return results
+
+          def median_spread(vals):
+              """Median plus min/max spread of one metric across rounds."""
+              return statistics.median(vals), min(vals), max(vals)
+
+          def summarize(res, proc):
               per_lang = {}
-              software = {}
-              for lang in languages:
-                  corpus = sentences(lang)
-                  # Cold: the first check loads the language engine; its
-                  # response also identifies the server build.
-                  cold_ms, body = check_body(port, corpus[0], lang)
-                  software = body.get("software", {})
-                  for text in corpus[1:]:
-                      check(port, text, lang)
-                  # Sequential latency.
-                  lat, match_counts = [], []
-                  for i in range(requests):
-                      ms, m = check(port, corpus[i % len(corpus)], lang)
-                      lat.append(ms)
-                      match_counts.append(m)
-                  lat.sort()
-                  # Concurrent throughput.
-                  def one(i):
-                      check(port, corpus[i % len(corpus)], lang)
-                  t0 = time.monotonic()
-                  with ThreadPoolExecutor(max_workers=concurrency) as pool:
-                      list(pool.map(one, range(requests)))
-                  wall = time.monotonic() - t0
+              for lang, rec in res["languages"].items():
+                  seq, conc = rec["seq"], rec["conc"]
+                  match_counts = [m for r in seq for m in r["matches"]]
+                  peer_kb = ([kb for r in seq for kb in r["peer_rss_kb"]]
+                             + [kb for r in conc for kb in r["peer_rss_kb"]])
                   hwm, rss = peak_rss_kb(proc.pid)
                   per_lang[lang] = {
-                      "cold_first_check_ms": round(cold_ms, 1),
-                      "warm_p50_ms": round(lat[len(lat) // 2], 1),
-                      "warm_p95_ms": round(lat[int(len(lat) * 0.95)], 1),
-                      "warm_avg_ms": round(statistics.mean(lat), 1),
-                      "throughput_rps": round(requests / wall, 2),
+                      "cold_first_check_ms": round(rec["cold_ms"], 1),
+                      "warm_p50_ms": median_spread([r["p50"] for r in seq]),
+                      "warm_p95_ms": median_spread([r["p95"] for r in seq]),
+                      "warm_avg_ms": median_spread([r["avg"] for r in seq]),
+                      "throughput_rps": median_spread([r["rps"] for r in conc]),
                       "avg_matches": round(statistics.mean(match_counts), 1),
-                      "peak_rss_mib": round(hwm / 1024, 1),
-                      "final_rss_mib": round(rss / 1024, 1),
+                      "match_counts": match_counts,
+                      "peer_rss_mib": (round(statistics.median(peer_kb) / 1024, 1)
+                                       if peer_kb else None),
+                      # VmHWM is a monotonic high-water mark since process
+                      # start, so a single read after the last round covers
+                      # every phase of the run.
+                      "peak_rss_mib": (round(hwm / 1024, 1)
+                                       if hwm is not None else None),
+                      "final_rss_mib": (round(rss / 1024, 1)
+                                        if rss is not None else None),
                   }
-              return {"name": name, "version": software, "languages": per_lang}
+              return {"version": res["software"], "languages": per_lang}
 
-          def report(og, lt, path):
+          def fmt_cell(side, key, fmt):
+              v = side[key]
+              if isinstance(v, tuple):
+                  med, lo, hi = v
+                  return f"{fmt.format(med)} ({fmt.format(lo)}-{fmt.format(hi)})"
+              return fmt.format(v) if v is not None else "n/a"
+
+          def verdict(av, bv, lower_is_better):
+              """A ratio is only a win when the winning side's whole
+              min-max spread lies outside the losing side's; overlapping
+              spreads are measurement ties, not wins."""
+              _, og_lo, og_hi = av
+              _, lt_lo, lt_hi = bv
+              og_wins = og_hi < lt_lo if lower_is_better else og_lo > lt_hi
+              java_wins = og_lo > lt_hi if lower_is_better else og_hi < lt_lo
+              if og_wins:
+                  return "**og wins** (outside spread)"
+              if java_wins:
+                  return "**Java wins** (outside spread)"
+              return "tie (within spread)"
+
+          def report(og, lt, rounds, path):
               lines = []
               out = lines.append
               out("## Benchmark: og-server vs Java LanguageTool\n")
@@ -256,26 +386,56 @@ jobs:
                   f"(build {lt['version'].get('buildDate', '?')}), "
                   f"{lt['flavor']} distribution, default heap, "
                   f"{os.environ['JAVA_VERSION']}")
-              out(f"- load: {os.environ['BENCH_REQUESTS']} requests/language, "
+              out(f"- load: {os.environ['BENCH_REQUESTS']} requests/language/round, "
                   f"concurrency {os.environ['BENCH_CONCURRENCY']}, "
-                  f"languages: {os.environ['BENCH_LANGUAGES']}\n")
+                  f"{rounds} interleaved rounds (first server alternates), "
+                  f"languages: {os.environ['BENCH_LANGUAGES']}")
+              out("- timed cells are median (min-max) across rounds; a ratio "
+                  "only counts as a win when one side's entire spread lies "
+                  "outside the other's — overlapping spreads are ties")
+              out("- both servers stay resident for the whole run, so every "
+                  "timed phase executes with the other's heap idling on the "
+                  "runner (sampled and reported below); avg matches/request "
+                  "is the parity signal\n")
               for lang in og["languages"]:
                   a, b = og["languages"][lang], lt["languages"][lang]
                   out(f"### `{lang}`\n")
-                  out("| metric | og-server | LanguageTool (Java) | ratio (og/Java) |")
-                  out("|---|---:|---:|---:|")
-                  def row(label, key, fmt="{:.1f}", ratio=True):
+                  out("| metric | og-server | LanguageTool (Java) | ratio (og/Java) | verdict |")
+                  out("|---|---:|---:|---:|---|")
+                  def srow(label, key, fmt="{:.1f}", lower_is_better=True):
                       av, bv = a[key], b[key]
-                      rtxt = f"{av / bv:.2f}x" if (ratio and bv) else ""
-                      out(f"| {label} | {fmt.format(av)} | {fmt.format(bv)} | {rtxt} |")
-                  row("cold first check (ms)", "cold_first_check_ms")
-                  row("warm p50 (ms)", "warm_p50_ms")
-                  row("warm p95 (ms)", "warm_p95_ms")
-                  row("warm avg (ms)", "warm_avg_ms")
-                  row("throughput (req/s)", "throughput_rps", "{:.2f}")
-                  row("avg matches/request", "avg_matches", "{:.1f}", ratio=False)
-                  row("peak RSS (MiB)", "peak_rss_mib")
-                  row("final RSS (MiB)", "final_rss_mib")
+                      rtxt = f"{av[0] / bv[0]:.2f}x" if bv[0] else ""
+                      out(f"| {label} | {fmt_cell(a, key, fmt)} "
+                          f"| {fmt_cell(b, key, fmt)} | {rtxt} "
+                          f"| {verdict(av, bv, lower_is_better)} |")
+                  def vrow(label, key, fmt="{:.1f}", note="n/a (single run)",
+                           ratio=True):
+                      av, bv = a[key], b[key]
+                      rtxt = (f"{av / bv:.2f}x"
+                              if ratio and av is not None and bv else "")
+                      out(f"| {label} | {fmt_cell(a, key, fmt)} "
+                          f"| {fmt_cell(b, key, fmt)} | {rtxt} | {note} |")
+                  vrow("cold first check (ms)", "cold_first_check_ms")
+                  srow("warm p50 (ms)", "warm_p50_ms")
+                  srow("warm p95 (ms)", "warm_p95_ms")
+                  srow("warm avg (ms)", "warm_avg_ms")
+                  srow("throughput (req/s)", "throughput_rps", "{:.2f}",
+                       lower_is_better=False)
+                  # Parity signal: each round replays the identical request
+                  # stream against both servers, so every per-request match
+                  # count must agree.
+                  n = min(len(a["match_counts"]), len(b["match_counts"]))
+                  mism = sum(1 for x, y in zip(a["match_counts"],
+                                               b["match_counts"]) if x != y)
+                  parity = (f"parity ({n}/{n} requests)" if mism == 0 else
+                            f"**MISMATCH ({mism}/{n} requests)**")
+                  out(f"| avg matches/request | {a['avg_matches']:.1f} | "
+                      f"{b['avg_matches']:.1f} | | {parity} |")
+                  vrow("idle peer RSS during timed phases (MiB)", "peer_rss_mib",
+                       note="context, not a ratio", ratio=False)
+                  vrow("peak RSS (MiB)", "peak_rss_mib",
+                       note="n/a (high-water mark)")
+                  vrow("final RSS (MiB)", "final_rss_mib", note="n/a (single read)")
                   out("")
               text = "\n".join(lines) + "\n"
               print(text)
@@ -287,6 +447,7 @@ jobs:
               languages = os.environ["BENCH_LANGUAGES"].split()
               requests = int(os.environ["BENCH_REQUESTS"])
               concurrency = int(os.environ["BENCH_CONCURRENCY"])
+              rounds = max(3, int(os.environ.get("BENCH_ROUNDS", "3")))
               summary_path = os.environ.get("BENCH_SUMMARY")
 
               og = subprocess.Popen(
@@ -297,10 +458,12 @@ jobs:
                    "org.languagetool.server.HTTPServer", "--port", "8082"],
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
               try:
-                  og_res = bench_server("og-server", og, 8081, languages, requests, concurrency)
-                  lt_res = bench_server("LanguageTool (Java)", lt, 8082, languages, requests, concurrency)
+                  raw = bench_pair(og, lt, languages, requests, concurrency,
+                                   rounds)
+                  og_res = summarize(raw["og"], og)
+                  lt_res = summarize(raw["lt"], lt)
                   lt_res["flavor"] = os.environ["BENCH_FLAVOR"]
-                  report(og_res, lt_res, summary_path)
+                  report(og_res, lt_res, rounds, summary_path)
               finally:
                   for p in (og, lt):
                       p.terminate()

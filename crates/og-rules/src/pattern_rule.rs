@@ -1112,11 +1112,23 @@ impl PatternRuleEngine {
         let match_no = pattern_token.match_no?;
         let ref_idx = match_no as usize;
         let entry = matched.get(ref_idx)?;
-        let ref_text = entry.text.clone();
-        let marker = format!("\\{match_no}");
+        // Borrow the reference text instead of cloning it: the only branch
+        // that ever needs an owned `String` (case conversion) allocates one
+        // itself. The `\{match_no}` marker is precomputed at compile time
+        // (CompiledPatternToken::backref_marker); the format! is a defensive
+        // fallback for tokens built outside compile_token_with_default.
+        let ref_text = entry.text.as_str();
+        let marker_owned;
+        let marker: &str = match pattern_token.backref_marker.as_deref() {
+            Some(marker) => marker,
+            None => {
+                marker_owned = format!("\\{match_no}");
+                marker_owned.as_str()
+            }
+        };
         let compose = |substitute: &str| -> String {
-            let base = pattern_token.text.as_deref().unwrap_or(marker.as_str());
-            base.replace(&marker, substitute)
+            let base = pattern_token.text.as_deref().unwrap_or(marker);
+            base.replace(marker, substitute)
         };
         let eval_targets = |targets: &[String]| -> bool {
             if pattern_token.is_regexp {
@@ -1229,7 +1241,7 @@ impl PatternRuleEngine {
                 .as_deref()
                 .unwrap_or("");
             let transformed = re
-                .replace_all(&ref_text, java_replacement(replace).as_ref())
+                .replace_all(ref_text, java_replacement(replace).as_ref())
                 .into_owned();
             let transformed = match pattern_token.match_no_case_conversion.as_deref() {
                 Some(cc) => apply_case_conversion(&transformed, cc),
@@ -1250,11 +1262,15 @@ impl PatternRuleEngine {
                 .as_deref()
                 .or(self.suggestion_synth.as_deref());
             let raw_text_fallback = || {
-                let raw = match pattern_token.match_no_case_conversion.as_deref() {
-                    Some(cc) => apply_case_conversion(&entry.text, cc),
-                    None => entry.text.clone(),
+                let raw_owned;
+                let raw: &str = match pattern_token.match_no_case_conversion.as_deref() {
+                    Some(cc) => {
+                        raw_owned = apply_case_conversion(&entry.text, cc);
+                        raw_owned.as_str()
+                    }
+                    None => entry.text.as_str(),
                 };
-                let composed = compose(&raw);
+                let composed = compose(raw);
                 eval_targets(&[composed])
             };
             let transformed_forms =
@@ -1331,11 +1347,15 @@ impl PatternRuleEngine {
                 matches
             });
         }
-        let case_converted = match pattern_token.match_no_case_conversion.as_deref() {
-            Some(cc) => apply_case_conversion(&ref_text, cc),
+        let converted_owned;
+        let case_converted: &str = match pattern_token.match_no_case_conversion.as_deref() {
+            Some(cc) => {
+                converted_owned = apply_case_conversion(ref_text, cc);
+                converted_owned.as_str()
+            }
             None => ref_text,
         };
-        let composed = compose(&case_converted);
+        let composed = compose(case_converted);
         let matches = eval_targets(&[composed]);
         if pattern_token.negate {
             Some(!matches)
@@ -2406,7 +2426,7 @@ impl PatternRuleEngine {
         if !has_string && exc.postag.is_none() {
             return false;
         }
-        let untagged = has_no_tag_reading(token);
+        let untagged = token.has_only_end_tags();
         if !has_string {
             return !exc.negate
                 && readings
@@ -2503,7 +2523,7 @@ fn exception_matches_reading0(
     let Some(reading0) = token.readings().first() else {
         return false;
     };
-    let untagged = has_no_tag_reading(token);
+    let untagged = token.has_only_end_tags();
     if !has_string {
         return !exc.negate && exception_reading_pos_ok(exc, reading0, untagged);
     }
@@ -2603,11 +2623,13 @@ fn element_surface_text_matches(
     let raw_text = surface_text(token);
     let token_text = normalize_apostrophes(raw_text);
     if let Some(ref text) = pattern.text {
-        let norm_text = normalize_apostrophes(text);
+        // Compile-time normalization of the pattern-side text; `None` means
+        // normalization is the identity, so `text` is used as-is.
+        let norm_text = pattern.text_norm.as_deref().unwrap_or(text.as_str());
         if pattern.case_sensitive {
             token_text == norm_text
         } else {
-            eq_ignore_case(&token_text, &norm_text)
+            eq_ignore_case(&token_text, norm_text)
         }
     } else {
         let regex_hit = |target: &str| {
@@ -2633,17 +2655,16 @@ fn element_matches_readings(
     pattern: &og_xml::compiler::CompiledPatternToken,
     token: &AnalyzedTokenReadings,
 ) -> bool {
-    let string_is_reference = pattern
-        .match_no
-        .is_some_and(|no| match pattern.text.as_deref() {
-            Some(text) => text.contains(&format!("\\{no}")),
-            None => false,
-        });
-    let has_string = !string_is_reference
+    // `string_is_reference` and the apostrophe-normalized pattern text are
+    // precomputed at compile time (CompiledPatternToken::string_is_reference /
+    // text_norm); the untagged scan is memoized on the token itself. All are
+    // pure functions of immutable inputs, so results are identical to the
+    // recomputation this hot predicate used to do per call.
+    let has_string = !pattern.string_is_reference
         && (pattern.text.is_some()
             || pattern.compiled_regexp.is_some()
             || pattern.compiled_regexp_fancy.is_some());
-    let untagged = has_no_tag_reading(token);
+    let untagged = token.has_only_end_tags();
     let any_pos_ok = |readings: &[og_core::AnalyzedToken]| {
         if readings.is_empty() {
             pattern.postag.is_none()
@@ -2838,8 +2859,8 @@ fn antipattern_unify_satisfied(
 }
 
 use og_xml::unifier::{
-    Unifier, UnifyElemPlan, UnifyReading, eq_ignore_case, eval_unify_plans, has_no_tag_reading,
-    normalize_apostrophes, reading_matches_element, reading_pos_matches, surface_text,
+    Unifier, UnifyElemPlan, UnifyReading, eq_ignore_case, eval_unify_plans, normalize_apostrophes,
+    reading_matches_element, reading_pos_matches, surface_text,
 };
 
 fn unify_group_matches(
@@ -2898,7 +2919,7 @@ fn unify_group_matches(
                     continue;
                 };
                 let surface = surface_text(token);
-                let untagged = has_no_tag_reading(token);
+                let untagged = token.has_only_end_tags();
                 let mut reading_tags: Vec<UnifyReading<'_>> =
                     Vec::with_capacity(token.readings().len());
                 for (ri, reading) in token.readings().iter().enumerate() {
@@ -6675,6 +6696,162 @@ mod tests {
             matches.extend(engine.match_rule(rule, &sentence));
         }
         matches
+    }
+
+    /// Parity oracle for the compile-time token invariants
+    /// (`string_is_reference`, `text_norm`, `backref_marker`): the right-hand
+    /// sides below are the exact formulas the match predicate used to
+    /// recompute per call, evaluated on the stored fields. If a future change
+    /// to compile_token_with_default breaks the equivalence, this fails.
+    #[test]
+    fn precomputed_token_invariants_match_the_recomputed_formulas() {
+        use og_xml::compiler::CompiledPatternElement;
+        use og_xml::types::XmlPatternToken;
+
+        fn assert_invariants(t: &og_xml::compiler::CompiledPatternToken) {
+            let old_string_is_reference = t.match_no.is_some_and(|no| match t.text.as_deref() {
+                Some(text) => text.contains(&format!("\\{no}")),
+                None => false,
+            });
+            assert_eq!(
+                t.string_is_reference, old_string_is_reference,
+                "string_is_reference diverged for text={:?} match_no={:?}",
+                t.text, t.match_no
+            );
+            match t.text.as_deref() {
+                Some(text) => {
+                    let expected_norm = normalize_apostrophes(text);
+                    assert_eq!(
+                        t.text_norm.as_deref().unwrap_or(text),
+                        expected_norm.as_ref(),
+                        "text_norm diverged for text={text:?}"
+                    );
+                }
+                None => assert!(t.text_norm.is_none(), "text_norm set without text"),
+            }
+            let expected_marker = t.match_no.map(|no| format!("\\{no}"));
+            assert_eq!(
+                t.backref_marker.as_deref(),
+                expected_marker.as_deref(),
+                "backref_marker diverged for match_no={:?}",
+                t.match_no
+            );
+        }
+
+        let compiler = XmlCompiler::new();
+        let mut compiled: Vec<og_xml::compiler::CompiledPatternToken> = Vec::new();
+
+        // Hand-built tokens covering the invariant corners: bare token,
+        // apostrophe-bearing text (normalization is not the identity),
+        // regexp text, embedded \N marker with and without match_no, and
+        // match_no without text.
+        let xml_tokens = vec![
+            XmlPatternToken::default(),
+            XmlPatternToken {
+                text: Some("plain".to_string()),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("l’été".to_string()),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("‘‛’".to_string()),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("a|b".to_string()),
+                regexp: Some("yes".to_string()),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("some \\1 tail".to_string()),
+                match_no: Some(1),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                match_no: Some(0),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("no marker".to_string()),
+                match_no: Some(0),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("\\0".to_string()),
+                match_no: Some(0),
+                regexp: Some("yes".to_string()),
+                ..Default::default()
+            },
+            XmlPatternToken {
+                text: Some("l’été \\0".to_string()),
+                match_no: Some(0),
+                ..Default::default()
+            },
+        ];
+        for token in &xml_tokens {
+            compiled.push(compiler.compile_token(token));
+        }
+
+        // A full XML rule so tokens produced by the real parser are covered:
+        // plain tokens, regexps, or/and groups, exceptions, and an antipattern
+        // with a <match> backreference.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rules lang="en">
+            <rule id="INVARIANTS" name="invariants">
+                <antipattern>
+                    <token>as</token>
+                    <token><match no="0" case_conversion="startupper"/></token>
+                </antipattern>
+                <pattern>
+                    <token regexp="yes">maandag|dinsdag</token>
+                    <token>l’été<exception postag="SENT_END"/></token>
+                    <and>
+                        <token>plain</token>
+                        <token postag="NN"></token>
+                    </and>
+                    <or>
+                        <token>alpha</token>
+                        <token regexp="yes">beta|gamma</token>
+                    </or>
+                    <token><match no="0"/></token>
+                </pattern>
+                <message>m</message>
+            </rule>
+        </rules>"#;
+        let rule_set = compiler.compile_file(xml).unwrap();
+        fn push_element_tokens(
+            element: &CompiledPatternElement,
+            out: &mut Vec<og_xml::compiler::CompiledPatternToken>,
+        ) {
+            match element {
+                CompiledPatternElement::Token(t) => out.push((**t).clone()),
+                CompiledPatternElement::OrGroup(alts) => {
+                    out.extend(alts.iter().cloned());
+                }
+                CompiledPatternElement::AndGroup(constraints) => {
+                    out.extend(constraints.iter().cloned());
+                }
+            }
+        }
+        for rule in &rule_set.rules {
+            compiled.extend(rule.pattern.tokens.iter().cloned());
+            for element in &rule.pattern.elements {
+                push_element_tokens(element, &mut compiled);
+            }
+            for antipattern in &rule.antipatterns {
+                compiled.extend(antipattern.tokens.iter().cloned());
+                for element in &antipattern.elements {
+                    push_element_tokens(element, &mut compiled);
+                }
+            }
+        }
+
+        assert!(compiled.len() > 10, "expected broad coverage, got {}", compiled.len());
+        for t in &compiled {
+            assert_invariants(t);
+        }
     }
 
     #[test]

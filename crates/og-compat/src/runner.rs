@@ -93,15 +93,27 @@ pub struct GoldenRunner {
 }
 
 impl GoldenRunner {
+    /// Builds a runner on the process-wide shared English engine
+    /// (`LanguageEngine::shared_for_code("en")`, the production build path),
+    /// so a test process that constructs several runners pays the ~5 s
+    /// engine build once instead of once per runner. Falls back to a private
+    /// build only if the shared path cannot serve `"en"`.
     pub fn english() -> Self {
         Self {
-            engine: Arc::new(LanguageEngine::english()),
+            engine: LanguageEngine::shared_for_code("en")
+                .unwrap_or_else(|| Arc::new(LanguageEngine::english())),
             picky: true,
         }
     }
 
     pub fn rule_count(&self) -> usize {
         self.engine.rule_count()
+    }
+
+    /// The engine this runner checks against; identical (`Arc::ptr_eq`) across
+    /// all runners built from the shared path in one process.
+    pub fn engine(&self) -> &Arc<LanguageEngine> {
+        &self.engine
     }
 
     pub fn from_engine(engine: Arc<LanguageEngine>) -> Self {

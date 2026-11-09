@@ -1,0 +1,16 @@
+{
+  "corpus": "err",
+  "text": "Their is a probleme with this sentense. Teh guick brown fox jumpd over the lazy dogg. I has tree cats and they runs fast.",
+  "en_ngram_data": true,
+  "matches": [
+    {"rule_id": "THEIR_IS", "offset": 0, "length": 5, "covered": "Their", "message": "Did you mean there?", "replacements": ["There"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 11, "length": 8, "covered": "probleme", "message": "Possible spelling mistake found: 'probleme'", "replacements": ["problem", "problems", "noblemen", "parolee", "phoneme"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 30, "length": 8, "covered": "sentense", "message": "Possible spelling mistake found: 'sentense'", "replacements": ["sentence", "entente", "intense", "sentenced", "sentences"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 40, "length": 3, "covered": "Teh", "message": "Possible spelling mistake found: 'Teh'", "replacements": ["Neh", "Eh", "Heh", "Meh", "Tea"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 44, "length": 5, "covered": "guick", "message": "Possible spelling mistake found: 'guick'", "replacements": ["Buick", "quick", "Brick", "Buck", "Crick"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 60, "length": 5, "covered": "jumpd", "message": "Possible spelling mistake found: 'jumpd'", "replacements": ["jump", "jumped", "jumps", "jumpy", "bump"]},
+    {"rule_id": "MORFOLOGIK_RULE_EN_US", "offset": 80, "length": 4, "covered": "dogg", "message": "Possible spelling mistake found: 'dogg'", "replacements": ["Fogg", "Hogg", "dog", "doge", "doggo"]},
+    {"rule_id": "BASE_FORM", "offset": 88, "length": 3, "covered": "has", "message": "Possible agreement error — use the base form here.", "replacements": ["Have"]},
+    {"rule_id": "NON3PRS_VERB", "offset": 111, "length": 4, "covered": "runs", "message": "The pronoun '' must be used with a non-third-person form of a verb.", "replacements": ["Run"]}
+  ]
+}

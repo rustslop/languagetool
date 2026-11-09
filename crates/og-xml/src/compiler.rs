@@ -403,12 +403,6 @@ impl XmlCompiler {
         } else {
             pattern_case_sensitive
         };
-        let resolved: XmlPatternToken = {
-            let mut t = token.clone();
-            t.case_sensitive = effective_case_sensitive;
-            t
-        };
-        let token = &resolved;
         let is_reference = token.match_no.is_some_and(|no| {
             token
                 .text
@@ -468,16 +462,29 @@ impl XmlCompiler {
         };
 
         let matches_unknown = postag_matches_unknown(postag_re.as_ref(), postag_fancy.as_ref());
+        // Per-token invariants that used to be recomputed on every match
+        // predicate call in og-rules. All three are pure functions of the
+        // stored fields below, so results are identical by construction.
+        let text_norm = text_value.as_deref().and_then(|t| {
+            match crate::unifier::normalize_apostrophes(t) {
+                std::borrow::Cow::Owned(norm) => Some(norm),
+                std::borrow::Cow::Borrowed(_) => None,
+            }
+        });
+        let backref_marker = token.match_no.map(|no| format!("\\{no}"));
         CompiledPatternToken {
             unify_neutral: token.unify_neutral,
             is_regexp: token.regexp.as_deref() == Some("yes"),
             text: text_value,
+            string_is_reference: is_reference,
+            text_norm,
+            backref_marker,
             compiled_regexp: compiled_re.clone(),
             compiled_regexp_ci: compiled_re_ci,
             compiled_regexp_fancy: if is_reference {
                 None
             } else {
-                self.compile_fancy(compiled_re.is_none(), token)
+                self.compile_fancy(compiled_re.is_none(), token, effective_case_sensitive)
             },
             postag: token.postag.clone(),
             compiled_postag_regexp: postag_re,
@@ -485,7 +492,7 @@ impl XmlCompiler {
             postag_matches_unknown: matches_unknown,
             negate: token.negate,
             negate_pos: token.negate_pos,
-            case_sensitive: token.case_sensitive,
+            case_sensitive: effective_case_sensitive,
             inflected: token.inflected,
             min: token.min,
             max: token.max,
@@ -598,6 +605,7 @@ impl XmlCompiler {
         &self,
         needed: bool,
         token: &crate::types::XmlPatternToken,
+        case_sensitive: bool,
     ) -> Option<SharedFancyRegex> {
         if !needed {
             return None;
@@ -608,7 +616,7 @@ impl XmlCompiler {
             token.regexp.clone().filter(|r| r != "no")
         }?;
         let anchored = Self::anchor_regex(&pattern);
-        let final_pattern = if token.case_sensitive {
+        let final_pattern = if case_sensitive {
             anchored
         } else {
             format!("(?i){anchored}")
@@ -1088,6 +1096,18 @@ pub struct CompiledPatternToken {
     /// hoisted out of reading_pos_matches so the hot match path reads a flag
     /// instead of running a regex on a constant string per reading.
     pub postag_matches_unknown: bool,
+    /// Whether the stored `text` embeds a `\{match_no}` backreference marker
+    /// (and therefore must not be matched literally). Same value as the
+    /// compile-time `is_reference` decision; precomputed so the hot match
+    /// predicate does not rebuild the marker string per token.
+    pub string_is_reference: bool,
+    /// `text` with typographic apostrophes normalized, precomputed at compile
+    /// time. `None` when `text` is `None` or when normalization is the
+    /// identity, so the match path falls back to `text` without re-scanning.
+    pub text_norm: Option<String>,
+    /// The `\{match_no}` marker string, precomputed when `match_no` is set;
+    /// `None` otherwise. `Some` exactly when `match_no` is `Some`.
+    pub backref_marker: Option<String>,
     pub negate: bool,
     pub negate_pos: bool,
     pub case_sensitive: bool,
@@ -1406,6 +1426,76 @@ mod tests {
 
         assert!(result.rules[0].pattern.tokens[0].case_sensitive);
         assert!(!result.rules[0].pattern.tokens[1].case_sensitive);
+    }
+
+    /// Parity oracle for the case-sensitivity resolution in
+    /// `compile_token_with_default`, which used to deep-clone the token with
+    /// `case_sensitive` overridden and read the clone back. The right-hand
+    /// side below is the exact formula the clone baked in; if threading the
+    /// bool instead of cloning ever diverges, this fails. The fancy-regex
+    /// assertions check the *behavioral* consequence through `compile_fancy`
+    /// (the lookbehind makes the plain regex fail, forcing the fancy path),
+    /// with the raw token field set opposite to the resolved value so that
+    /// reading the raw field instead of the threaded one is detectable.
+    #[test]
+    fn token_case_sensitivity_resolution_matches_the_cloned_token_formula() {
+        let compiler = XmlCompiler::new();
+        // (case_sensitive_set, token_cs, pattern_cs) with the raw token field
+        // OPPOSITE to the pattern default in every row, so both plausible
+        // regressions of the stored field fail: reading the raw token field
+        // breaks the inherit rows (expected = pattern_cs != token_cs), and
+        // always inheriting the pattern value breaks the explicit rows
+        // (expected = token_cs != pattern_cs).
+        let cases = [
+            (true, true, false),  // explicit set wins over pattern default
+            (true, false, true),  // explicit set wins over pattern default
+            (false, true, false), // inherit: raw field must be ignored
+            (false, false, true), // inherit: raw field must be ignored
+        ];
+        for &(cs_set, token_cs, pattern_cs) in &cases {
+            let expected = if cs_set { token_cs } else { pattern_cs };
+            let token = crate::types::XmlPatternToken {
+                text: Some("hello".to_string()),
+                case_sensitive: token_cs,
+                case_sensitive_set: cs_set,
+                ..Default::default()
+            };
+            let compiled = compiler.compile_token_with_default(&token, pattern_cs);
+            assert_eq!(
+                compiled.case_sensitive, expected,
+                "case_sensitive_set={cs_set} token_cs={token_cs} pattern_cs={pattern_cs}"
+            );
+        }
+
+        // Behavioral check through the fancy path: `regexp` (not regexp="yes"
+        // + text) with a lookbehind that plain `regex` cannot compile, so
+        // compiled_regexp is None and compile_fancy decides the pattern.
+        let lookbehind_token = |token_cs: bool, cs_set: bool| crate::types::XmlPatternToken {
+            regexp: Some("(?<![A-Z])hello".to_string()),
+            case_sensitive: token_cs,
+            case_sensitive_set: cs_set,
+            ..Default::default()
+        };
+
+        // Resolved true (explicit set): raw field already true; matches only
+        // the exact case.
+        let cs = compiler.compile_token_with_default(&lookbehind_token(true, true), false);
+        let re = cs.compiled_regexp_fancy.as_ref().expect("fancy regex");
+        assert!(re.is_match("hello").unwrap());
+        assert!(!re.is_match("HELLO").unwrap());
+
+        // Resolved false (explicit set): "HELLO" must now match via (?i).
+        let ci = compiler.compile_token_with_default(&lookbehind_token(false, true), true);
+        let re = ci.compiled_regexp_fancy.as_ref().expect("fancy regex");
+        assert!(re.is_match("hello").unwrap());
+        assert!(re.is_match("HELLO").unwrap());
+
+        // Inherit true with raw field false: if compile_fancy had read the raw
+        // token field, HELLO would match; the threaded value forbids it.
+        let inherited = compiler.compile_token_with_default(&lookbehind_token(false, false), true);
+        let re = inherited.compiled_regexp_fancy.as_ref().expect("fancy regex");
+        assert!(re.is_match("hello").unwrap());
+        assert!(!re.is_match("HELLO").unwrap());
     }
 
     #[test]

@@ -2,6 +2,13 @@ use std::sync::Arc;
 
 use og_compat::{GoldenCase, GoldenMatch, GoldenRunner};
 
+/// The process-wide shared English engine, so every test in this binary pays
+/// the ~5 s build once. Same path as `GoldenRunner::english()`.
+fn shared_english_engine() -> Arc<og_langs::engine::LanguageEngine> {
+    og_langs::engine::LanguageEngine::shared_for_code("en")
+        .unwrap_or_else(|| Arc::new(og_langs::engine::LanguageEngine::english()))
+}
+
 fn cases() -> Vec<GoldenCase> {
     vec![
         GoldenCase::new(
@@ -161,8 +168,19 @@ fn golden_parity_cases_pass() {
 }
 
 #[test]
+fn golden_runner_english_reuses_the_process_wide_engine() {
+    let runner = GoldenRunner::english();
+    let shared = og_langs::engine::LanguageEngine::shared_for_code("en")
+        .expect("the shared English engine must serve \"en\"");
+    assert!(
+        Arc::ptr_eq(runner.engine(), &shared),
+        "GoldenRunner::english() must reuse the process-wide shared English engine"
+    );
+}
+
+#[test]
 fn golden_runner_from_engine_enforces_message_fragments() {
-    let runner = GoldenRunner::from_engine(Arc::new(og_langs::engine::LanguageEngine::english()));
+    let runner = GoldenRunner::from_engine(shared_english_engine());
     assert!(runner.rule_count() > 0);
 
     let mut present = GoldenCase::new(

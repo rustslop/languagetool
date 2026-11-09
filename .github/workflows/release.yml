@@ -7,10 +7,26 @@ run-name: ${{ github.ref_type == 'tag' && format('Release {0}', github.ref_name)
 #   - any non-tag push to master -> rolling "latest" builds (staged in the
 #     latest/ directory of the workflow artifacts and republished to a
 #     rolling `latest` prerelease)
+#   - manual dispatch -> like a master build, plus an opt-in PGO pass
+#
+# The two Linux targets are profile-guided (PGO) on tag builds and on
+# dispatch runs that tick the pgo input: an instrumented og-bench build runs
+# the bench workload to train the profile, then og-server is rebuilt with
+# -Cprofile-use. Self-measured gate (aarch64 host, 12 interleaved og-bench
+# runs per side, medians): clean_ms -4.7%, multi_ms -6.4% (err_ms +2.0%,
+# ngram_lookup_us within noise). Rolling master builds and the other
+# platforms keep the plain single-pass build, so their CI time and kache
+# cache entries stay unchanged.
 on:
   push:
     tags: ["v*"]
     branches: [master]
+  workflow_dispatch:
+    inputs:
+      pgo:
+        description: "Build the Linux binaries with PGO (train on the og-bench workload)"
+        type: boolean
+        default: false
 
 concurrency:
   # One pipeline per ref: a newer master push cancels the superseded build,
@@ -114,10 +130,90 @@ jobs:
           job-summary: true
           pr-comment: false
 
+      # PGO gate: the Linux targets get a profile-guided build only on tag
+      # builds or when a manual dispatch ticks the pgo input. The PGO pass
+      # roughly doubles that job's compile time (instrumented og-bench build
+      # + workload run + og-server rebuild) — rolling master builds and the
+      # other platforms must not pay it. Every later build step branches on
+      # $PGO. Computed once here so the condition has a single source.
+      - name: Decide PGO for this build
+        shell: bash
+        run: |
+          set -euo pipefail
+          LINUX="${{ runner.os }}"
+          TAG="${{ github.ref_type }}"
+          DISPATCH_PGO="${{ github.event_name == 'workflow_dispatch' && inputs.pgo }}"
+          if [[ "${LINUX}" == "Linux" && ( "${TAG}" == "tag" || "${DISPATCH_PGO}" == "true" ) ]]; then
+            echo "PGO=1" >> "$GITHUB_ENV"
+            echo "PGO: enabled (Linux target on a tag build or a pgo dispatch)."
+          else
+            echo "PGO=0" >> "$GITHUB_ENV"
+            echo "PGO: disabled (rolling master build or non-Linux target)."
+          fi
+
+      - name: Install llvm-tools (PGO)
+        if: env.PGO == '1'
+        run: rustup component add llvm-tools-preview
+
       # Explicit --target keeps the artifact path uniform
       # (target/<triple>/release) for native and cross builds alike.
       - name: Build og-server (release)
+        if: env.PGO != '1'
         run: cargo build --release --locked --target ${{ matrix.target }} --bin og-server
+
+      # ---- PGO phase 1: instrumented og-bench, then train on its workload ----
+      # Recipe and gotchas follow the measured canon in
+      # .agents/skills/rust-superopt/references/codegen-tooling.md and the
+      # rustc PGO chapter:
+      #   - absolute -Cprofile-generate / -Cprofile-use paths: cargo invokes
+      #     rustc from varying directories, and a relative profile-use path
+      #     breaks dependency builds ("does not exist" in a registry crate).
+      #   - --target (every build here uses it) keeps RUSTFLAGS away from
+      #     build scripts, so they compile uninstrumented and write no
+      #     .profraw files.
+      #   - RUSTFLAGS replaces config-file rustflags outright; this repo's
+      #     .cargo/config.toml sets none, so there is nothing to repeat. If
+      #     rustflags are ever added there, mirror them into both RUSTFLAGS
+      #     below or the PGO binaries will silently lose them.
+      #   - LLVM_PROFILE_FILE is read when the workload runs, not at build
+      #     time — it belongs on the og-bench invocation only.
+      # kache keys on the compiler flags, so the instrumented and
+      # profile-use passes never poison the plain-build cache entries (and
+      # vice versa); that is also why rolling master builds stay warm.
+      - name: Build og-bench (PGO-instrumented)
+        if: env.PGO == '1'
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/pgo/prof"
+          RUSTFLAGS="-Cprofile-generate=${RUNNER_TEMP}/pgo/prof" \
+            cargo build --release --locked --target ${{ matrix.target }} --bin og-bench
+
+      # The bench workload is the trainer: engine build + the three corpora
+      # through the full check pipeline + n-gram lookups (synthetic TSVs on
+      # CI hosts without the real data — same DiskLanguageModel seek path).
+      # Its metrics JSON line lands in this step's log.
+      - name: Train PGO profile (og-bench workload)
+        if: env.PGO == '1'
+        run: |
+          set -euo pipefail
+          LLVM_PROFILE_FILE="${RUNNER_TEMP}/pgo/prof/%m_%p.profraw" \
+            "target/${{ matrix.target }}/release/og-bench"
+
+      - name: Merge PGO profiles
+        if: env.PGO == '1'
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | sed -n 's/^host: //p')"
+          PROFDATA="$(rustc --print sysroot)/lib/rustlib/${HOST}/bin/llvm-profdata"
+          "${PROFDATA}" merge -o "${RUNNER_TEMP}/pgo/merged.profdata" "${RUNNER_TEMP}/pgo/prof"
+
+      # ---- PGO phase 2: rebuild og-server with the trained profile ----
+      # Same artifact path as the plain build, so packaging is unchanged.
+      - name: Build og-server (PGO-optimized)
+        if: env.PGO == '1'
+        run: |
+          RUSTFLAGS="-Cprofile-use=${RUNNER_TEMP}/pgo/merged.profdata" \
+            cargo build --release --locked --target ${{ matrix.target }} --bin og-server
 
       # Tag builds stage into dist/<tag>/, master builds into dist/latest/.
       - name: Package (tar.gz)
