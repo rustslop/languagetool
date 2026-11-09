@@ -26,6 +26,9 @@ fn rewrite_java_ci(pattern: &str) -> Option<String> {
     if pattern.contains("?-i") {
         return None;
     }
+    // No prescan on the pattern bytes here: class ranges like `a-z` cover
+    // `i`/`I` without containing either byte, and those ranges still need
+    // widening for Java's case folding - the dotless-i tests pin this.
     let mut ast = Parser::new().parse(pattern).ok()?;
     rewrite_ast(&mut ast)?;
     let mut out = String::with_capacity(pattern.len() + 8);

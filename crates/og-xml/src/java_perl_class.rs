@@ -6,11 +6,25 @@ use regex_syntax::ast::{
 };
 
 pub fn to_ascii_perl_classes(pattern: &str) -> Option<String> {
+    // A Perl class is written `\d`, `\D`, `\w`, `\W`, `\s` or `\S`, so a
+    // byte scan without such a pair proves there is nothing this rewrite
+    // can change; skip the AST parse + print for those patterns (all but a
+    // few percent of rule regexps). An escaped backslash (`\\d`) can trip
+    // the scan; a false positive only loses the skip, never correctness.
+    if !contains_perl_class_syntax(pattern) {
+        return None;
+    }
     let mut ast = Parser::new().parse(pattern).ok()?;
     rewrite(&mut ast)?;
     let mut out = String::with_capacity(pattern.len() + 8);
     Printer::new().print(&ast, &mut out).ok()?;
     Some(out)
+}
+
+fn contains_perl_class_syntax(pattern: &str) -> bool {
+    pattern.as_bytes().windows(2).any(|pair| {
+        pair[0] == b'\\' && matches!(pair[1], b'd' | b'D' | b'w' | b'W' | b's' | b'S')
+    })
 }
 
 fn rewrite(ast: &mut Ast) -> Option<()> {
@@ -167,6 +181,23 @@ mod string_matcher_spec_tests {
         } else {
             crate::java_case_fold::compile_java_ci(&anchored)
         }
+    }
+
+    #[test]
+    fn patterns_without_perl_syntax_skip_the_rewrite() {
+        // No `\d`-style pair anywhere: nothing this rewrite can change, so
+        // the prescan returns None and the caller keeps the pattern as-is.
+        for pattern in ["abc", "[a-z]+", "^(?:foo|bar)$", "[[:digit:]]x", "a.*b"] {
+            assert_eq!(to_ascii_perl_classes(pattern), None, "{pattern}");
+        }
+    }
+
+    #[test]
+    fn perl_syntax_still_takes_the_rewrite_path() {
+        assert!(to_ascii_perl_classes(r"\d+").is_some());
+        // An escaped backslash before `d` trips the prescan and keeps the
+        // slow path: the parse succeeds and the rewrite is the identity.
+        assert!(to_ascii_perl_classes(r"\\d").is_some());
     }
 
     #[test]
